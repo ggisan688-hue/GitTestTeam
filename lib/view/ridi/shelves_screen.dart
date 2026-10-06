@@ -21,12 +21,14 @@ class ShelvesScreen extends StatefulWidget {
   State<ShelvesScreen> createState() => _ShelvesScreenState();
 }
 
-class _ShelvesScreenState extends State<ShelvesScreen> {
+class _ShelvesScreenState extends State<ShelvesScreen>
+    with SingleTickerProviderStateMixin {
   late final ShelfRepository _repository;
   late final BookRepository _books;
   late Future<List<Shelf>> _shelves;
   List<Shelf> _shelfCache = const [];
   int _section = 0;
+  late final TabController _tabs;
 
   @override
   void initState() {
@@ -39,6 +41,18 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
     );
     _shelves = _loadShelves();
     context.read<FavoriteViewModel>().load(clearFirst: true);
+    _tabs = TabController(length: 2, vsync: this)
+      ..addListener(() {
+        if (!_tabs.indexIsChanging && mounted && _section != _tabs.index) {
+          setState(() => _section = _tabs.index);
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<List<Shelf>> _loadShelves() async {
@@ -190,6 +204,10 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('내 서재'),
+      bottom: TabBar(
+        controller: _tabs,
+        tabs: const [Tab(text: '내 책장'), Tab(text: '교환독서')],
+      ),
       actions: [
         FutureBuilder<List<Shelf>>(
           future: _shelves,
@@ -215,11 +233,6 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
               ],
             );
           },
-        ),
-        IconButton(
-          tooltip: '교환독서',
-          icon: const Icon(Icons.groups_outlined),
-          onPressed: () => setState(() => _section = 1),
         ),
       ],
     ),

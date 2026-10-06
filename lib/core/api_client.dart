@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kDebugMode;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -31,6 +31,11 @@ class ApiClient {
 
   final http.Client _client;
   final String _baseUrl;
+
+  /// The app installs this once to clear authenticated UI state when a token
+  /// has expired. Repositories remain transport-only and do not need to know
+  /// about widget/navigation state.
+  static VoidCallback? onUnauthorized;
 
   String get baseUrl => _baseUrl;
 
@@ -153,6 +158,9 @@ class ApiClient {
     http.Response res,
     T Function(Object? json)? parse,
   ) {
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
+    }
     // DELETE endpoints intentionally return 204.  Treating an empty response
     // as JSON made a successful note deletion look like a client-side error.
     if (res.statusCode == 204 || res.bodyBytes.isEmpty) {

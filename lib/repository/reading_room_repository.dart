@@ -50,11 +50,11 @@ class ReadingRoomRepository {
     return response.data!;
   }
 
-  Future<ReadingRoom> join(String code) async {
-    final response = await _api.post<ReadingRoom>(
+  Future<ReadingRoomJoinResult> join(String code) async {
+    final response = await _api.post<ReadingRoomJoinResult>(
       '/api/reading-rooms/join-by-code',
       body: {'inviteCode': code.trim()},
-      parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      parse: (json) => ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
     );
     return response.data!;
   }

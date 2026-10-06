@@ -427,9 +427,9 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
       _error = null;
     });
     try {
-      final room = await widget.repository.join(code);
+      final result = await widget.repository.join(code);
       if (!mounted) return;
-      Navigator.of(context).pop(room);
+      Navigator.of(context).pop(result.room);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {

@@ -105,8 +105,8 @@ record RoomResponse(Long id, String name, String description, Long bookId,
                     boolean spoilerLockEnabled, String selectedAiFriendType,
                     List<RoomMemberResponse> participants,
                     RoomBookResponse book, String hostNickname, String myRole,
-                    int memberCount, String joinType, String aiFriendType,
-                    boolean alreadyJoined) {}
+                    int memberCount, String joinType, String aiFriendType) {}
+record JoinRoomResponse(RoomResponse room, boolean alreadyJoined) {}
 
 @org.springframework.stereotype.Service
 class RoomService {
@@ -257,7 +257,7 @@ class RoomService {
   }
 
   @org.springframework.transaction.annotation.Transactional
-  RoomResponse join(String username, String code, String roomNickname) {
+  JoinRoomResponse join(String username, String code, String roomNickname) {
     AppUser current = userFeatures.me(username);
     if (code == null || code.trim().isEmpty() || code.trim().length() > 16) {
       throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_CODE", "Enter a room code.");
@@ -266,11 +266,11 @@ class RoomService {
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "Room code not found."));
     if (isMember(room, current)) {
       log.info("reading-room join-by-code already-member roomId={} userId={}", room.id, current.id);
-      return response(room, current, true);
+      return new JoinRoomResponse(response(room, current), true);
     }
     addMember(room, current, roomNickname);
     log.info("reading-room join-by-code joined roomId={} userId={}", room.id, current.id);
-    return response(room, current);
+    return new JoinRoomResponse(response(room, current), false);
   }
 
   @org.springframework.transaction.annotation.Transactional
@@ -383,10 +383,6 @@ class RoomService {
   }
 
   private RoomResponse response(ReadingRoom room, AppUser current) {
-    return response(room, current, false);
-  }
-
-  private RoomResponse response(ReadingRoom room, AppUser current, boolean alreadyJoined) {
     boolean joined = isMember(room, current);
     Long ownerId = ownerIdOf(room);
     AppUser ownerUser = users.findById(ownerId).orElseThrow(
@@ -406,7 +402,7 @@ class RoomService {
         ownerUser.nickname, room.createdAt, joined, owner,
         owner ? room.joinCode : null, room.spoilerLockEnabled, room.selectedAiFriendType, participants,
         book, ownerUser.nickname, currentMember == null ? null : currentMember.role,
-        participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType, alreadyJoined);
+        participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType);
   }
 
   private RoomMemberResponse memberResponse(RoomMember member, AppUser user) {
@@ -481,8 +477,8 @@ class RoomController {
   @GetMapping("/{roomId}") RoomResponse detail(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.detail(authentication.getName(), roomId); }
   @PostMapping @ResponseStatus(HttpStatus.CREATED) RoomResponse create(@Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.create(authentication.getName(), request); }
   @PatchMapping("/{roomId}") RoomResponse update(@PathVariable Long roomId, @Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.update(authentication.getName(), roomId, request); }
-  @PostMapping("/join") RoomResponse join(@RequestParam String code, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), code, null); }
-  @PostMapping("/join-by-code") RoomResponse joinByCode(@Valid @RequestBody JoinRoomCodeRequest request, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), request.inviteCode(), request.roomNickname()); }
+  @PostMapping("/join") JoinRoomResponse join(@RequestParam String code, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), code, null); }
+  @PostMapping("/join-by-code") JoinRoomResponse joinByCode(@Valid @RequestBody JoinRoomCodeRequest request, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), request.inviteCode(), request.roomNickname()); }
   @PostMapping("/{roomId}/members") RoomResponse joinPublic(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.joinPublic(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/join-code") RoomResponse reissueCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/invite-code/regenerate") RoomResponse regenerateInviteCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }

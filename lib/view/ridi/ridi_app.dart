@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,6 +16,7 @@ import 'server_notifications_screen.dart';
 import 'ridi_splash.dart';
 import 'ridi_store.dart';
 import 'ridi_theme.dart';
+import 'ridi_auth.dart';
 
 /// 책담 앱의 시작점 (main.dart → RidiApp).
 ///
@@ -42,6 +45,7 @@ class _RidiAppState extends State<RidiApp> {
     _favorites = FavoriteViewModel(
       BookRepository(ApiClient(tokenProvider: () => _store.accessToken)),
     );
+    ApiClient.onUnauthorized = () => unawaited(_store.logout());
     _store.addListener(_clearBookCacheAfterLogout);
   }
 
@@ -55,6 +59,7 @@ class _RidiAppState extends State<RidiApp> {
   @override
   void dispose() {
     _store.removeListener(_clearBookCacheAfterLogout);
+    ApiClient.onUnauthorized = null;
     _books.dispose();
     _favorites.dispose();
     _store.dispose();
@@ -131,7 +136,38 @@ class _RidiShellState extends State<RidiShell> {
     _pages[_index] = const HomeScreen();
   }
 
-  void select(int i) {
+  Future<void> select(int i) async {
+    final store = context.read<RidiStore>();
+    // Home remains browseable as a guest.  Personal shelves (including
+    // exchange reading) and MY are account data, so never construct their
+    // server-backed screens before authentication.
+    if (!store.loggedIn && (i == 0 || i == 4)) {
+      final login = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('로그인이 필요해요'),
+          content: Text(i == 0
+              ? '내 책장과 교환독서는 로그인한 뒤 사용할 수 있습니다.'
+              : '마이 페이지는 로그인한 뒤 사용할 수 있습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('나중에'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('로그인'),
+            ),
+          ],
+        ),
+      );
+      if (login == true && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
+      return;
+    }
     setState(() {
       _index = i;
       // IndexedStack keeps visited tabs alive, so their initState fetches do

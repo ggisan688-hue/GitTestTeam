@@ -6,7 +6,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/api_client.dart';
 import '../../model/book.dart';
-import '../../model/reading_room.dart';
 import '../../model/shared_room_note.dart';
 import '../../viewmodel/book_viewmodel.dart';
 import '../../repository/reading_room_repository.dart';
@@ -31,16 +30,9 @@ class AdvancedBookReaderScreen extends StatefulWidget {
     super.key,
     required this.bookId,
     this.readerContext = const ReaderContext.personal(),
-    @Deprecated('Pass readerContext instead.')
-    this.roomId,
   });
   final int bookId;
   final ReaderContext readerContext;
-  @Deprecated('Pass readerContext instead.')
-  final int? roomId;
-  ReaderContext get effectiveContext => readerContext.isReadingRoom || roomId == null
-      ? readerContext
-      : ReaderContext.readingRoom(roomId!);
   @override
   State<AdvancedBookReaderScreen> createState() =>
       _AdvancedBookReaderScreenState();
@@ -90,7 +82,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       enabled ? WakelockPlus.enable() : WakelockPlus.disable();
 
   Future<void> _loadSharedHighlights() async {
-    final roomId = widget.effectiveContext.roomId;
+    final roomId = widget.readerContext.roomId;
     if (roomId == null || !mounted) return;
     final token = context.read<RidiStore>().accessToken;
     try {
@@ -585,7 +577,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     final highlightColor = vm.readerSettings.highlightColor;
     setState(() => _savingHighlight = true);
     try {
-      if (widget.effectiveContext.isReadingRoom) {
+      if (widget.readerContext.isReadingRoom) {
         await _createRoomNote(selection, type: 'HIGHLIGHT', highlightColor: highlightColor);
       } else {
         await vm.addNote(
@@ -619,7 +611,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       builder: (_) => _MemoEditorDialog(
         selectedText: selection.selectedText,
         onSave: (memo) async {
-          if (widget.effectiveContext.isReadingRoom) {
+          if (widget.readerContext.isReadingRoom) {
             await _createRoomNote(selection, type: 'MEMO', content: memo);
           } else {
             await context.read<BookViewModel>().addNote(
@@ -643,7 +635,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     String? content,
     String? highlightColor,
   }) async {
-    final roomId = widget.effectiveContext.roomId;
+    final roomId = widget.readerContext.roomId;
     if (roomId == null) throw ApiException('독서방 정보를 찾을 수 없습니다.');
     final roomRepository = ReadingRoomRepository(
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
@@ -658,52 +650,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       if (highlightColor != null) 'highlightColor': highlightColor,
     });
     await _loadSharedHighlights();
-    return;
-    if (!mounted) return;
-    final shouldChoose = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('독서방에 공유'),
-        content: const Text('공유할 독서방을 선택할까요? 개인 독서노트는 그대로 유지됩니다.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('공유'),
-          ),
-        ],
-      ),
-    );
-    if (shouldChoose != true || !mounted) return;
-    final token = context.read<RidiStore>().accessToken;
-    final repository = ReadingRoomRepository(
-      ApiClient(tokenProvider: () => token),
-    );
-    final target = await showModalBottomSheet<ReadingRoom>(
-      context: context,
-      builder: (_) =>
-          _ShareRoomPicker(targets: repository.shareTargets(widget.bookId)),
-    );
-    if (target == null || !mounted) return;
-    try {
-      await repository.createSharedNote(target.id, {
-        'type': type,
-        'paragraphOrder': selection.paragraphOrder,
-        'startOffset': selection.start,
-        'endOffset': selection.end,
-        'selectedText': selection.selectedText,
-        if (content != null) 'content': content,
-        if (highlightColor != null) 'highlightColor': highlightColor,
-      });
-      await _loadSharedHighlights();
-    } on ApiException catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_sharedNoteError(e))));
-    }
   }
 
   String _sharedNoteError(ApiException error) => switch (error.errorCode) {
@@ -717,60 +663,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
   void _showParagraphMemos(int paragraphOrder) => _open(
     _ParagraphMemos(bookId: widget.bookId, paragraphOrder: paragraphOrder),
-  );
-}
-
-class _ShareRoomPicker extends StatelessWidget {
-  const _ShareRoomPicker({required this.targets});
-  final Future<List<ReadingRoom>> targets;
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: FutureBuilder<List<ReadingRoom>>(
-      future: targets,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const SizedBox(
-            height: 180,
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasError) {
-          return const SizedBox(
-            height: 180,
-            child: Center(child: Text('공유할 독서방을 불러오지 못했습니다.')),
-          );
-        }
-        final rooms = snapshot.data ?? const <ReadingRoom>[];
-        if (rooms.isEmpty) {
-          return const SizedBox(
-            height: 180,
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  '이 책으로 참여 중인 독서방이 없습니다.\n개인 독서노트로만 저장됩니다.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          );
-        }
-        return ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(title: Text('공유할 독서방 선택')),
-            for (final room in rooms)
-              ListTile(
-                leading: const Icon(Icons.groups_outlined),
-                title: Text(room.name),
-                subtitle: Text('${room.members}/${room.maxMembers}명 참여 중'),
-                onTap: () => Navigator.of(context).pop(room),
-              ),
-          ],
-        );
-      },
-    ),
   );
 }
 

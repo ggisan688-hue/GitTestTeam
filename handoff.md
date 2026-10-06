@@ -37,15 +37,19 @@
 - `RoomMember` 및 참여자 DTO에 `roomProfileImageUrl`을 추가했다.
 - 공유 노트 응답은 방 멤버 이미지가 있으면 전역 프로필 이미지보다 우선 사용한다.
 
+### 후속 정리 (2026-10-06)
+
+- 방 생성 화면의 갤러리 이미지 선택/미리보기/취소·재시도와 서버 도서 선택 UI를 완료했다.
+- 내 서재는 `내 책장 / 교환독서` 상단 탭으로 전환한다.
+- 게스트가 내 서재(교환독서 포함) 또는 마이 탭을 열면 로그인 유도 대화상자를 표시한다. 홈의 도서 탐색은 게스트로 유지한다. 로그아웃 또는 임의 API의 401은 동일한 로그아웃 처리로 책/즐겨찾기 캐시를 비운다.
+- 리더는 `ReaderContext`만 사용한다. 도달 불가능했던 개인 노트 후 독서방 선택 코드와 `_ShareRoomPicker`를 제거했다.
+- 초대코드 가입 API(`POST /api/reading-rooms/join`, `join-by-code`)는 `{ room, alreadyJoined }` envelope를 반환한다. `alreadyJoined`는 더 이상 일반 방 DTO의 필드가 아니다.
+
 ## 아직 완료해야 할 작업
 
-1. 방 생성 화면에 방 닉네임 아래 갤러리 이미지 선택, 미리보기, 취소, 재시도 UI를 추가한다.
-2. 기존 `ProfileImageStorage`를 재사용하는 방 멤버 프로필 업로드/삭제 API를 구현하고 Flutter repository와 연결한다.
-3. 방 멤버 목록, 공유 노트, 공유 댓글 UI에서 `roomProfileImageUrl -> global profile -> 기본 이미지` fallback을 표시한다.
-4. 내 서재의 `내 책장 / 교환독서`를 완성된 상단 탭 UI로 정리한다. 현재는 교환독서 화면을 같은 영역에 표시하는 전환 기반만 추가되어 있다.
-5. 게스트가 인증이 필요한 책장/교환독서/마이 탭을 열 때 로그인 유도로 일관되게 처리한다. 로그아웃·401 시 사용자별 Room/책장 캐시 초기화도 실기기에서 점검한다.
-6. `advanced_book_reader.dart`에 남아 있는 과거 공유 선택 코드와 dead-code analyzer 경고를 제거하고 widget/unit test를 추가한다.
-7. 초대코드 가입 응답 계약을 `{ room, alreadyJoined }` envelope로 통일할지 결정하고 Flutter/서버를 함께 변경한다. 현재는 방 DTO에 `alreadyJoined` 필드를 포함하는 호환 방식이다.
+1. 실제 PostgreSQL/Flyway와 Android Emulator에서 로그인·로그아웃/401 후 사용자별 Room·책장 캐시 초기화를 검증한다.
+2. 계정 A/B로 초대코드 가입·재가입을 수행해 `{ room, alreadyJoined }` 응답, member row 중복 방지, 목록 즉시 반영을 검증한다.
+3. 방 삭제 cascade/개인 데이터 보존 및 방 전용 프로필 이미지 업로드·fallback을 실기기에서 검증한다.
 
 ## 수정 파일
 
@@ -61,11 +65,11 @@
 
 ## 검증 결과 및 제한
 
-- `backend\\gradlew.bat build --rerun-tasks`: 성공. 테스트 소스는 없어 `test NO-SOURCE`였다.
-- `flutter test`: 성공, 4개 테스트 통과.
-- 대상 Flutter 파일 `flutter analyze`: 컴파일 error는 없음. 기존 warning/info와 리더의 dead-code warning이 남아 있다.
+- `backend\\gradlew.bat test`: 성공. 테스트 소스는 없어 `test NO-SOURCE`였다.
+- `flutter test`: 성공, 5개 테스트 통과(초대 가입 envelope 파싱 테스트 포함).
+- 대상 Flutter 파일 `flutter analyze`: error 없음. 기존 style/deprecation info와 `shelves_screen.dart`의 기존 unused warning은 남아 있고, 리더의 과거 공유 선택 dead code는 제거했다.
 - PostgreSQL 접속 정보, JWT 환경값, Android Emulator/adb가 이 환경에 없어 아래 실제 검증은 아직 하지 못했다.
-  - Flyway V18/V19 적용
+  - Flyway V18/V19 적용 및 새 초대 가입 envelope 실서버 응답
   - 계정 A/B 초대코드 가입/재가입 및 member row 중복 여부
   - `/api/reading-rooms/my` 실제 응답
   - 방 삭제 cascade 및 원본 개인 데이터 보존
@@ -77,4 +81,4 @@
 1. 백엔드 재시작 후 Flyway V18, V19 적용 로그를 확인한다.
 2. PostgreSQL에서 생성자 OWNER row와 참여자 MEMBER row를 확인한다.
 3. Android Emulator에서 초대코드 가입, 재가입, 목록 즉시 반영, 방 삭제를 확인한다.
-4. 방 전용 프로필 업로드 API/UI를 구현한 뒤 Flutter analyze/test, Spring build를 다시 실행한다.
+4. 계정 A/B 초대코드 재가입과 로그인 상태 전환을 실행하고 API/DB 결과를 기록한다.

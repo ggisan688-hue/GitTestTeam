@@ -60,7 +60,6 @@ class ReadingRoom {
     this.selectedAiFriendType,
     this.book,
     this.myRole,
-    this.alreadyJoined = false,
     this.participants = const [],
   });
 
@@ -80,7 +79,6 @@ class ReadingRoom {
   final String? selectedAiFriendType;
   final ReadingRoomBook? book;
   final String? myRole;
-  final bool alreadyJoined;
   final List<ReadingRoomMember> participants;
 
   factory ReadingRoom.fromJson(Map<String, dynamic> json) => ReadingRoom(
@@ -102,9 +100,23 @@ class ReadingRoom {
         ? ReadingRoomBook.fromJson(json['book'] as Map<String, dynamic>)
         : null,
     myRole: json['myRole'] as String?,
-    alreadyJoined: json['alreadyJoined'] == true,
     participants: (json['participants'] as List<dynamic>? ?? const [])
         .map((item) => ReadingRoomMember.fromJson(item as Map<String, dynamic>))
         .toList(),
   );
+}
+
+/// Invite-code joins have idempotency metadata that does not belong to a room
+/// list/detail response.
+class ReadingRoomJoinResult {
+  const ReadingRoomJoinResult({required this.room, required this.alreadyJoined});
+
+  final ReadingRoom room;
+  final bool alreadyJoined;
+
+  factory ReadingRoomJoinResult.fromJson(Map<String, dynamic> json) =>
+      ReadingRoomJoinResult(
+        room: ReadingRoom.fromJson(json['room'] as Map<String, dynamic>),
+        alreadyJoined: json['alreadyJoined'] == true,
+      );
 }

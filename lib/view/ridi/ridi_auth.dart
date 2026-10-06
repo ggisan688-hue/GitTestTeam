@@ -56,6 +56,12 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = false;
       _error = error;
     });
+    // Login is normally opened as a route from a guest entry point.  Return
+    // to that route immediately after success so the requested authenticated
+    // tab is usable without an extra back gesture.
+    if (error == null && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
