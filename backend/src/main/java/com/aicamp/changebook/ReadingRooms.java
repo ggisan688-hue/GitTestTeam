@@ -363,7 +363,17 @@ class RoomService {
   private Long ownerIdOf(ReadingRoom room) {
     if (room == null) return null;
     if (room.ownerId != null) return room.ownerId;
-    return room.owner == null ? null : room.owner.id;
+    if (room.owner != null && room.owner.id != null) return room.owner.id;
+    // Older room rows can have an absent owner reference even though their
+    // authoritative OWNER/HOST membership still exists. Use that persisted
+    // relationship rather than passing a null id to UserRepository.findById.
+    if (room.id == null) return null;
+    return members.findByRoomIdOrderByJoinedAtAsc(room.id).stream()
+        .filter(member -> "OWNER".equals(member.role) || "HOST".equals(member.role))
+        .map(member -> member.userId)
+        .filter(java.util.Objects::nonNull)
+        .findFirst()
+        .orElse(null);
   }
 
   private void requireOwnerReference(ReadingRoom room) {
@@ -398,6 +408,9 @@ class RoomService {
   private RoomResponse response(ReadingRoom room, AppUser current) {
     boolean joined = isMember(room, current);
     Long ownerId = ownerIdOf(room);
+    if (ownerId == null) {
+      throw new ApiException(HttpStatus.CONFLICT, "ROOM_OWNER_NOT_FOUND", "This room has an invalid owner.");
+    }
     AppUser ownerUser = users.findById(ownerId).orElseThrow(
         () -> new ApiException(HttpStatus.CONFLICT, "ROOM_OWNER_NOT_FOUND", "This room has an invalid owner."));
     RoomMember currentMember = members.findByRoomIdAndUserId(room.id, current.id).orElse(null);
