@@ -13,14 +13,13 @@ import 'ridi_home.dart';
 import 'shelves_screen.dart';
 import 'account_screen.dart';
 import 'server_notifications_screen.dart';
-import 'ridi_splash.dart';
 import 'ridi_store.dart';
 import 'ridi_theme.dart';
 import 'ridi_auth.dart';
 
 /// 책담 앱의 시작점 (main.dart → RidiApp).
 ///
-/// 흐름: SplashScreen(RIDI_SPLASH_01) → RidiGate → 로그인 전이면 LoginScreen, 로그인 후면 RidiShell(하단 탭 5개).
+/// 흐름: RidiGate → 로그인 전이면 LoginScreen, 로그인 후면 RidiShell(하단 탭 5개).
 /// RidiStore 하나를 Provider 로 앱 전체에 넣어 두고, 모든 화면이 context.watch / read 로 쓴다.
 /// 화면 이동·버튼 위치는 리디북스를 따르고, 데이터는 서버 연결 전까지 메모리(RidiStore)에만 둔다.
 class RidiApp extends StatefulWidget {
@@ -81,7 +80,7 @@ class _RidiAppState extends State<RidiApp> {
         title: RidiBrand.appName,
         debugShowCheckedModeBanner: false,
         theme: ridiTheme(),
-        home: const SplashScreen(), // 앱 켤 때 한 번 → RidiGate
+        home: const RidiGate(), // 스플래시 없이 바로 시작
       ),
     );
   }

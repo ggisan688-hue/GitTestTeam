@@ -878,7 +878,7 @@ class RidiStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 로그아웃 → RidiGate 가 로그인 화면으로 바꾼다 (스플래시는 다시 안 나옴). 서버: 토큰만 버림
+  /// 로그아웃 → RidiGate 가 로그인 화면으로 바꾼다. 서버: 토큰만 버림
   Future<void> logout() async {
     loggedIn = false;
     accessToken = null;

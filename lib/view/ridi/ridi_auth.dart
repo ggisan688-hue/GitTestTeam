@@ -14,7 +14,7 @@ import '../../widgets/screen_tag.dart';
 /// 비밀번호 찾기 = POST /api/members/password-reset.
 
 /// 앱 로고·이름 + 아이디/비밀번호 + 로그인 · 회원가입 · 비밀번호 찾기.
-/// 맨 아래 "made by 이팀" 엠블렘은 스플래시에서 날아와 앉는 자리(Hero 태그 RidiBrand.emblemHero).
+/// 맨 아래 "made by 이팀" 엠블렘(Hero 태그 RidiBrand.emblemHero).
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
