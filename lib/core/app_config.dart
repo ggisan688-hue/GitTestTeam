@@ -7,7 +7,9 @@ class AppConfig {
   AppConfig._();
 
   static const int _springPort = 8088;
-  static const String _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+  );
 
   static String get baseUrl {
     if (_configuredBaseUrl.isNotEmpty) {
@@ -16,7 +18,9 @@ class AppConfig {
     // A distributable APK must never silently point at the installing
     // device. Production builds require an explicit HTTPS dart-define.
     if (!kDebugMode) {
-      throw StateError('Release builds require --dart-define=API_BASE_URL=https://api.example.com');
+      throw StateError(
+        'Release builds require --dart-define=API_BASE_URL=https://api.example.com',
+      );
     }
     // Android 에뮬레이터에서 호스트 PC 의 localhost 는 10.0.2.2
     if (!kIsWeb && Platform.isAndroid) {
@@ -28,14 +32,16 @@ class AppConfig {
   static String _validate(String value, {required bool requireHttps}) {
     final normalized = value.replaceFirst(RegExp(r'/$'), '');
     final uri = Uri.tryParse(normalized);
-    if (uri == null || uri.host.isEmpty ||
+    if (uri == null ||
+        uri.host.isEmpty ||
         (uri.scheme != 'http' && uri.scheme != 'https')) {
       throw StateError('API_BASE_URL must be a complete http(s) URL.');
     }
     if (requireHttps && uri.scheme != 'https') {
       throw StateError('Release API_BASE_URL must use HTTPS.');
     }
-    if (requireHttps && const {'localhost', '127.0.0.1', '10.0.2.2'}.contains(uri.host)) {
+    if (requireHttps &&
+        const {'localhost', '127.0.0.1', '10.0.2.2'}.contains(uri.host)) {
       throw StateError('Release API_BASE_URL must be an external API domain.');
     }
     return normalized;

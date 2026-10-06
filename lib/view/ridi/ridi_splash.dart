@@ -17,7 +17,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(vsync: this);
   bool _started = false;
 
@@ -26,9 +27,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   bool _left = false;
 
   // 0.00–0.18 대표 이미지 나타남 · 0.18–0.42 머묾 · 0.42–0.72 엠블렘으로 작아짐 · 0.72–1.00 엠블렘 머묾
-  late final _appear = CurvedAnimation(parent: _c, curve: const Interval(0.0, 0.18, curve: Curves.easeOutCubic));
-  late final _shrink = CurvedAnimation(parent: _c, curve: const Interval(0.42, 0.72, curve: Curves.easeInOutCubic));
-  late final _swap = CurvedAnimation(parent: _c, curve: const Interval(0.56, 0.72, curve: Curves.easeInOut));
+  late final _appear = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.0, 0.18, curve: Curves.easeOutCubic),
+  );
+  late final _shrink = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.42, 0.72, curve: Curves.easeInOutCubic),
+  );
+  late final _swap = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.56, 0.72, curve: Curves.easeInOut),
+  );
 
   /// 첫 빌드에서 한 번만: 길이를 정하고(애니메이션 줄이기면 0.4초) 시작
   @override
@@ -45,7 +55,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   /// 이미지를 다 읽고 첫 화면이 실제로 그려진 뒤에 시작해야 앞부분이 잘리지 않는다
   Future<void> _start() async {
     await Future.wait([
-      for (final a in [RidiBrand.teamMain, RidiBrand.teamEmblem, RidiBrand.logo]) precacheImage(AssetImage(a), context),
+      for (final a in [
+        RidiBrand.teamMain,
+        RidiBrand.teamEmblem,
+        RidiBrand.logo,
+      ])
+        precacheImage(AssetImage(a), context),
     ]);
     await WidgetsBinding.instance.waitUntilFirstFrameRasterized;
     if (!mounted || _left) return;
@@ -64,15 +79,21 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (_left || !mounted) return;
     _left = true;
     _c.stop();
-    Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 700 * _slow),
-      pageBuilder: (_, _, _) => const RidiGate(),
-      transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child),
-    ));
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 700 * _slow),
+        pageBuilder: (_, _, _) => const RidiGate(),
+        transitionsBuilder: (_, a, _, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: a, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    );
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_SPLASH_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_SPLASH_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     return Scaffold(
@@ -80,45 +101,58 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _finish,
-        child: LayoutBuilder(builder: (context, box) {
-          final big = (box.biggest.shortestSide * 0.8).clamp(240.0, 620.0);
-          const small = RidiBrand.splashEmblem;
-          return Center(
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (context, _) {
-                final size = lerpDouble(big, small, _shrink.value)!;
-                final fade = _appear.value;
-                final swap = _swap.value;
-                return Opacity(
-                  opacity: fade,
-                  child: Transform.scale(
-                    scale: lerpDouble(0.94, 1.0, fade)!,
-                    child: SizedBox.square(
-                      dimension: size,
-                      child: Stack(fit: StackFit.expand, children: [
-                        // 대표 이미지: 작아지면서 원이 되고, 동시에 '이팀' 글자 쪽으로 당겨 확대해
-                        // 엠블렘의 글자 자리와 겹치게 한다 (바뀔 때 글자가 두 번 보이지 않게)
-                        Opacity(
-                          opacity: 1 - swap,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(size / 2 * _shrink.value),
-                            child: _ZoomToWordmark(progress: _shrink.value, size: size),
-                          ),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final big = (box.biggest.shortestSide * 0.8).clamp(240.0, 620.0);
+            const small = RidiBrand.splashEmblem;
+            return Center(
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (context, _) {
+                  final size = lerpDouble(big, small, _shrink.value)!;
+                  final fade = _appear.value;
+                  final swap = _swap.value;
+                  return Opacity(
+                    opacity: fade,
+                    child: Transform.scale(
+                      scale: lerpDouble(0.94, 1.0, fade)!,
+                      child: SizedBox.square(
+                        dimension: size,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // 대표 이미지: 작아지면서 원이 되고, 동시에 '이팀' 글자 쪽으로 당겨 확대해
+                            // 엠블렘의 글자 자리와 겹치게 한다 (바뀔 때 글자가 두 번 보이지 않게)
+                            Opacity(
+                              opacity: 1 - swap,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  size / 2 * _shrink.value,
+                                ),
+                                child: _ZoomToWordmark(
+                                  progress: _shrink.value,
+                                  size: size,
+                                ),
+                              ),
+                            ),
+                            // 엠블렘: 같은 자리에서 서서히 드러난다
+                            Opacity(
+                              opacity: swap,
+                              child: Hero(
+                                tag: RidiBrand.emblemHero,
+                                child: Image.asset(RidiBrand.teamEmblem),
+                              ),
+                            ),
+                          ],
                         ),
-                        // 엠블렘: 같은 자리에서 서서히 드러난다
-                        Opacity(
-                          opacity: swap,
-                          child: Hero(tag: RidiBrand.emblemHero, child: Image.asset(RidiBrand.teamEmblem)),
-                        ),
-                      ]),
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-          );
-        }),
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -140,14 +174,17 @@ class _ZoomToWordmark extends StatelessWidget {
     final z = lerpDouble(1, _zoom, progress)!;
     final ax = lerpDouble(_cx, 0.5, progress)! * size;
     final ay = lerpDouble(_cy, 0.49, progress)! * size;
-    return Stack(clipBehavior: Clip.hardEdge, children: [
-      Positioned(
-        left: ax - _cx * size * z,
-        top: ay - _cy * size * z,
-        width: size * z,
-        height: size * z,
-        child: Image.asset(RidiBrand.teamMain, fit: BoxFit.cover),
-      ),
-    ]);
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned(
+          left: ax - _cx * size * z,
+          top: ay - _cy * size * z,
+          width: size * z,
+          height: size * z,
+          child: Image.asset(RidiBrand.teamMain, fit: BoxFit.cover),
+        ),
+      ],
+    );
   }
 }

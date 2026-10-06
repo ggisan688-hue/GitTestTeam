@@ -14,17 +14,21 @@ class RidiAuthException implements Exception {
 }
 
 class RidiAuthUser {
-  const RidiAuthUser({required this.id, required this.username, required this.nickname});
+  const RidiAuthUser({
+    required this.id,
+    required this.username,
+    required this.nickname,
+  });
 
   final int id;
   final String username;
   final String nickname;
 
   factory RidiAuthUser.fromJson(Map<String, dynamic> json) => RidiAuthUser(
-        id: (json['id'] as num).toInt(),
-        username: json['username'] as String,
-        nickname: json['nickname'] as String,
-      );
+    id: (json['id'] as num).toInt(),
+    username: json['username'] as String,
+    nickname: json['nickname'] as String,
+  );
 }
 
 class RidiAuthSession {
@@ -33,7 +37,8 @@ class RidiAuthSession {
   final String accessToken;
   final RidiAuthUser user;
 
-  factory RidiAuthSession.fromJson(Map<String, dynamic> json) => RidiAuthSession(
+  factory RidiAuthSession.fromJson(Map<String, dynamic> json) =>
+      RidiAuthSession(
         accessToken: json['accessToken'] as String,
         user: RidiAuthUser.fromJson(json['user'] as Map<String, dynamic>),
       );
@@ -48,7 +53,11 @@ class RidiAuthRepository {
   final http.Client _client;
   static const _requestTimeout = Duration(seconds: 20);
 
-  Future<void> signup({required String username, required String password, required String nickname}) async {
+  Future<void> signup({
+    required String username,
+    required String password,
+    required String nickname,
+  }) async {
     final json = await _request(
       'POST',
       '/api/auth/signup',
@@ -59,7 +68,10 @@ class RidiAuthRepository {
     }
   }
 
-  Future<RidiAuthSession> login({required String username, required String password}) async {
+  Future<RidiAuthSession> login({
+    required String username,
+    required String password,
+  }) async {
     final json = await _request(
       'POST',
       '/api/auth/login',
@@ -109,9 +121,13 @@ class RidiAuthRepository {
       final response = await http.Response.fromStream(
         await _client.send(request).timeout(_requestTimeout),
       );
-      final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final json =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw RidiAuthException(json['message'] as String? ?? '서버 요청에 실패했습니다.', statusCode: response.statusCode);
+        throw RidiAuthException(
+          json['message'] as String? ?? '서버 요청에 실패했습니다.',
+          statusCode: response.statusCode,
+        );
       }
       return json;
     } on TimeoutException {

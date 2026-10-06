@@ -25,9 +25,15 @@ class MyMemosScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionTitle('제${vm.chapterNo}장'),
-              if (vm.memos.isEmpty) const EmptyMemo('아직 메모가 없어요. 본문에서 문장을 눌러 남겨보세요.'),
+              if (vm.memos.isEmpty)
+                const EmptyMemo('아직 메모가 없어요. 본문에서 문장을 눌러 남겨보세요.'),
               for (final m in vm.memos) ...[
-                MemoTile(left: '문장 ${m.lineNo}', right: m.timeLabel, body: m.text, spoiler: vm.isSpoiler(m.lineNo)),
+                MemoTile(
+                  left: '문장 ${m.lineNo}',
+                  right: m.timeLabel,
+                  body: m.text,
+                  spoiler: vm.isSpoiler(m.lineNo),
+                ),
                 const SizedBox(height: AppSpace.sm),
               ],
             ],

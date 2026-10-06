@@ -31,13 +31,19 @@ class AiAssistViewModel extends ChangeNotifier {
   final List<ChatTurn> turns = [];
   bool isChatting = false;
 
-  String _key(AiMode m) => '$bookId/$chapter/${m == AiMode.explain ? lineNo : '-'}/${m.value}';
+  String _key(AiMode m) =>
+      '$bookId/$chapter/${m == AiMode.explain ? lineNo : '-'}/${m.value}';
 
   AiAnswer? get answer => _cache[_key(mode)];
   bool get isLoading => _loading.contains(_key(mode));
 
   /// 화면 진입 시 호출. 위치를 정하고 첫 탭을 바로 요청
-  Future<void> open({required int bookId, required int chapter, int? lineNo, AiMode initial = AiMode.explain}) {
+  Future<void> open({
+    required int bookId,
+    required int chapter,
+    int? lineNo,
+    AiMode initial = AiMode.explain,
+  }) {
     this.bookId = bookId;
     this.chapter = chapter;
     this.lineNo = lineNo;
@@ -61,7 +67,12 @@ class AiAssistViewModel extends ChangeNotifier {
     _loading.add(key);
     notifyListeners();
     try {
-      _cache[key] = await _repository.assist(mode: m, bookId: bookId, chapter: chapter, lineNo: lineNo);
+      _cache[key] = await _repository.assist(
+        mode: m,
+        bookId: bookId,
+        chapter: chapter,
+        lineNo: lineNo,
+      );
     } on ApiException catch (e) {
       errorMessage = e.message;
     } finally {
@@ -84,7 +95,12 @@ class AiAssistViewModel extends ChangeNotifier {
     isChatting = true;
     notifyListeners();
     try {
-      turn.answer = await _repository.chat(bookId: bookId, chapter: chapter, lineNo: lineNo, question: q);
+      turn.answer = await _repository.chat(
+        bookId: bookId,
+        chapter: chapter,
+        lineNo: lineNo,
+        question: q,
+      );
     } on ApiException catch (e) {
       turn.error = e.message;
     } finally {

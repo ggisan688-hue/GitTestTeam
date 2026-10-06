@@ -67,7 +67,12 @@ class _ChapterPagerState extends State<ChapterPager> {
     final penMode = context.select<ReadingViewModel, bool>((vm) => vm.penMode);
 
     return AppCard(
-      padding: const EdgeInsets.fromLTRB(AppSpace.xl, AppSpace.md, AppSpace.xl, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.xl,
+        AppSpace.md,
+        AppSpace.xl,
+        0,
+      ),
       child: Column(
         children: [
           const AreaTag('S30.3', child: _ChapterBar()),
@@ -134,7 +139,10 @@ class _ChapterBar extends StatelessWidget {
           onTap: vm.nextChapter,
         ),
         const Spacer(),
-        StatusBadge(readLine == 0 ? '읽는 지점: 시작 전' : '읽는 지점: 줄 $readLine', icon: Icons.bookmark_outline_rounded),
+        StatusBadge(
+          readLine == 0 ? '읽는 지점: 시작 전' : '읽는 지점: 줄 $readLine',
+          icon: Icons.bookmark_outline_rounded,
+        ),
       ],
     );
   }
@@ -150,7 +158,10 @@ class _Arrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      constraints: const BoxConstraints(minWidth: AppSpace.touch, minHeight: AppSpace.touch),
+      constraints: const BoxConstraints(
+        minWidth: AppSpace.touch,
+        minHeight: AppSpace.touch,
+      ),
       icon: Icon(
         icon,
         size: 24,
@@ -304,15 +315,21 @@ class _ChapterPageState extends State<_ChapterPage> {
       child: SingleChildScrollView(
         key: PageStorageKey('chapter-$chapterNo'),
         padding: EdgeInsets.only(bottom: AppSpace.lg + widget.bottomPadding),
-        child: AreaTag('S30.5', child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.lg),
-          decoration: BoxDecoration(
-            color: AppColors.sceneBg,
-            border: Border.all(color: AppColors.line),
-            borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        child: AreaTag(
+          'S30.5',
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.md,
+              vertical: AppSpace.lg,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.sceneBg,
+              border: Border.all(color: AppColors.line),
+              borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+            ),
+            child: body,
           ),
-          child: body,
-        )),
+        ),
       ),
     );
   }

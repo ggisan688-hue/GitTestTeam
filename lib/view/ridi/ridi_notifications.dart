@@ -24,7 +24,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _archive = false; // false = 전체, true = 보관함
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_NOTI_01', alignment: Alignment.topCenter, child: _screen(context));
+  Widget build(BuildContext context) => ScreenTag(
+    'RIDI_NOTI_01',
+    alignment: Alignment.topCenter,
+    child: _screen(context),
+  );
 
   /// 지우고 스낵바에 되돌리기
   void _delete(RidiStore store, RidiNotification n) {
@@ -32,12 +36,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (removed == null) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: const Text('알림을 지웠어요'),
-        duration: const Duration(seconds: 3),
-        persist: false, // 되돌리기 버튼이 있어도 3초 뒤 사라지게
-        action: SnackBarAction(label: '되돌리기', onPressed: () => store.restoreNotification(removed.$1, removed.$2)),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('알림을 지웠어요'),
+          duration: const Duration(seconds: 3),
+          persist: false, // 되돌리기 버튼이 있어도 3초 뒤 사라지게
+          action: SnackBarAction(
+            label: '되돌리기',
+            onPressed: () => store.restoreNotification(removed.$1, removed.$2),
+          ),
+        ),
+      );
   }
 
   Widget _tab(String label, bool on, VoidCallback onTap) {
@@ -46,7 +55,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       child: Container(
         margin: const EdgeInsets.only(right: 20),
         padding: const EdgeInsets.fromLTRB(2, 12, 2, 10),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: on ? RidiColors.ink : Colors.transparent, width: 2))),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: on ? RidiColors.ink : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
         child: Text(label, style: on ? RidiText.tabOn : RidiText.tab),
       ),
     );
@@ -54,7 +70,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
-    final items = store.notifications.where((n) => n.archived == _archive).toList();
+    final items = store.notifications
+        .where((n) => n.archived == _archive)
+        .toList();
     final archivedCount = store.notifications.where((n) => n.archived).length;
     return Scaffold(
       appBar: AppBar(
@@ -63,11 +81,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (store.unreadCount() > 0)
             TextButton(
               onPressed: store.markAllRead,
-              child: const Text('모두 읽음', style: TextStyle(fontFamily: RidiText.f, fontSize: 14, fontWeight: FontWeight.w700, color: RidiColors.ink)),
+              child: const Text(
+                '모두 읽음',
+                style: TextStyle(
+                  fontFamily: RidiText.f,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: RidiColors.ink,
+                ),
+              ),
             ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 26),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotiSettingsScreen())),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotiSettingsScreen()),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -76,39 +104,74 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: RidiColors.grayLight))),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: RidiColors.grayLight)),
+            ),
             padding: const EdgeInsets.only(left: 16),
-            child: Row(children: [
-              _tab('전체', !_archive, () => setState(() => _archive = false)),
-              _tab(archivedCount == 0 ? '보관함' : '보관함 $archivedCount', _archive, () => setState(() => _archive = true)),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.only(right: 20),
-                child: Text('왼쪽으로 밀면 ${_archive ? '되돌리기' : '보관'} · 삭제', style: RidiText.sub.copyWith(fontSize: 12)),
-              ),
-            ]),
+            child: Row(
+              children: [
+                _tab('전체', !_archive, () => setState(() => _archive = false)),
+                _tab(
+                  archivedCount == 0 ? '보관함' : '보관함 $archivedCount',
+                  _archive,
+                  () => setState(() => _archive = true),
+                ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(right: 20),
+                  child: Text(
+                    '왼쪽으로 밀면 ${_archive ? '되돌리기' : '보관'} · 삭제',
+                    style: RidiText.sub.copyWith(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: items.isEmpty
-                ? RidiEmpty(icon: _archive ? Icons.inventory_2_outlined : Icons.notifications_none_rounded, text: _archive ? '보관한 알림이 없어요' : '새 알림이 없어요')
+                ? RidiEmpty(
+                    icon: _archive
+                        ? Icons.inventory_2_outlined
+                        : Icons.notifications_none_rounded,
+                    text: _archive ? '보관한 알림이 없어요' : '새 알림이 없어요',
+                  )
                 : ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1, indent: 16, endIndent: 16),
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, indent: 16, endIndent: 16),
                     itemBuilder: (_, i) {
                       final n = items[i];
                       return RidiSwipeActions(
                         key: ValueKey(n.id),
                         actions: [
                           if (_archive)
-                            RidiSwipeAction(label: '되돌리기', icon: Icons.unarchive_outlined, color: RidiColors.gray, onTap: () => store.unarchiveNotification(n.id))
+                            RidiSwipeAction(
+                              label: '되돌리기',
+                              icon: Icons.unarchive_outlined,
+                              color: RidiColors.gray,
+                              onTap: () => store.unarchiveNotification(n.id),
+                            )
                           else
-                            RidiSwipeAction(label: '보관', icon: Icons.archive_outlined, color: RidiColors.gray, onTap: () {
-                              store.archiveNotification(n.id);
-                              ridiToast(context, '보관함으로 옮겼어요');
-                            }),
-                          RidiSwipeAction(label: '삭제', icon: Icons.delete_outline_rounded, color: RidiColors.red, onTap: () => _delete(store, n)),
+                            RidiSwipeAction(
+                              label: '보관',
+                              icon: Icons.archive_outlined,
+                              color: RidiColors.gray,
+                              onTap: () {
+                                store.archiveNotification(n.id);
+                                ridiToast(context, '보관함으로 옮겼어요');
+                              },
+                            ),
+                          RidiSwipeAction(
+                            label: '삭제',
+                            icon: Icons.delete_outline_rounded,
+                            color: RidiColors.red,
+                            onTap: () => _delete(store, n),
+                          ),
                         ],
-                        child: _NotiTile(n: n, onTap: () => _open(context, store, n)),
+                        child: _NotiTile(
+                          n: n,
+                          onTap: () => _open(context, store, n),
+                        ),
                       );
                     },
                   ),
@@ -139,27 +202,45 @@ class _NotiTile extends StatelessWidget {
               width: 66,
               height: 66,
               decoration: BoxDecoration(
-                color: switch (n.kind) { 'ai' => const Color(0xFF7B61FF), 'room' => const Color(0xFF1F8CE6), _ => const Color(0xFF4CAF7D) },
+                color: switch (n.kind) {
+                  'ai' => const Color(0xFF7B61FF),
+                  'room' => const Color(0xFF1F8CE6),
+                  _ => const Color(0xFF4CAF7D),
+                },
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                switch (n.kind) { 'ai' => Icons.smart_toy_outlined, 'room' => Icons.groups_2_outlined, _ => Icons.mode_comment_outlined },
+                switch (n.kind) {
+                  'ai' => Icons.smart_toy_outlined,
+                  'room' => Icons.groups_2_outlined,
+                  _ => Icons.mode_comment_outlined,
+                },
                 color: Colors.white,
                 size: 30,
               ),
             ),
             const SizedBox(width: 20),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const SizedBox(height: 6),
-                Text(n.title, style: n.read ? RidiText.body : RidiText.bodyBold),
-                const SizedBox(height: 4),
-                Text(n.body, style: RidiText.body),
-                const SizedBox(height: 6),
-                Text(n.time, style: RidiText.sub),
-              ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6),
+                  Text(
+                    n.title,
+                    style: n.read ? RidiText.body : RidiText.bodyBold,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(n.body, style: RidiText.body),
+                  const SizedBox(height: 6),
+                  Text(n.time, style: RidiText.sub),
+                ],
+              ),
             ),
-            if (!n.read) const Padding(padding: EdgeInsets.only(top: 12), child: CircleAvatar(radius: 4, backgroundColor: RidiColors.red)),
+            if (!n.read)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: CircleAvatar(radius: 4, backgroundColor: RidiColors.red),
+              ),
           ],
         ),
       ),
@@ -180,7 +261,8 @@ class NotiSettingsScreen extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_NOTI_SET_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_NOTI_SET_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
@@ -200,7 +282,10 @@ class NotiSettingsScreen extends StatelessWidget {
             ],
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Text('기기 알림이 꺼져 있으면 여기 설정과 상관없이 오지 않아요', style: RidiText.sub),
+              child: Text(
+                '기기 알림이 꺼져 있으면 여기 설정과 상관없이 오지 않아요',
+                style: RidiText.sub,
+              ),
             ),
           ],
         ),
@@ -224,5 +309,9 @@ void _open(BuildContext context, RidiStore store, RidiNotification n) {
   }
   if (bookId == null || store.book(bookId) == null) return;
   store.openBook(bookId, roomId: roomId);
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => RidiReaderScreen(bookId: bookId, roomId: roomId)));
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => RidiReaderScreen(bookId: bookId, roomId: roomId),
+    ),
+  );
 }

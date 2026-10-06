@@ -59,10 +59,17 @@ class CommentsViewModel extends ChangeNotifier {
     try {
       String? url;
       if (pendingImage != null) {
-        url = await _repo.upload(pendingImage!, pendingImageName ?? 'photo.jpg');
+        url = await _repo.upload(
+          pendingImage!,
+          pendingImageName ?? 'photo.jpg',
+        );
       }
       final hasText = text.trim().isNotEmpty;
-      comments = await _repo.add(memoId, text: hasText ? text.trim() : null, imageUrl: url);
+      comments = await _repo.add(
+        memoId,
+        text: hasText ? text.trim() : null,
+        imageUrl: url,
+      );
       clearImage();
       if (aiMemo && hasText) _startReplyPolling(comments.length);
       return true;

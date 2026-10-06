@@ -69,9 +69,9 @@ class ReadingRoomRepository {
 
           print(
             '[ReadingRoom Join] 파싱 성공: '
-                'roomId=${result.room.id}, '
-                'roomName=${result.room.name}, '
-                'alreadyJoined=${result.alreadyJoined}',
+            'roomId=${result.room.id}, '
+            'roomName=${result.room.name}, '
+            'alreadyJoined=${result.alreadyJoined}',
           );
 
           return result;
@@ -80,8 +80,8 @@ class ReadingRoomRepository {
 
       print(
         '[ReadingRoom Join] API 완료: '
-            'message=${response.message}, '
-            'hasData=${response.data != null}',
+        'message=${response.message}, '
+        'hasData=${response.data != null}',
       );
 
       return response.data!;
@@ -98,10 +98,7 @@ class ReadingRoomRepository {
   static String normalizeInviteCode(String value) {
     final compact = value
         .trim()
-        .replaceAll(
-      RegExp(r'[\s\u00A0\u2000-\u200B\u202F\u205F\u3000-]+'),
-      '',
-    )
+        .replaceAll(RegExp(r'[\s\u00A0\u2000-\u200B\u202F\u205F\u3000-]+'), '')
         .toUpperCase();
 
     return compact.length == 8
@@ -119,7 +116,7 @@ class ReadingRoomRepository {
             .map((item) => ReadingRoom.fromJson(item as Map<String, dynamic>))
             .toList(),
       )).data ??
-          const [];
+      const [];
 
   Future<List<SharedRoomNote>> sharedNotes(int roomId) async =>
       (await _api.get<List<SharedRoomNote>>(
@@ -128,7 +125,7 @@ class ReadingRoomRepository {
             .map((e) => SharedRoomNote.fromJson(e as Map<String, dynamic>))
             .toList(),
       )).data ??
-          const [];
+      const [];
 
   /// Event payloads contain metadata only. A caller must refetch shared notes
   /// after receiving one so the server can apply its per-user spoiler filter.
@@ -141,53 +138,46 @@ class ReadingRoomRepository {
             .map((id) => id.toInt())
             .toList(),
       )).data ??
-          const [];
+      const [];
 
   Future<SharedRoomNote> createSharedNote(
-      int roomId,
-      Map<String, dynamic> body,
-      ) async =>
-      (await _api.post<SharedRoomNote>(
-        '/api/reading-rooms/$roomId/shared-notes',
-        body: body,
-        parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
-      )).data!;
+    int roomId,
+    Map<String, dynamic> body,
+  ) async => (await _api.post<SharedRoomNote>(
+    '/api/reading-rooms/$roomId/shared-notes',
+    body: body,
+    parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
+  )).data!;
 
   Future<void> deleteSharedNote(int roomId, int noteId) =>
       _api.delete('/api/reading-rooms/$roomId/shared-notes/$noteId');
 
   Future<List<SharedRoomNoteComment>> sharedNoteComments(
-      int roomId,
-      int noteId,
-      ) async =>
+    int roomId,
+    int noteId,
+  ) async =>
       (await _api.get<List<SharedRoomNoteComment>>(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
         parse: (json) => (json as List)
             .map(
-              (e) =>
-              SharedRoomNoteComment.fromJson(e as Map<String, dynamic>),
-        )
+              (e) => SharedRoomNoteComment.fromJson(e as Map<String, dynamic>),
+            )
             .toList(),
       )).data ??
-          const [];
+      const [];
 
   Future<SharedRoomNoteComment> addSharedNoteComment(
-      int roomId,
-      int noteId,
-      String content,
-      ) async =>
-      (await _api.post<SharedRoomNoteComment>(
-        '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
-        body: {'content': content.trim()},
-        parse: (json) =>
-            SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
-      )).data!;
+    int roomId,
+    int noteId,
+    String content,
+  ) async => (await _api.post<SharedRoomNoteComment>(
+    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
+    body: {'content': content.trim()},
+    parse: (json) =>
+        SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
+  )).data!;
 
-  Future<void> deleteSharedNoteComment(
-      int roomId,
-      int noteId,
-      int commentId,
-      ) =>
+  Future<void> deleteSharedNoteComment(int roomId, int noteId, int commentId) =>
       _api.delete(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',
       );
@@ -231,25 +221,22 @@ class ReadingRoomRepository {
   Future<void> kick(int roomId, int memberId) =>
       _api.delete('/api/reading-rooms/$roomId/members/$memberId');
 
-  Future<void> delete(int roomId) =>
-      _api.delete('/api/reading-rooms/$roomId');
+  Future<void> delete(int roomId) => _api.delete('/api/reading-rooms/$roomId');
 
   Future<ReadingRoomMember> uploadMyRoomProfileImage(
-      int roomId, {
-        required Uint8List bytes,
-        required String filename,
-        required String contentType,
-      }) async =>
-      (await _api.uploadFile<ReadingRoomMember>(
-        '/api/reading-rooms/$roomId/members/me/profile-image',
-        method: 'PUT',
-        fieldName: 'profileImage',
-        bytes: bytes,
-        filename: filename,
-        contentType: contentType,
-        parse: (json) =>
-            ReadingRoomMember.fromJson(json as Map<String, dynamic>),
-      )).data!;
+    int roomId, {
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async => (await _api.uploadFile<ReadingRoomMember>(
+    '/api/reading-rooms/$roomId/members/me/profile-image',
+    method: 'PUT',
+    fieldName: 'profileImage',
+    bytes: bytes,
+    filename: filename,
+    contentType: contentType,
+    parse: (json) => ReadingRoomMember.fromJson(json as Map<String, dynamic>),
+  )).data!;
 
   Future<void> deleteMyRoomProfileImage(int roomId) =>
       _api.delete('/api/reading-rooms/$roomId/members/me/profile-image');

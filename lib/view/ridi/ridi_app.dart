@@ -146,9 +146,11 @@ class _RidiShellState extends State<RidiShell> {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('로그인이 필요해요'),
-          content: Text(i == 0
-              ? '내 책장과 교환독서는 로그인한 뒤 사용할 수 있습니다.'
-              : '마이 페이지는 로그인한 뒤 사용할 수 있습니다.'),
+          content: Text(
+            i == 0
+                ? '내 책장과 교환독서는 로그인한 뒤 사용할 수 있습니다.'
+                : '마이 페이지는 로그인한 뒤 사용할 수 있습니다.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -162,9 +164,8 @@ class _RidiShellState extends State<RidiShell> {
         ),
       );
       if (login == true && mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const LoginScreen()));
       }
       return;
     }

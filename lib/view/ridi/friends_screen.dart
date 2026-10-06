@@ -1,21 +1,261 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/api_client.dart';
 import '../../model/server_friend.dart';
 import '../../repository/friend_repository.dart';
 import 'ridi_store.dart';
 
-class FriendsScreen extends StatefulWidget { const FriendsScreen({super.key}); @override State<FriendsScreen> createState() => _FriendsScreenState(); }
+class FriendsScreen extends StatefulWidget {
+  const FriendsScreen({super.key});
+  @override
+  State<FriendsScreen> createState() => _FriendsScreenState();
+}
+
 class _FriendsScreenState extends State<FriendsScreen> {
   late final FriendRepository _repository;
   late Future<List<ServerFriend>> _friends;
-  @override void initState() { super.initState(); _repository = FriendRepository(ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken)); _friends = _repository.serverFriends(); }
+  @override
+  void initState() {
+    super.initState();
+    _repository = FriendRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    _friends = _repository.serverFriends();
+  }
+
   void _reload() => setState(() => _friends = _repository.serverFriends());
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Friends'), actions: [IconButton(icon: const Icon(Icons.person_add_alt_1), onPressed: () async { await Navigator.of(context).push(MaterialPageRoute(builder: (_) => FriendRequestsScreen(repository: _repository))); _reload(); }), IconButton(icon: const Icon(Icons.search), onPressed: () async { await showSearch(context: context, delegate: _FriendSearch(_repository)); _reload(); })]), body: FutureBuilder<List<ServerFriend>>(future: _friends, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return Center(child: OutlinedButton(onPressed: _reload, child: const Text('Retry'))); final friends = snapshot.data ?? const []; if (friends.isEmpty) return Center(child: FilledButton.icon(onPressed: () async { await showSearch(context: context, delegate: _FriendSearch(_repository)); _reload(); }, icon: const Icon(Icons.search), label: const Text('Find friends'))); return RefreshIndicator(onRefresh: () async => _reload(), child: ListView.separated(itemCount: friends.length, separatorBuilder: (_, _) => const Divider(height: 1), itemBuilder: (context, index) { final friend = friends[index]; return ListTile(leading: CircleAvatar(child: Text(friend.nickname.substring(0, 1))), title: Text(friend.nickname), subtitle: Text('@${friend.username}'), trailing: IconButton(icon: const Icon(Icons.person_remove_outlined), tooltip: 'Remove friend', onPressed: () async { try { await _repository.removeServerFriend(friend.id); _reload(); } on ApiException catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } })); })); }));
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('Friends'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.person_add_alt_1),
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => FriendRequestsScreen(repository: _repository),
+              ),
+            );
+            _reload();
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.search),
+          onPressed: () async {
+            await showSearch(
+              context: context,
+              delegate: _FriendSearch(_repository),
+            );
+            _reload();
+          },
+        ),
+      ],
+    ),
+    body: FutureBuilder<List<ServerFriend>>(
+      future: _friends,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done)
+          return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasError)
+          return Center(
+            child: OutlinedButton(
+              onPressed: _reload,
+              child: const Text('Retry'),
+            ),
+          );
+        final friends = snapshot.data ?? const [];
+        if (friends.isEmpty)
+          return Center(
+            child: FilledButton.icon(
+              onPressed: () async {
+                await showSearch(
+                  context: context,
+                  delegate: _FriendSearch(_repository),
+                );
+                _reload();
+              },
+              icon: const Icon(Icons.search),
+              label: const Text('Find friends'),
+            ),
+          );
+        return RefreshIndicator(
+          onRefresh: () async => _reload(),
+          child: ListView.separated(
+            itemCount: friends.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final friend = friends[index];
+              return ListTile(
+                leading: CircleAvatar(
+                  child: Text(friend.nickname.substring(0, 1)),
+                ),
+                title: Text(friend.nickname),
+                subtitle: Text('@${friend.username}'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.person_remove_outlined),
+                  tooltip: 'Remove friend',
+                  onPressed: () async {
+                    try {
+                      await _repository.removeServerFriend(friend.id);
+                      _reload();
+                    } on ApiException catch (error) {
+                      if (mounted)
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                    }
+                  },
+                ),
+              );
+            },
+          ),
+        );
+      },
+    ),
+  );
 }
 
-class FriendRequestsScreen extends StatefulWidget { const FriendRequestsScreen({super.key, required this.repository}); final FriendRepository repository; @override State<FriendRequestsScreen> createState() => _FriendRequestsScreenState(); }
-class _FriendRequestsScreenState extends State<FriendRequestsScreen> { late Future<List<ServerFriend>> _requests; @override void initState() { super.initState(); _requests = widget.repository.incomingServerRequests(); } void _reload() => setState(() => _requests = widget.repository.incomingServerRequests()); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Friend requests')), body: FutureBuilder<List<ServerFriend>>(future: _requests, builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); final requests = snapshot.data!; if (requests.isEmpty) return const Center(child: Text('No pending requests.')); return ListView(children: [for (final request in requests) ListTile(title: Text(request.nickname), subtitle: Text('@${request.username}'), trailing: Wrap(children: [TextButton(onPressed: () async { await widget.repository.respondServerRequest(request.id, false); _reload(); }, child: const Text('Decline')), FilledButton(onPressed: () async { await widget.repository.respondServerRequest(request.id, true); _reload(); }, child: const Text('Accept'))]))]); })); }
+class FriendRequestsScreen extends StatefulWidget {
+  const FriendRequestsScreen({super.key, required this.repository});
+  final FriendRepository repository;
+  @override
+  State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
+}
 
-class _FriendSearch extends SearchDelegate<void> { _FriendSearch(this.repository); final FriendRepository repository; Timer? _debounce; Future<List<ServerFriend>>? _results; void _search() { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), () { if (query.trim().isNotEmpty) _results = repository.searchServerFriends(query.trim()); }); } @override List<Widget>? buildActions(BuildContext context) => [IconButton(onPressed: () { query = ''; _results = null; }, icon: const Icon(Icons.clear))]; @override Widget? buildLeading(BuildContext context) => IconButton(onPressed: () => close(context, null), icon: const Icon(Icons.arrow_back)); @override Widget buildResults(BuildContext context) => _body(context); @override Widget buildSuggestions(BuildContext context) { _search(); return _body(context); } Widget _body(BuildContext context) { if (query.trim().isEmpty) return const Center(child: Text('Search by username or nickname')); final result = _results; if (result == null) return const Center(child: CircularProgressIndicator()); return FutureBuilder<List<ServerFriend>>(future: result, builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); return ListView(children: [for (final friend in snapshot.data!) ListTile(title: Text(friend.nickname), subtitle: Text('@${friend.username}'), trailing: friend.status == 'NONE' ? FilledButton(onPressed: () async { try { await repository.sendServerRequest(friend.username); close(context, null); } on ApiException catch (error) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } }, child: const Text('Add')) : Text(friend.status))]); }); } }
+class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
+  late Future<List<ServerFriend>> _requests;
+  @override
+  void initState() {
+    super.initState();
+    _requests = widget.repository.incomingServerRequests();
+  }
+
+  void _reload() =>
+      setState(() => _requests = widget.repository.incomingServerRequests());
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Friend requests')),
+    body: FutureBuilder<List<ServerFriend>>(
+      future: _requests,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
+        final requests = snapshot.data!;
+        if (requests.isEmpty)
+          return const Center(child: Text('No pending requests.'));
+        return ListView(
+          children: [
+            for (final request in requests)
+              ListTile(
+                title: Text(request.nickname),
+                subtitle: Text('@${request.username}'),
+                trailing: Wrap(
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        await widget.repository.respondServerRequest(
+                          request.id,
+                          false,
+                        );
+                        _reload();
+                      },
+                      child: const Text('Decline'),
+                    ),
+                    FilledButton(
+                      onPressed: () async {
+                        await widget.repository.respondServerRequest(
+                          request.id,
+                          true,
+                        );
+                        _reload();
+                      },
+                      child: const Text('Accept'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class _FriendSearch extends SearchDelegate<void> {
+  _FriendSearch(this.repository);
+  final FriendRepository repository;
+  Timer? _debounce;
+  Future<List<ServerFriend>>? _results;
+  void _search() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (query.trim().isNotEmpty)
+        _results = repository.searchServerFriends(query.trim());
+    });
+  }
+
+  @override
+  List<Widget>? buildActions(BuildContext context) => [
+    IconButton(
+      onPressed: () {
+        query = '';
+        _results = null;
+      },
+      icon: const Icon(Icons.clear),
+    ),
+  ];
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(
+    onPressed: () => close(context, null),
+    icon: const Icon(Icons.arrow_back),
+  );
+  @override
+  Widget buildResults(BuildContext context) => _body(context);
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    _search();
+    return _body(context);
+  }
+
+  Widget _body(BuildContext context) {
+    if (query.trim().isEmpty)
+      return const Center(child: Text('Search by username or nickname'));
+    final result = _results;
+    if (result == null) return const Center(child: CircularProgressIndicator());
+    return FutureBuilder<List<ServerFriend>>(
+      future: result,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
+        return ListView(
+          children: [
+            for (final friend in snapshot.data!)
+              ListTile(
+                title: Text(friend.nickname),
+                subtitle: Text('@${friend.username}'),
+                trailing: friend.status == 'NONE'
+                    ? FilledButton(
+                        onPressed: () async {
+                          try {
+                            await repository.sendServerRequest(friend.username);
+                            close(context, null);
+                          } on ApiException catch (error) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error.message)),
+                            );
+                          }
+                        },
+                        child: const Text('Add'),
+                      )
+                    : Text(friend.status),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}

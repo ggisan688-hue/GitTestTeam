@@ -6,7 +6,13 @@ import '../../widgets/screen_tag.dart';
 
 /// 로그인/회원가입 공통 레이아웃: 가운데 카드 + 상단 브랜드
 class AuthScaffold extends StatelessWidget {
-  const AuthScaffold({super.key, required this.title, required this.subtitle, required this.child, this.tag});
+  const AuthScaffold({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.tag,
+  });
 
   final String title;
   final String subtitle;
@@ -66,7 +72,11 @@ class _Brand extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             border: Border.all(color: AppColors.line),
           ),
-          child: const Icon(Icons.menu_book_rounded, color: AppColors.accent, size: 28),
+          child: const Icon(
+            Icons.menu_book_rounded,
+            color: AppColors.accent,
+            size: 28,
+          ),
         ),
         const SizedBox(height: AppSpace.md),
         const Text('교환독서', style: AppText.display),

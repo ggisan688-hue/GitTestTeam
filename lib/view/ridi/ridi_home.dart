@@ -28,7 +28,11 @@ class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_HOME_01', alignment: Alignment.topCenter, child: _screen(context));
+  Widget build(BuildContext context) => ScreenTag(
+    'RIDI_HOME_01',
+    alignment: Alignment.topCenter,
+    child: _screen(context),
+  );
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
@@ -37,13 +41,19 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         centerTitle: false,
         titleSpacing: 24,
-        title: const Text(RidiBrand.appName, style: TextStyle(fontFamily: RidiText.f, fontSize: 20, fontWeight: FontWeight.w800)),
+        title: const Text(
+          RidiBrand.appName,
+          style: TextStyle(
+            fontFamily: RidiText.f,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
         actions: [
           if (!store.loggedIn)
             TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const LoginScreen())),
               icon: const Icon(Icons.login),
               label: const Text('로그인하세요'),
             ),
@@ -56,39 +66,56 @@ class HomeScreen extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.search_rounded, size: 28),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BookSearchScreen())),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const BookSearchScreen())),
           ),
           const SizedBox(width: 12),
         ],
       ),
-      body: LayoutBuilder(builder: (context, c) {
-        final wide = c.maxWidth >= 900;
-        final serverMain = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _SectionTitle('전체 도서'),
-          BookCatalogSection(),
-          if (store.loggedIn) ...const [SizedBox(height: 36),
-          _SectionTitle('최근 읽은 도서'),
-          RecentReadingSection(),
-          ],
-        ]);
-        final side = store.loggedIn
-            ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _ProfileCard(store: store),
-          const SizedBox(height: 16),
-          _StatsCard(key: ValueKey(statsRevision)),
-        ])
-            : const _GuestHomeCard();
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-          child: wide
-              ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: serverMain),
-                  const SizedBox(width: 40),
-                  SizedBox(width: 340, child: side),
-                ])
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [side, const SizedBox(height: 32), serverMain]),
-        );
-      }),
+      body: LayoutBuilder(
+        builder: (context, c) {
+          final wide = c.maxWidth >= 900;
+          final serverMain = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SectionTitle('전체 도서'),
+              BookCatalogSection(),
+              if (store.loggedIn) ...const [
+                SizedBox(height: 36),
+                _SectionTitle('최근 읽은 도서'),
+                RecentReadingSection(),
+              ],
+            ],
+          );
+          final side = store.loggedIn
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ProfileCard(store: store),
+                    const SizedBox(height: 16),
+                    _StatsCard(key: ValueKey(statsRevision)),
+                  ],
+                )
+              : const _GuestHomeCard();
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+            child: wide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: serverMain),
+                      const SizedBox(width: 40),
+                      SizedBox(width: 340, child: side),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [side, const SizedBox(height: 32), serverMain],
+                  ),
+          );
+        },
+      ),
     );
   }
 }
@@ -109,9 +136,9 @@ class _GuestHomeCard extends StatelessWidget {
         const Text('로그인하면 최근 읽은 책, 통계, 책장과 교환독서를 사용할 수 있습니다.'),
         const SizedBox(height: 14),
         FilledButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
+          onPressed: () =>
+              Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const LoginScreen())),
           child: const Text('로그인하세요'),
         ),
       ],
@@ -125,8 +152,10 @@ class _SectionTitle extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.only(bottom: 14), child: Text(text, style: RidiText.title.copyWith(fontSize: 20)));
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Text(text, style: RidiText.title.copyWith(fontSize: 20)),
+  );
 }
 
 /// 오른쪽 칸 카드 틀 (옅은 회색 판)
@@ -137,17 +166,21 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: RidiColors.panel, borderRadius: BorderRadius.circular(14)),
-        child: child,
-      );
+    width: double.infinity,
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: RidiColors.panel,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: child,
+  );
 }
 
 /// 책 열기 (방 없이 혼자 읽기)
 void _openBook(BuildContext context, RidiBook b) {
   context.read<RidiStore>().openBook(b.id);
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => RidiReaderScreen(bookId: b.id)));
+  Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => RidiReaderScreen(bookId: b.id)));
 }
 
 /// 책장에 담고 안내
@@ -167,22 +200,35 @@ class _ReadingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 132,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
-        for (final b in books) ...[_ReadingCard(book: b), const SizedBox(width: 14)],
-        InkWell(
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchScreen())),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 150,
-            decoration: BoxDecoration(border: Border.all(color: RidiColors.grayLight), borderRadius: BorderRadius.circular(12)),
-            child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.add_rounded, color: RidiColors.gray, size: 28),
-              SizedBox(height: 6),
-              Text('책 담으러 가기', style: RidiText.sub),
-            ]),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final b in books) ...[
+            _ReadingCard(book: b),
+            const SizedBox(width: 14),
+          ],
+          InkWell(
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const SearchScreen())),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 150,
+              decoration: BoxDecoration(
+                border: Border.all(color: RidiColors.grayLight),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_rounded, color: RidiColors.gray, size: 28),
+                  SizedBox(height: 6),
+                  Text('책 담으러 가기', style: RidiText.sub),
+                ],
+              ),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -195,31 +241,56 @@ class _ReadingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = ((book.chapterReached + 1) / book.chapters).clamp(0.0, 1.0);
+    final progress = ((book.chapterReached + 1) / book.chapters).clamp(
+      0.0,
+      1.0,
+    );
     return InkWell(
       onTap: () => _openBook(context, book),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: 330,
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(border: Border.all(color: RidiColors.grayLight), borderRadius: BorderRadius.circular(12)),
-        child: Row(children: [
-          const RidiCover(width: 70, height: 100),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(book.title, style: RidiText.bodyBold.copyWith(fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text(book.author, style: RidiText.sub),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(value: progress, minHeight: 4, color: RidiColors.blue, backgroundColor: RidiColors.grayLight),
+        decoration: BoxDecoration(
+          border: Border.all(color: RidiColors.grayLight),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const RidiCover(width: 70, height: 100),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    book.title,
+                    style: RidiText.bodyBold.copyWith(fontSize: 16),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(book.author, style: RidiText.sub),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 4,
+                      color: RidiColors.blue,
+                      backgroundColor: RidiColors.grayLight,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${book.chapters}장 중 ${book.chapterReached + 1}장 · ${book.lastOpened ?? '아직 안 열어 봄'}',
+                    style: RidiText.sub.copyWith(fontSize: 12),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text('${book.chapters}장 중 ${book.chapterReached + 1}장 · ${book.lastOpened ?? '아직 안 열어 봄'}', style: RidiText.sub.copyWith(fontSize: 12)),
-            ]),
-          ),
-        ]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -238,60 +309,120 @@ class _PickHero extends StatelessWidget {
       for (final (id, why) in store.monthlyPicks)
         if (store.book(id) case final b?) (b, why),
     ];
-    if (picks.isEmpty) return const Text('이번 달 추천 도서를 준비하고 있어요', style: RidiText.sub);
+    if (picks.isEmpty)
+      return const Text('이번 달 추천 도서를 준비하고 있어요', style: RidiText.sub);
     final (top, why) = picks.first;
-    return Column(children: [
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(color: RidiBrand.cream, borderRadius: BorderRadius.circular(18)),
-        child: Row(children: [
-          const RidiCover(width: 120, height: 172),
-          const SizedBox(width: 28),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: RidiBrand.navy, borderRadius: BorderRadius.circular(12)),
-                child: Text('${DateTime.now().month}월의 추천', style: const TextStyle(fontFamily: RidiText.f, fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-              ),
-              const SizedBox(height: 12),
-              Text(top.title, style: RidiText.title.copyWith(fontSize: 26)),
-              const SizedBox(height: 2),
-              Text('${top.author} · ${top.chapters}장', style: RidiText.sub.copyWith(fontSize: 14)),
-              const SizedBox(height: 14),
-              Text(why, style: RidiText.body.copyWith(fontSize: 16)),
-              const SizedBox(height: 20),
-              top.owned
-                  ? RidiButton('바로 읽기', height: 44, onTap: () => _openBook(context, top))
-                  : RidiButton('책장에 담기', icon: Icons.add_rounded, height: 44, onTap: () => _addToShelf(context, store, top)),
-            ]),
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: RidiBrand.cream,
+            borderRadius: BorderRadius.circular(18),
           ),
-        ]),
-      ),
-      for (final (b, w) in picks.skip(1))
-        InkWell(
-          onTap: b.owned ? () => _openBook(context, b) : null,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 16, 8, 0),
-            child: Row(children: [
-              const RidiCover(width: 40, height: 57),
-              const SizedBox(width: 16),
+          child: Row(
+            children: [
+              const RidiCover(width: 120, height: 172),
+              const SizedBox(width: 28),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${b.title}  ·  ${b.author}', style: RidiText.bodyBold),
-                  Text(w, style: RidiText.sub, maxLines: 1, overflow: TextOverflow.ellipsis),
-                ]),
-              ),
-              if (!b.owned)
-                TextButton(
-                  onPressed: () => _addToShelf(context, store, b),
-                  child: const Text('담기', style: TextStyle(fontFamily: RidiText.f, fontWeight: FontWeight.w700, color: RidiColors.blue)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: RidiBrand.navy,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${DateTime.now().month}월의 추천',
+                        style: const TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      top.title,
+                      style: RidiText.title.copyWith(fontSize: 26),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${top.author} · ${top.chapters}장',
+                      style: RidiText.sub.copyWith(fontSize: 14),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(why, style: RidiText.body.copyWith(fontSize: 16)),
+                    const SizedBox(height: 20),
+                    top.owned
+                        ? RidiButton(
+                            '바로 읽기',
+                            height: 44,
+                            onTap: () => _openBook(context, top),
+                          )
+                        : RidiButton(
+                            '책장에 담기',
+                            icon: Icons.add_rounded,
+                            height: 44,
+                            onTap: () => _addToShelf(context, store, top),
+                          ),
+                  ],
                 ),
-            ]),
+              ),
+            ],
           ),
         ),
-    ]);
+        for (final (b, w) in picks.skip(1))
+          InkWell(
+            onTap: b.owned ? () => _openBook(context, b) : null,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 16, 8, 0),
+              child: Row(
+                children: [
+                  const RidiCover(width: 40, height: 57),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${b.title}  ·  ${b.author}',
+                          style: RidiText.bodyBold,
+                        ),
+                        Text(
+                          w,
+                          style: RidiText.sub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!b.owned)
+                    TextButton(
+                      onPressed: () => _addToShelf(context, store, b),
+                      child: const Text(
+                        '담기',
+                        style: TextStyle(
+                          fontFamily: RidiText.f,
+                          fontWeight: FontWeight.w700,
+                          color: RidiColors.blue,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -304,29 +435,55 @@ class _RoomNews extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (store.rooms.isEmpty) return const Text('아직 들어간 방이 없어요 · 내 서재 › 교환독서에서 방을 만들거나 코드로 들어가요', style: RidiText.sub);
-    return Column(children: [
-      for (final r in store.rooms.take(3))
-        if (store.roomNextBook(r) case final b?)
-          InkWell(
-            onTap: () {
-              store.openBook(b.id, roomId: r.id);
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => RidiReaderScreen(bookId: b.id, roomId: r.id)));
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: RidiColors.grayLight))),
-              child: Row(children: [
-                const Icon(Icons.groups_2_outlined, color: RidiColors.gray),
-                const SizedBox(width: 14),
-                Expanded(child: Text(r.name, style: RidiText.bodyBold)),
-                Text('${b.title} · 멤버 ${r.humanCount}명 · 메모 ${store.roomNotes(r.id, b.id).length}개', style: RidiText.sub),
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded, color: RidiColors.gray),
-              ]),
+    if (store.rooms.isEmpty)
+      return const Text(
+        '아직 들어간 방이 없어요 · 내 서재 › 교환독서에서 방을 만들거나 코드로 들어가요',
+        style: RidiText.sub,
+      );
+    return Column(
+      children: [
+        for (final r in store.rooms.take(3))
+          if (store.roomNextBook(r) case final b?)
+            InkWell(
+              onTap: () {
+                store.openBook(b.id, roomId: r.id);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        RidiReaderScreen(bookId: b.id, roomId: r.id),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 4,
+                ),
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: RidiColors.grayLight),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.groups_2_outlined, color: RidiColors.gray),
+                    const SizedBox(width: 14),
+                    Expanded(child: Text(r.name, style: RidiText.bodyBold)),
+                    Text(
+                      '${b.title} · 멤버 ${r.humanCount}명 · 메모 ${store.roomNotes(r.id, b.id).length}개',
+                      style: RidiText.sub,
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: RidiColors.gray,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -340,33 +497,239 @@ class _ProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _Panel(
-      child: Row(children: [
-        RidiAvatar(label: store.avatar, size: 56),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${store.nickname} 님', style: RidiText.title),
-            Text(store.bio.isEmpty ? '한 줄 소개를 적어 보세요' : store.bio, style: RidiText.sub, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ]),
-        ),
-        IconButton(
-          tooltip: '내 정보',
-          icon: const Icon(Icons.chevron_right_rounded, color: RidiColors.gray),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
-        ),
-      ]),
+      child: Row(
+        children: [
+          RidiAvatar(label: store.avatar, size: 56),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${store.nickname} 님', style: RidiText.title),
+                Text(
+                  store.bio.isEmpty ? '한 줄 소개를 적어 보세요' : store.bio,
+                  style: RidiText.sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '내 정보',
+            icon: const Icon(
+              Icons.chevron_right_rounded,
+              color: RidiColors.gray,
+            ),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// "3시간 20분" · "45분"
-String _timeLabel(int m) => m >= 60 ? '${m ~/ 60}시간${m % 60 == 0 ? '' : ' ${m % 60}분'}' : '$m분';
+String _timeLabel(int m) =>
+    m >= 60 ? '${m ~/ 60}시간${m % 60 == 0 ? '' : ' ${m % 60}분'}' : '$m분';
 
 /// 통계 — 이번 주 독서 시간(7일 막대, 오늘 진하게) · 연속 읽은 날 · 다 읽은 책 · 남긴 메모
-class _StatsCard extends StatefulWidget { const _StatsCard({super.key}); @override State<_StatsCard> createState()=>_StatsCardState(); }
-class _StatsCardState extends State<_StatsCard>{late final BookRepository _repo;late Future<ReadingStats> _future;@override void initState(){super.initState();_repo=BookRepository(ApiClient(tokenProvider:()=>context.read<RidiStore>().accessToken));_future=_repo.readingStats();}void _reload()=>setState(()=>_future=_repo.readingStats());@override Widget build(BuildContext context)=>FutureBuilder<ReadingStats>(future:_future,builder:(context,s){if(s.connectionState!=ConnectionState.done)return const _Panel(child:SizedBox(height:150,child:Center(child:CircularProgressIndicator())));if(s.hasError)return _Panel(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('이번 주 독서',style:RidiText.sub),const SizedBox(height:12),const Text('통계를 불러오지 못했습니다.'),TextButton(onPressed:_reload,child:const Text('다시 시도'))]));final stats=s.data!;final peak=stats.dailyReading.fold(1,(a,b)=>b.paragraphsRead>a?b.paragraphsRead:a);return InkWell(onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ReadingStatsScreen(repository:_repo))),child:_Panel(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Row(children:[Text('이번 주 독서',style:RidiText.sub),Spacer(),Text('자세히 보기',style:RidiText.sub)]),Text('${stats.periodParagraphsRead}문단',style:RidiText.title.copyWith(fontSize:24)),const SizedBox(height:16),SizedBox(height:76,child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[for(final day in stats.dailyReading)Expanded(child:Column(mainAxisAlignment:MainAxisAlignment.end,children:[Container(width:18,height:day.paragraphsRead==0?3:52*day.paragraphsRead/peak,decoration:BoxDecoration(color:RidiColors.blue.withValues(alpha:.7),borderRadius:BorderRadius.circular(4))),const SizedBox(height:6),Text(day.dayLabel,style:RidiText.sub.copyWith(fontSize:11))]))])),const Divider(height:28),Row(children:[_Stat(value:'${stats.currentStreakDays}일',label:'연속 읽기'),_Stat(value:'${stats.completedBooksCount}권',label:'다 읽은 책'),_Stat(value:'${stats.memoCount}개',label:'남긴 메모')])])));});}
-class ReadingStatsScreen extends StatefulWidget{const ReadingStatsScreen({super.key,required this.repository});final BookRepository repository;@override State<ReadingStatsScreen> createState()=>_ReadingStatsScreenState();}
-class _ReadingStatsScreenState extends State<ReadingStatsScreen>{String _period='week';late Future<ReadingStats> _future;@override void initState(){super.initState();_future=widget.repository.readingStats();}void _load(String p)=>setState((){_period=p;_future=widget.repository.readingStats(period:p);});@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('독서 통계')),body:FutureBuilder<ReadingStats>(future:_future,builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final x=s.data!;return ListView(padding:const EdgeInsets.all(20),children:[SegmentedButton<String>(segments:const[ButtonSegment(value:'week',label:Text('이번 주')),ButtonSegment(value:'month',label:Text('이번 달'))],selected:{_period},onSelectionChanged:(v)=>_load(v.first)),const SizedBox(height:20),Text('${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',style:RidiText.sub),for(final d in x.dailyReading)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[SizedBox(width:28,child:Text(d.dayLabel)),Expanded(child:LinearProgressIndicator(value:x.periodParagraphsRead==0?0:d.paragraphsRead/x.periodParagraphsRead)),const SizedBox(width:12),Text('${d.paragraphsRead}문단')])),const Divider(height:32),Row(children:[_Stat(value:'${x.currentStreakDays}일',label:'연속 읽기'),_Stat(value:'${x.completedBooksCount}권',label:'다 읽은 책'),_Stat(value:'${x.memoCount}개',label:'전체 메모')])]);}));}
+class _StatsCard extends StatefulWidget {
+  const _StatsCard({super.key});
+  @override
+  State<_StatsCard> createState() => _StatsCardState();
+}
+
+class _StatsCardState extends State<_StatsCard> {
+  late final BookRepository _repo;
+  late Future<ReadingStats> _future;
+  @override
+  void initState() {
+    super.initState();
+    _repo = BookRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    _future = _repo.readingStats();
+  }
+
+  void _reload() => setState(() => _future = _repo.readingStats());
+  @override
+  Widget build(BuildContext context) => FutureBuilder<ReadingStats>(
+    future: _future,
+    builder: (context, s) {
+      if (s.connectionState != ConnectionState.done)
+        return const _Panel(
+          child: SizedBox(
+            height: 150,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        );
+      if (s.hasError)
+        return _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('이번 주 독서', style: RidiText.sub),
+              const SizedBox(height: 12),
+              const Text('통계를 불러오지 못했습니다.'),
+              TextButton(onPressed: _reload, child: const Text('다시 시도')),
+            ],
+          ),
+        );
+      final stats = s.data!;
+      final peak = stats.dailyReading.fold(
+        1,
+        (a, b) => b.paragraphsRead > a ? b.paragraphsRead : a,
+      );
+      return InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReadingStatsScreen(repository: _repo),
+          ),
+        ),
+        child: _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Text('이번 주 독서', style: RidiText.sub),
+                  Spacer(),
+                  Text('자세히 보기', style: RidiText.sub),
+                ],
+              ),
+              Text(
+                '${stats.periodParagraphsRead}문단',
+                style: RidiText.title.copyWith(fontSize: 24),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 76,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final day in stats.dailyReading)
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Container(
+                              width: 18,
+                              height: day.paragraphsRead == 0
+                                  ? 3
+                                  : 52 * day.paragraphsRead / peak,
+                              decoration: BoxDecoration(
+                                color: RidiColors.blue.withValues(alpha: .7),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              day.dayLabel,
+                              style: RidiText.sub.copyWith(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 28),
+              Row(
+                children: [
+                  _Stat(value: '${stats.currentStreakDays}일', label: '연속 읽기'),
+                  _Stat(
+                    value: '${stats.completedBooksCount}권',
+                    label: '다 읽은 책',
+                  ),
+                  _Stat(value: '${stats.memoCount}개', label: '남긴 메모'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class ReadingStatsScreen extends StatefulWidget {
+  const ReadingStatsScreen({super.key, required this.repository});
+  final BookRepository repository;
+  @override
+  State<ReadingStatsScreen> createState() => _ReadingStatsScreenState();
+}
+
+class _ReadingStatsScreenState extends State<ReadingStatsScreen> {
+  String _period = 'week';
+  late Future<ReadingStats> _future;
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.repository.readingStats();
+  }
+
+  void _load(String p) => setState(() {
+    _period = p;
+    _future = widget.repository.readingStats(period: p);
+  });
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('독서 통계')),
+    body: FutureBuilder<ReadingStats>(
+      future: _future,
+      builder: (context, s) {
+        if (!s.hasData) return const Center(child: CircularProgressIndicator());
+        final x = s.data!;
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'week', label: Text('이번 주')),
+                ButtonSegment(value: 'month', label: Text('이번 달')),
+              ],
+              selected: {_period},
+              onSelectionChanged: (v) => _load(v.first),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',
+              style: RidiText.sub,
+            ),
+            for (final d in x.dailyReading)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(width: 28, child: Text(d.dayLabel)),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: x.periodParagraphsRead == 0
+                            ? 0
+                            : d.paragraphsRead / x.periodParagraphsRead,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text('${d.paragraphsRead}문단'),
+                  ],
+                ),
+              ),
+            const Divider(height: 32),
+            Row(
+              children: [
+                _Stat(value: '${x.currentStreakDays}일', label: '연속 읽기'),
+                _Stat(value: '${x.completedBooksCount}권', label: '다 읽은 책'),
+                _Stat(value: '${x.memoCount}개', label: '전체 메모'),
+              ],
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
 
 class _Stat extends StatelessWidget {
   const _Stat({required this.value, required this.label});
@@ -376,11 +739,13 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Column(children: [
-          Text(value, style: RidiText.bodyBold.copyWith(fontSize: 17)),
-          Text(label, style: RidiText.sub.copyWith(fontSize: 12)),
-        ]),
-      );
+    child: Column(
+      children: [
+        Text(value, style: RidiText.bodyBold.copyWith(fontSize: 17)),
+        Text(label, style: RidiText.sub.copyWith(fontSize: 12)),
+      ],
+    ),
+  );
 }
 
 /// 자주 읽는 책 — 읽은 시간 많은 순 3권
@@ -393,20 +758,40 @@ class _TopBooks extends StatelessWidget {
   Widget build(BuildContext context) {
     final top = store.topBooks;
     return _Panel(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('자주 읽는 책', style: RidiText.heading),
-        const SizedBox(height: 10),
-        if (top.isEmpty) const Text('책을 읽으면 여기에 모여요', style: RidiText.sub),
-        for (var i = 0; i < top.length; i++)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(children: [
-              SizedBox(width: 22, child: Text('${i + 1}', style: RidiText.bodyBold.copyWith(color: i == 0 ? RidiColors.blue : RidiColors.gray))),
-              Expanded(child: Text(top[i].title, style: RidiText.body, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              Text(_timeLabel(top[i].readMinutes), style: RidiText.sub),
-            ]),
-          ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('자주 읽는 책', style: RidiText.heading),
+          const SizedBox(height: 10),
+          if (top.isEmpty) const Text('책을 읽으면 여기에 모여요', style: RidiText.sub),
+          for (var i = 0; i < top.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    child: Text(
+                      '${i + 1}',
+                      style: RidiText.bodyBold.copyWith(
+                        color: i == 0 ? RidiColors.blue : RidiColors.gray,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      top[i].title,
+                      style: RidiText.body,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(_timeLabel(top[i].readMinutes), style: RidiText.sub),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -437,13 +822,18 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_SEARCH_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_SEARCH_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
     final hits = _query.isEmpty
         ? <RidiBook>[]
-        : store.books.where((b) => b.title.contains(_query) || b.author.contains(_query)).toList();
+        : store.books
+              .where(
+                (b) => b.title.contains(_query) || b.author.contains(_query),
+              )
+              .toList();
 
     return Scaffold(
       body: SafeArea(
@@ -453,58 +843,98 @@ class _SearchScreenState extends State<SearchScreen> {
             // ----- 검색창 -----
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 12, 12),
-              child: Row(children: [
-                Expanded(
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(color: RidiColors.panel, borderRadius: BorderRadius.circular(24)),
-                    child: Row(children: [
-                      const SizedBox(width: 16),
-                      const Icon(Icons.search_rounded, color: RidiColors.gray, size: 22),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _q,
-                          autofocus: true,
-                          textInputAction: TextInputAction.search,
-                          style: RidiText.body.copyWith(fontSize: 16, color: RidiColors.ink),
-                          decoration: const InputDecoration(border: InputBorder.none, hintText: '책 제목, 저자 검색', hintStyle: RidiText.sub),
-                          // Keep the editing value untouched while an IME is
-                          // composing Hangul. Whitespace is normalized only
-                          // when a search is submitted (_search).
-                          onChanged: (s) => setState(() => _query = s),
-                          onSubmitted: _search,
-                        ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: RidiColors.panel,
+                        borderRadius: BorderRadius.circular(24),
                       ),
-                      if (_q.text.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.cancel, size: 18, color: RidiColors.gray),
-                          onPressed: () {
-                            _q.clear();
-                            setState(() => _query = '');
-                          },
-                        ),
-                    ]),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 16),
+                          const Icon(
+                            Icons.search_rounded,
+                            color: RidiColors.gray,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _q,
+                              autofocus: true,
+                              textInputAction: TextInputAction.search,
+                              style: RidiText.body.copyWith(
+                                fontSize: 16,
+                                color: RidiColors.ink,
+                              ),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: '책 제목, 저자 검색',
+                                hintStyle: RidiText.sub,
+                              ),
+                              // Keep the editing value untouched while an IME is
+                              // composing Hangul. Whitespace is normalized only
+                              // when a search is submitted (_search).
+                              onChanged: (s) => setState(() => _query = s),
+                              onSubmitted: _search,
+                            ),
+                          ),
+                          if (_q.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(
+                                Icons.cancel,
+                                size: 18,
+                                color: RidiColors.gray,
+                              ),
+                              onPressed: () {
+                                _q.clear();
+                                setState(() => _query = '');
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('취소', style: TextStyle(fontFamily: RidiText.f, fontSize: 15, color: RidiColors.ink)),
-                ),
-              ]),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      '취소',
+                      style: TextStyle(
+                        fontFamily: RidiText.f,
+                        fontSize: 15,
+                        color: RidiColors.ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             // ----- 최근 검색 -----
             if (_query.isEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-                child: Row(children: [
-                  const Text('최근 검색', style: RidiText.heading),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: store.recentSearches.isEmpty ? null : store.clearSearches,
-                    child: const Text('전체 삭제', style: TextStyle(fontFamily: RidiText.f, fontSize: 13, color: RidiColors.gray)),
-                  ),
-                ]),
+                child: Row(
+                  children: [
+                    const Text('최근 검색', style: RidiText.heading),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: store.recentSearches.isEmpty
+                          ? null
+                          : store.clearSearches,
+                      child: const Text(
+                        '전체 삭제',
+                        style: TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 13,
+                          color: RidiColors.gray,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -515,10 +945,14 @@ class _SearchScreenState extends State<SearchScreen> {
                         runSpacing: 10,
                         children: [
                           for (final s in store.recentSearches)
-                            RidiChip(s, on: false, onTap: () {
-                              _q.text = s;
-                              _search(s);
-                            }),
+                            RidiChip(
+                              s,
+                              on: false,
+                              onTap: () {
+                                _q.text = s;
+                                _search(s);
+                              },
+                            ),
                         ],
                       ),
               ),
@@ -527,13 +961,19 @@ class _SearchScreenState extends State<SearchScreen> {
             if (_query.isNotEmpty)
               Expanded(
                 child: hits.isEmpty
-                    ? const RidiEmpty(icon: Icons.search_off_rounded, text: '검색 결과가 없어요')
+                    ? const RidiEmpty(
+                        icon: Icons.search_off_rounded,
+                        text: '검색 결과가 없어요',
+                      )
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                         children: [
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: Text('검색 결과 ${hits.length}', style: RidiText.heading),
+                            child: Text(
+                              '검색 결과 ${hits.length}',
+                              style: RidiText.heading,
+                            ),
                           ),
                           for (final b in hits) _ResultRow(book: b),
                         ],
@@ -559,37 +999,57 @@ class _ResultRow extends StatelessWidget {
     final store = context.read<RidiStore>();
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: RidiColors.grayLight))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const RidiCover(width: 70, height: 100),
-        const SizedBox(width: 20),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const SizedBox(height: 6),
-            Text(book.title, style: RidiText.bodyBold.copyWith(fontSize: 16)),
-            const SizedBox(height: 6),
-            Text('${book.author} · ${book.chapters}장', style: RidiText.sub),
-            const SizedBox(height: 8),
-            Text(book.owned ? '내 책장에 있음' : '무료', style: RidiText.sub.copyWith(color: book.owned ? RidiColors.gray : RidiColors.blue)),
-          ]),
-        ),
-        const SizedBox(width: 12),
-        Padding(
-          padding: const EdgeInsets.only(top: 18),
-          child: RidiOutlineButton(
-            book.owned ? '이어보기' : '책장에 담기',
-            onTap: () {
-              if (book.owned) {
-                store.openBook(book.id);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => RidiReaderScreen(bookId: book.id)));
-              } else {
-                store.addToShelf(book.id);
-                ridiToast(context, '${book.title} — 내 책장에 담았어요');
-              }
-            },
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: RidiColors.grayLight)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const RidiCover(width: 70, height: 100),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 6),
+                Text(
+                  book.title,
+                  style: RidiText.bodyBold.copyWith(fontSize: 16),
+                ),
+                const SizedBox(height: 6),
+                Text('${book.author} · ${book.chapters}장', style: RidiText.sub),
+                const SizedBox(height: 8),
+                Text(
+                  book.owned ? '내 책장에 있음' : '무료',
+                  style: RidiText.sub.copyWith(
+                    color: book.owned ? RidiColors.gray : RidiColors.blue,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ]),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: RidiOutlineButton(
+              book.owned ? '이어보기' : '책장에 담기',
+              onTap: () {
+                if (book.owned) {
+                  store.openBook(book.id);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => RidiReaderScreen(bookId: book.id),
+                    ),
+                  );
+                } else {
+                  store.addToShelf(book.id);
+                  ridiToast(context, '${book.title} — 내 책장에 담았어요');
+                }
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -206,7 +206,10 @@ class _ShelvesScreenState extends State<ShelvesScreen>
       title: const Text('내 서재'),
       bottom: TabBar(
         controller: _tabs,
-        tabs: const [Tab(text: '내 책장'), Tab(text: '교환독서')],
+        tabs: const [
+          Tab(text: '내 책장'),
+          Tab(text: '교환독서'),
+        ],
       ),
       actions: [
         FutureBuilder<List<Shelf>>(
@@ -239,127 +242,129 @@ class _ShelvesScreenState extends State<ShelvesScreen>
     body: _section == 1
         ? const ReadingRoomsScreen(embedded: true)
         : RefreshIndicator(
-      onRefresh: _refresh,
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _FavoriteSection(
-              future: Future.value(
-                context.watch<FavoriteViewModel>().favorites,
-              ),
-              onRetry: () => context.read<FavoriteViewModel>().load(),
-            ),
-          ),
-          FutureBuilder<List<Shelf>>(
-            future: _shelves,
-            builder: (context, snapshot) {
-              final shelves = snapshot.data ?? const <Shelf>[];
-              return SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        '내 책장',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const Spacer(),
-                      if (shelves.isNotEmpty)
-                        TextButton.icon(
-                          onPressed: _create,
-                          icon: const Icon(Icons.add),
-                          label: const Text('새 책장'),
-                        ),
-                    ],
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _FavoriteSection(
+                    future: Future.value(
+                      context.watch<FavoriteViewModel>().favorites,
+                    ),
+                    onRetry: () => context.read<FavoriteViewModel>().load(),
                   ),
                 ),
-              );
-            },
-          ),
-          FutureBuilder<List<Shelf>>(
-            future: _shelves,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done)
-                return const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                );
-              if (snapshot.hasError)
-                return SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 160,
-                    child: _ErrorState(
-                      error: snapshot.error,
-                      onRetry: _reloadShelves,
-                    ),
-                  ),
-                );
-              final shelves = snapshot.data ?? const [];
-              if (shelves.isEmpty)
-                return SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 180,
-                    child: _EmptyShelves(onCreate: _create),
-                  ),
-                );
-              return SliverList.separated(
-                itemCount: shelves.length,
-                itemBuilder: (context, index) {
-                  final shelf = shelves[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    child: Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.collections_bookmark_outlined),
+                FutureBuilder<List<Shelf>>(
+                  future: _shelves,
+                  builder: (context, snapshot) {
+                    final shelves = snapshot.data ?? const <Shelf>[];
+                    return SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                        child: Row(
+                          children: [
+                            Text(
+                              '내 책장',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const Spacer(),
+                            if (shelves.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: _create,
+                                icon: const Icon(Icons.add),
+                                label: const Text('새 책장'),
+                              ),
+                          ],
                         ),
-                        title: Text(
-                          shelf.name,
-                          style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    );
+                  },
+                ),
+                FutureBuilder<List<Shelf>>(
+                  future: _shelves,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done)
+                      return const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Center(child: CircularProgressIndicator()),
                         ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '${shelf.description?.isNotEmpty == true ? shelf.description : '설명 없음'}\n${shelf.bookCount}권 · ${shelf.isPublic ? '공개' : '비공개'}',
+                      );
+                    if (snapshot.hasError)
+                      return SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 160,
+                          child: _ErrorState(
+                            error: snapshot.error,
+                            onRetry: _reloadShelves,
                           ),
                         ),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final deletedShelfId = await Navigator.of(context)
-                              .push<int>(
-                                MaterialPageRoute(
-                                  builder: (_) => ShelfDetailScreen(
-                                    repository: _repository,
-                                    shelfId: shelf.id,
-                                  ),
+                      );
+                    final shelves = snapshot.data ?? const [];
+                    if (shelves.isEmpty)
+                      return SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 180,
+                          child: _EmptyShelves(onCreate: _create),
+                        ),
+                      );
+                    return SliverList.separated(
+                      itemCount: shelves.length,
+                      itemBuilder: (context, index) {
+                        final shelf = shelves[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          child: Card(
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: const CircleAvatar(
+                                child: Icon(
+                                  Icons.collections_bookmark_outlined,
                                 ),
-                              );
-                          if (!mounted) return;
-                          if (deletedShelfId != null) {
-                            _removeShelfFromList(deletedShelfId);
-                          } else {
-                            _reloadShelves();
-                          }
-                        },
-                      ),
-                    ),
-                  );
-                },
-                separatorBuilder: (_, _) => const SizedBox(height: 2),
-              );
-            },
+                              ),
+                              title: Text(
+                                shelf.name,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  '${shelf.description?.isNotEmpty == true ? shelf.description : '설명 없음'}\n${shelf.bookCount}권 · ${shelf.isPublic ? '공개' : '비공개'}',
+                                ),
+                              ),
+                              isThreeLine: true,
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                final deletedShelfId =
+                                    await Navigator.of(context).push<int>(
+                                      MaterialPageRoute(
+                                        builder: (_) => ShelfDetailScreen(
+                                          repository: _repository,
+                                          shelfId: shelf.id,
+                                        ),
+                                      ),
+                                    );
+                                if (!mounted) return;
+                                if (deletedShelfId != null) {
+                                  _removeShelfFromList(deletedShelfId);
+                                } else {
+                                  _reloadShelves();
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      separatorBuilder: (_, _) => const SizedBox(height: 2),
+                    );
+                  },
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 96)),
+              ],
+            ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 96)),
-        ],
-      ),
-    ),
   );
 }
 

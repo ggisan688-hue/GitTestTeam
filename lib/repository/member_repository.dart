@@ -29,19 +29,28 @@ class MemberRepository {
   }
 
   Future<Member> me() async {
-    final res = await _api.get<Member>('/api/members/me', parse: (json) => Member.fromJson(json as Map<String, dynamic>));
+    final res = await _api.get<Member>(
+      '/api/members/me',
+      parse: (json) => Member.fromJson(json as Map<String, dynamic>),
+    );
     return res.data!;
   }
 
   Future<bool> isEmailAvailable(String email) async {
-    final res = await _api.get<bool>('/api/members/check-email',
-        query: {'email': email}, parse: (json) => (json as Map<String, dynamic>)['available'] == true);
+    final res = await _api.get<bool>(
+      '/api/members/check-email',
+      query: {'email': email},
+      parse: (json) => (json as Map<String, dynamic>)['available'] == true,
+    );
     return res.data ?? false;
   }
 
   Future<bool> isUsernameAvailable(String username) async {
-    final res = await _api.get<bool>('/api/members/check-username',
-        query: {'username': username}, parse: (json) => (json as Map<String, dynamic>)['available'] == true);
+    final res = await _api.get<bool>(
+      '/api/members/check-username',
+      query: {'username': username},
+      parse: (json) => (json as Map<String, dynamic>)['available'] == true,
+    );
     return res.data ?? false;
   }
 }

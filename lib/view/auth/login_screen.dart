@@ -29,7 +29,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.read<AuthViewModel>();
     final ok = await auth.login(_login.text, _password.text);
     if (!mounted || !ok) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const RoomsScreen()), (_) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const RoomsScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -58,13 +61,24 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: AppSpace.lg),
           if (auth.errorMessage != null) ...[
-            Text(auth.errorMessage!, style: AppText.error, textAlign: TextAlign.center),
+            Text(
+              auth.errorMessage!,
+              style: AppText.error,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpace.md),
           ],
           FilledButton(
             onPressed: auth.isLoading ? null : _submit,
             child: auth.isLoading
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('로그인'),
           ),
           const SizedBox(height: AppSpace.lg),
@@ -73,7 +87,9 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const Text('아직 계정이 없나요?', style: AppText.labelMuted),
               TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SignupScreen())),
+                onPressed: () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const SignupScreen())),
                 child: const Text('회원가입'),
               ),
             ],

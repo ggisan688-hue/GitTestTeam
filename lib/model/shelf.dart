@@ -20,14 +20,14 @@ class Shelf {
   final DateTime? updatedAt;
 
   factory Shelf.fromJson(Map<String, dynamic> json) => Shelf(
-        id: (json['id'] as num).toInt(),
-        name: json['name'] as String,
-        description: json['description'] as String?,
-        isPublic: json['isPublic'] == true,
-        bookCount: (json['bookCount'] as num?)?.toInt() ?? 0,
-        createdAt: _date(json['createdAt']),
-        updatedAt: _date(json['updatedAt']),
-      );
+    id: (json['id'] as num).toInt(),
+    name: json['name'] as String,
+    description: json['description'] as String?,
+    isPublic: json['isPublic'] == true,
+    bookCount: (json['bookCount'] as num?)?.toInt() ?? 0,
+    createdAt: _date(json['createdAt']),
+    updatedAt: _date(json['updatedAt']),
+  );
 
   static DateTime? _date(Object? value) =>
       value is String ? DateTime.tryParse(value) : null;
@@ -40,9 +40,9 @@ class ShelfDetail {
   final List<Book> books;
 
   factory ShelfDetail.fromJson(Map<String, dynamic> json) => ShelfDetail(
-        shelf: Shelf.fromJson(json),
-        books: (json['books'] as List<dynamic>? ?? const [])
-            .map((item) => Book.fromJson(item as Map<String, dynamic>))
-            .toList(),
-      );
+    shelf: Shelf.fromJson(json),
+    books: (json['books'] as List<dynamic>? ?? const [])
+        .map((item) => Book.fromJson(item as Map<String, dynamic>))
+        .toList(),
+  );
 }

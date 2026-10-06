@@ -23,7 +23,11 @@ class LineRects extends ChangeNotifier {
     double bestD = double.infinity;
     for (final e in _rects.entries) {
       final r = e.value;
-      final d = p.dy < r.top ? r.top - p.dy : p.dy > r.bottom ? p.dy - r.bottom : 0.0;
+      final d = p.dy < r.top
+          ? r.top - p.dy
+          : p.dy > r.bottom
+          ? p.dy - r.bottom
+          : 0.0;
       if (d < bestD) {
         bestD = d;
         best = e.key;
@@ -35,7 +39,11 @@ class LineRects extends ChangeNotifier {
   /// 콘텐츠 좌표 → 문장 박스 기준 정규화
   InkPoint normalize(int lineNo, Offset p, double pressure) {
     final r = _rects[lineNo]!;
-    return InkPoint((p.dx - r.left) / r.width, (p.dy - r.top) / r.height, pressure);
+    return InkPoint(
+      (p.dx - r.left) / r.width,
+      (p.dy - r.top) / r.height,
+      pressure,
+    );
   }
 
   /// 정규화 → 콘텐츠 좌표. 문장 박스가 아직 없으면 null
@@ -48,7 +56,13 @@ class LineRects extends ChangeNotifier {
 
 /// 자식(문장)의 위치를 [ancestor] 기준으로 재서 [rects] 에 보고
 class LineRectReporter extends StatefulWidget {
-  const LineRectReporter({super.key, required this.lineNo, required this.rects, required this.ancestorKey, required this.child});
+  const LineRectReporter({
+    super.key,
+    required this.lineNo,
+    required this.rects,
+    required this.ancestorKey,
+    required this.child,
+  });
 
   final int lineNo;
   final LineRects rects;
@@ -69,8 +83,10 @@ class _LineRectReporterState extends State<LineRectReporter> {
   void _report() {
     if (!mounted) return;
     final box = context.findRenderObject() as RenderBox?;
-    final ancestor = widget.ancestorKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || ancestor == null || !box.hasSize || !ancestor.hasSize) return;
+    final ancestor =
+        widget.ancestorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || ancestor == null || !box.hasSize || !ancestor.hasSize)
+      return;
     final topLeft = box.localToGlobal(Offset.zero, ancestor: ancestor);
     widget.rects.report(widget.lineNo, topLeft & box.size);
   }
@@ -113,7 +129,8 @@ class _InkCanvasState extends State<InkCanvas> {
   int? _pointer;
   Offset? _downAt;
 
-  bool _accepts(PointerEvent e) => e.kind == PointerDeviceKind.stylus || widget.penMode;
+  bool _accepts(PointerEvent e) =>
+      e.kind == PointerDeviceKind.stylus || widget.penMode;
 
   void _down(PointerDownEvent e) {
     if (!_accepts(e) || _pointer != null) return;
@@ -146,7 +163,12 @@ class _InkCanvasState extends State<InkCanvas> {
   void _up(PointerEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
-    final moved = _downAt == null ? 0.0 : _live.fold(0.0, (m, p) => (p - _downAt!).distance > m ? (p - _downAt!).distance : m);
+    final moved = _downAt == null
+        ? 0.0
+        : _live.fold(
+            0.0,
+            (m, p) => (p - _downAt!).distance > m ? (p - _downAt!).distance : m,
+          );
     // 거의 안 움직였으면 획이 아니라 탭. 탭은 이 레이어가 처리하지 않는다 —
     // 레이어가 히트를 통과시키므로(아래 _InkPainter.hitTest) 문장 InkWell 이 받는다. 여기서도 처리하면 두 번 선택돼 토글로 풀린다.
     if (moved > _tapSlop && _live.length >= 2) {
@@ -166,16 +188,26 @@ class _InkCanvasState extends State<InkCanvas> {
 
   /// 획 → 가장 가까운 문장에 앵커해서 정규화 후 저장 요청
   void _commit() {
-    final center = _live.fold(Offset.zero, (a, b) => a + b) / _live.length.toDouble();
+    final center =
+        _live.fold(Offset.zero, (a, b) => a + b) / _live.length.toDouble();
     final lineNo = widget.rects.nearest(center);
     if (lineNo == null) return;
     final pts = _simplify(_live, 1.2);
     final norm = <InkPoint>[];
     for (var i = 0; i < pts.length; i++) {
       final idx = _live.indexOf(pts[i]);
-      norm.add(widget.rects.normalize(lineNo, pts[i], _pressure[idx < 0 ? 0 : idx]));
+      norm.add(
+        widget.rects.normalize(lineNo, pts[i], _pressure[idx < 0 ? 0 : idx]),
+      );
     }
-    widget.onStroke(InkStroke(lineNo: lineNo, color: widget.color, width: widget.width, points: norm));
+    widget.onStroke(
+      InkStroke(
+        lineNo: lineNo,
+        color: widget.color,
+        width: widget.width,
+        points: norm,
+      ),
+    );
   }
 
   /// 지우개: 가장 가까운 내 획 (거리 12px 이내)
@@ -224,7 +256,10 @@ class _InkCanvasState extends State<InkCanvas> {
     final ab = b - a;
     final len2 = ab.dx * ab.dx + ab.dy * ab.dy;
     if (len2 == 0) return (p - a).distance;
-    final t = (((p - a).dx * ab.dx + (p - a).dy * ab.dy) / len2).clamp(0.0, 1.0);
+    final t = (((p - a).dx * ab.dx + (p - a).dy * ab.dy) / len2).clamp(
+      0.0,
+      1.0,
+    );
     return (p - (a + ab * t)).distance;
   }
 
@@ -256,7 +291,15 @@ class _InkCanvasState extends State<InkCanvas> {
 }
 
 class _InkPainter extends CustomPainter {
-  _InkPainter({required this.rects, required this.strokes, required this.session, required this.live, required this.livePressure, required this.liveColor, required this.liveWidth});
+  _InkPainter({
+    required this.rects,
+    required this.strokes,
+    required this.session,
+    required this.live,
+    required this.livePressure,
+    required this.liveColor,
+    required this.liveWidth,
+  });
 
   final LineRects rects;
   final List<Memo> strokes;
@@ -278,7 +321,8 @@ class _InkPainter extends CustomPainter {
     for (final st in session) {
       _drawNormalized(canvas, st, 0.95);
     }
-    if (live.length >= 2) _drawStroke(canvas, live, livePressure, liveColor, liveWidth);
+    if (live.length >= 2)
+      _drawStroke(canvas, live, livePressure, liveColor, liveWidth);
   }
 
   void _drawNormalized(Canvas canvas, InkStroke st, double alpha) {
@@ -291,11 +335,23 @@ class _InkPainter extends CustomPainter {
       pr.add(p.pressure);
     }
     if (pts.length < 2) return;
-    _drawStroke(canvas, pts, pr, Color(st.color).withValues(alpha: alpha), st.width);
+    _drawStroke(
+      canvas,
+      pts,
+      pr,
+      Color(st.color).withValues(alpha: alpha),
+      st.width,
+    );
   }
 
   /// 중점 기준 2차 베지어로 부드럽게, 필압으로 굵기 변화
-  void _drawStroke(Canvas canvas, List<Offset> pts, List<double> pr, Color color, double width) {
+  void _drawStroke(
+    Canvas canvas,
+    List<Offset> pts,
+    List<double> pr,
+    Color color,
+    double width,
+  ) {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -331,4 +387,8 @@ const inkColors = [0xFFB4652A, 0xFF2F6F9F, 0xFF3B8A4E, 0xFF1C1B1A];
 
 double inkWidthFor(int step) => [1.8, 2.8, 4.2][step.clamp(0, 2)];
 
-int inkStepFor(double width) => width <= 2.0 ? 0 : width <= 3.2 ? 1 : 2;
+int inkStepFor(double width) => width <= 2.0
+    ? 0
+    : width <= 3.2
+    ? 1
+    : 2;

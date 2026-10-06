@@ -16,10 +16,10 @@ enum ReaderContextKind { personal, readingRoom }
 /// A reader route explicitly owns either personal or one room's data.
 class ReaderContext {
   const ReaderContext.personal()
-      : kind = ReaderContextKind.personal,
-        roomId = null;
+    : kind = ReaderContextKind.personal,
+      roomId = null;
   const ReaderContext.readingRoom(this.roomId)
-      : kind = ReaderContextKind.readingRoom;
+    : kind = ReaderContextKind.readingRoom;
   final ReaderContextKind kind;
   final int? roomId;
   bool get isReadingRoom => kind == ReaderContextKind.readingRoom;
@@ -578,7 +578,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     setState(() => _savingHighlight = true);
     try {
       if (widget.readerContext.isReadingRoom) {
-        await _createRoomNote(selection, type: 'HIGHLIGHT', highlightColor: highlightColor);
+        await _createRoomNote(
+          selection,
+          type: 'HIGHLIGHT',
+          highlightColor: highlightColor,
+        );
       } else {
         await vm.addNote(
           widget.bookId,

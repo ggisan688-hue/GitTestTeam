@@ -33,14 +33,19 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthViewModel>();
-    final ok = await auth.signup(SignupRequest(
-      email: _email.text.trim(),
-      username: _username.text.trim(),
-      password: _password.text,
-      name: _name.text.trim(),
-    ));
+    final ok = await auth.signup(
+      SignupRequest(
+        email: _email.text.trim(),
+        username: _username.text.trim(),
+        password: _password.text,
+        name: _name.text.trim(),
+      ),
+    );
     if (!mounted || !ok) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const SignupSuccessScreen()), (_) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SignupSuccessScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -60,20 +65,29 @@ class _SignupScreenState extends State<SignupScreen> {
               controller: _email,
               decoration: const InputDecoration(labelText: '이메일'),
               keyboardType: TextInputType.emailAddress,
-              validator: (v) => v == null || !v.contains('@') ? '이메일 형식이 올바르지 않습니다' : null,
+              validator: (v) =>
+                  v == null || !v.contains('@') ? '이메일 형식이 올바르지 않습니다' : null,
             ),
             const SizedBox(height: AppSpace.md),
             TextFormField(
               controller: _username,
-              decoration: const InputDecoration(labelText: '아이디', helperText: '영문, 숫자, _ 4~30자'),
-              validator: (v) => v == null || v.trim().length < 4 ? '아이디는 4자 이상이어야 합니다' : null,
+              decoration: const InputDecoration(
+                labelText: '아이디',
+                helperText: '영문, 숫자, _ 4~30자',
+              ),
+              validator: (v) =>
+                  v == null || v.trim().length < 4 ? '아이디는 4자 이상이어야 합니다' : null,
             ),
             const SizedBox(height: AppSpace.md),
             TextFormField(
               controller: _password,
-              decoration: const InputDecoration(labelText: '비밀번호', helperText: '8자 이상'),
+              decoration: const InputDecoration(
+                labelText: '비밀번호',
+                helperText: '8자 이상',
+              ),
               obscureText: true,
-              validator: (v) => v == null || v.length < 8 ? '비밀번호는 8자 이상이어야 합니다' : null,
+              validator: (v) =>
+                  v == null || v.length < 8 ? '비밀번호는 8자 이상이어야 합니다' : null,
             ),
             const SizedBox(height: AppSpace.md),
             TextFormField(
@@ -86,17 +100,29 @@ class _SignupScreenState extends State<SignupScreen> {
             TextFormField(
               controller: _name,
               decoration: const InputDecoration(labelText: '이름'),
-              validator: (v) => v == null || v.trim().isEmpty ? '이름을 입력해주세요' : null,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? '이름을 입력해주세요' : null,
             ),
             const SizedBox(height: AppSpace.lg),
             if (auth.errorMessage != null) ...[
-              Text(auth.errorMessage!, style: AppText.error, textAlign: TextAlign.center),
+              Text(
+                auth.errorMessage!,
+                style: AppText.error,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: AppSpace.md),
             ],
             FilledButton(
               onPressed: auth.isLoading ? null : _submit,
               child: auth.isLoading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('가입하기'),
             ),
             const SizedBox(height: AppSpace.sm),

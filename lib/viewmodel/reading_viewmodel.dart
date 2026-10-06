@@ -37,12 +37,18 @@ class ReadingViewModel extends ChangeNotifier {
   bool get hasNext => chapterNo < chapterCount;
 
   Chapter? get chapter => _chapters[chapterNo];
-  List<Memo> get memos => (_memos[chapterNo] ?? const []).where((m) => !m.isInk).toList();
-  List<Memo> get sharedMemos => (_shared[chapterNo] ?? const []).where((m) => !m.isInk).toList();
-  List<Memo> get myInk => (_memos[chapterNo] ?? const []).where((m) => m.isInk && m.ink != null).toList();
+  List<Memo> get memos =>
+      (_memos[chapterNo] ?? const []).where((m) => !m.isInk).toList();
+  List<Memo> get sharedMemos =>
+      (_shared[chapterNo] ?? const []).where((m) => !m.isInk).toList();
+  List<Memo> get myInk => (_memos[chapterNo] ?? const [])
+      .where((m) => m.isInk && m.ink != null)
+      .toList();
   bool get isLoading => _loading.contains(chapterNo);
   String? get errorMessage => _errors[chapterNo];
-  int get maskedSharedCount => (_shared[chapterNo] ?? const []).where((m) => !m.mine && m.spoiler).length;
+  int get maskedSharedCount => (_shared[chapterNo] ?? const [])
+      .where((m) => !m.mine && m.spoiler)
+      .length;
 
   int get readLine {
     if (chapterNo == progress.chapter) return progress.lineNo;
@@ -50,9 +56,13 @@ class ReadingViewModel extends ChangeNotifier {
     return 0;
   }
 
-  Line? get selected => selectedLine == null ? null : chapter?.lines.where((l) => l.lineNo == selectedLine).firstOrNull;
-  List<Memo> memosOf(int lineNo) => memos.where((m) => m.lineNo == lineNo).toList();
-  List<Memo> sharedOf(int lineNo) => sharedMemos.where((m) => m.lineNo == lineNo && !m.mine).toList();
+  Line? get selected => selectedLine == null
+      ? null
+      : chapter?.lines.where((l) => l.lineNo == selectedLine).firstOrNull;
+  List<Memo> memosOf(int lineNo) =>
+      memos.where((m) => m.lineNo == lineNo).toList();
+  List<Memo> sharedOf(int lineNo) =>
+      sharedMemos.where((m) => m.lineNo == lineNo && !m.mine).toList();
   bool hasMemo(int lineNo) => memos.any((m) => m.lineNo == lineNo);
   bool isSpoiler(int lineNo) => progress.isAhead(chapterNo, lineNo);
 
@@ -107,16 +117,27 @@ class ReadingViewModel extends ChangeNotifier {
   Chapter? chapterAt(int n) => _chapters[n];
   bool isChapterLoading(int n) => _loading.contains(n);
   String? errorAt(int n) => _errors[n];
-  String memoLinesKey(int n) => _key((_memos[n] ?? const []).where((m) => !m.isInk).map((m) => m.lineNo));
+  String memoLinesKey(int n) =>
+      _key((_memos[n] ?? const []).where((m) => !m.isInk).map((m) => m.lineNo));
   String sharedLinesKey(int n) =>
-      ((_shared[n] ?? const []).where((m) => !m.mine && !m.isInk).map((m) => m.lineNo).toList()..sort()).join(',');
-  String _key(Iterable<int> lines) => (lines.toSet().toList()..sort()).join(',');
+      ((_shared[n] ?? const [])
+              .where((m) => !m.mine && !m.isInk)
+              .map((m) => m.lineNo)
+              .toList()
+            ..sort())
+          .join(',');
+  String _key(Iterable<int> lines) =>
+      (lines.toSet().toList()..sort()).join(',');
 
   /// 장 n 의 손글씨 메모 (저장된 것)
   List<Memo> inkOf(int n) => [
-        if (showMyInk) ...(_memos[n] ?? const []).where((m) => m.isInk && m.ink != null),
-        if (showSharedInk) ...(_shared[n] ?? const []).where((m) => m.isInk && !m.mine && m.ink != null),
-      ];
+    if (showMyInk)
+      ...(_memos[n] ?? const []).where((m) => m.isInk && m.ink != null),
+    if (showSharedInk)
+      ...(_shared[n] ?? const []).where(
+        (m) => m.isInk && !m.mine && m.ink != null,
+      ),
+  ];
 
   /// 장 n 의 아직 저장 안 된 세션 획
   List<InkStroke> sessionOf(int n) => _session[n] ?? const [];
@@ -232,7 +253,11 @@ class ReadingViewModel extends ChangeNotifier {
     progress = Progress(chapter: chapterNo, lineNo: lineNo);
     notifyListeners();
     try {
-      progress = await _books.updateProgress(bookId, chapter: chapterNo, lineNo: lineNo);
+      progress = await _books.updateProgress(
+        bookId,
+        chapter: chapterNo,
+        lineNo: lineNo,
+      );
       await refreshShared(chapterNo);
       if (!complete && chapterNo == chapterCount) await _loadComplete(bookId);
       notifyListeners();
@@ -246,9 +271,18 @@ class ReadingViewModel extends ChangeNotifier {
   Future<bool> addMemo(int lineNo, String text) async {
     if (text.trim().isEmpty) return false;
     try {
-      final memo = await _books.addMemo(bookId, chapter: chapterNo, lineNo: lineNo, text: text);
+      final memo = await _books.addMemo(
+        bookId,
+        chapter: chapterNo,
+        lineNo: lineNo,
+        text: text,
+      );
       _memos[chapterNo] = [...(_memos[chapterNo] ?? const []), memo]
-        ..sort((a, b) => a.lineNo != b.lineNo ? a.lineNo - b.lineNo : a.createdAt.compareTo(b.createdAt));
+        ..sort(
+          (a, b) => a.lineNo != b.lineNo
+              ? a.lineNo - b.lineNo
+              : a.createdAt.compareTo(b.createdAt),
+        );
       notifyListeners();
       return true;
     } on ApiException catch (e) {
@@ -278,7 +312,10 @@ class ReadingViewModel extends ChangeNotifier {
   void addStroke(InkStroke stroke, {required int chapter}) {
     (_session[chapter] ??= []).add(stroke);
     _sessionTimer?.cancel();
-    _sessionTimer = Timer(const Duration(milliseconds: 2500), () => flushInkSession(chapter: chapter));
+    _sessionTimer = Timer(
+      const Duration(milliseconds: 2500),
+      () => flushInkSession(chapter: chapter),
+    );
     notifyListeners();
   }
 
@@ -289,13 +326,20 @@ class ReadingViewModel extends ChangeNotifier {
       final strokes = _session.remove(ch);
       if (strokes == null || strokes.isEmpty) continue;
       try {
-        final memo = await _books.addInk(bookId, chapter: ch, ink: InkMemo(strokes));
+        final memo = await _books.addInk(
+          bookId,
+          chapter: ch,
+          ink: InkMemo(strokes),
+        );
         _memos[ch] = [...(_memos[ch] ?? const []), memo];
       } on ApiException catch (e) {
         _errors[ch] = e.message;
         (_session[ch] ??= []).insertAll(0, strokes); // 실패 시 세션에 되돌림
         _sessionTimer?.cancel();
-        _sessionTimer = Timer(const Duration(seconds: 5), () => flushInkSession(chapter: ch)); // 5초 뒤 재시도
+        _sessionTimer = Timer(
+          const Duration(seconds: 5),
+          () => flushInkSession(chapter: ch),
+        ); // 5초 뒤 재시도
       }
     }
     notifyListeners();
@@ -328,7 +372,8 @@ class ReadingViewModel extends ChangeNotifier {
     await removeInk(mine.last.id);
   }
 
-  bool get canUndoInk => (_session[chapterNo]?.isNotEmpty ?? false) || myInk.isNotEmpty;
+  bool get canUndoInk =>
+      (_session[chapterNo]?.isNotEmpty ?? false) || myInk.isNotEmpty;
 
   @override
   void dispose() {

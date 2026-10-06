@@ -38,9 +38,9 @@ class FriendsViewModel extends ChangeNotifier {
   Future<String?> remove(int memberId) => _guard(() => _repo.remove(memberId));
 
   Future<String?> choosePersona(int memberId) => _guard(() async {
-        await _repo.choosePersona(memberId);
-        personas = await _repo.personas();
-      }, reload: false);
+    await _repo.choosePersona(memberId);
+    personas = await _repo.personas();
+  }, reload: false);
 
   // ---------- 책별 공유 ----------
   Future<void> loadShares(int bookId) async {
@@ -52,8 +52,12 @@ class FriendsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<String?> toggleShare(int bookId, int friendId, bool on) => _guard(() async {
-        final ids = shares.where((s) => s.sharedByMe).map((s) => s.friend.memberId).toSet();
+  Future<String?> toggleShare(int bookId, int friendId, bool on) =>
+      _guard(() async {
+        final ids = shares
+            .where((s) => s.sharedByMe)
+            .map((s) => s.friend.memberId)
+            .toSet();
         if (on) {
           ids.add(friendId);
         } else {
@@ -63,7 +67,10 @@ class FriendsViewModel extends ChangeNotifier {
       }, reload: false);
 
   /// 성공이면 null, 실패면 에러 메시지
-  Future<String?> _guard(Future<void> Function() action, {bool reload = true}) async {
+  Future<String?> _guard(
+    Future<void> Function() action, {
+    bool reload = true,
+  }) async {
     try {
       await action();
       if (reload) await load();

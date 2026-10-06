@@ -47,7 +47,11 @@ class _SidePanelState extends State<SidePanel> {
     if (!_pages.hasClients) return;
     final target = _state.tab.index;
     if ((_pages.page ?? _pages.initialPage).round() != target) {
-      _pages.animateToPage(target, duration: const Duration(milliseconds: 240), curve: Curves.easeOutCubic);
+      _pages.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
     }
   }
 
@@ -55,41 +59,66 @@ class _SidePanelState extends State<SidePanel> {
   Widget build(BuildContext context) {
     final tab = context.select<PanelState, PanelTab>((s) => s.tab);
 
-    return ScreenTag('S31', alignment: Alignment.topRight, child: Column(
-      children: [
-        // ----- 탭 헤더 -----
-        Container(
-          padding: const EdgeInsets.fromLTRB(AppSpace.sm, AppSpace.sm, AppSpace.sm, 0),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.line))),
-          child: Row(
-            children: [
-              for (final (t, icon, label) in _tabs)
-                _TabButton(icon: icon, label: label, active: t == tab, onTap: () => _state.select(t)),
-              const Spacer(),
-              if (widget.onClose != null)
-                IconButton(
-                  tooltip: '닫기',
-                  icon: const Icon(Icons.close, size: 20, color: AppColors.muted),
-                  onPressed: widget.onClose,
-                ),
-            ],
+    return ScreenTag(
+      'S31',
+      alignment: Alignment.topRight,
+      child: Column(
+        children: [
+          // ----- 탭 헤더 -----
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpace.sm,
+              AppSpace.sm,
+              AppSpace.sm,
+              0,
+            ),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.line)),
+            ),
+            child: Row(
+              children: [
+                for (final (t, icon, label) in _tabs)
+                  _TabButton(
+                    icon: icon,
+                    label: label,
+                    active: t == tab,
+                    onTap: () => _state.select(t),
+                  ),
+                const Spacer(),
+                if (widget.onClose != null)
+                  IconButton(
+                    tooltip: '닫기',
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.muted,
+                    ),
+                    onPressed: widget.onClose,
+                  ),
+              ],
+            ),
           ),
-        ),
-        // ----- 페이지 (스와이프로 넘김) -----
-        Expanded(
-          child: PageView(
-            controller: _pages,
-            onPageChanged: (i) => _state.select(PanelTab.values[i]),
-            children: const [MemoSection(), AiSection(), ShareSection()],
+          // ----- 페이지 (스와이프로 넘김) -----
+          Expanded(
+            child: PageView(
+              controller: _pages,
+              onPageChanged: (i) => _state.select(PanelTab.values[i]),
+              children: const [MemoSection(), AiSection(), ShareSection()],
+            ),
           ),
-        ),
-      ],
-    ));
+        ],
+      ),
+    );
   }
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.icon, required this.label, required this.active, required this.onTap});
+  const _TabButton({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -105,13 +134,28 @@ class _TabButton extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: AppSpace.touch),
         padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: active ? AppColors.accent : Colors.transparent, width: 2)),
+          border: Border(
+            bottom: BorderSide(
+              color: active ? AppColors.accent : Colors.transparent,
+              width: 2,
+            ),
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: active ? AppColors.accentText : AppColors.muted),
+            Icon(
+              icon,
+              size: 18,
+              color: active ? AppColors.accentText : AppColors.muted,
+            ),
             const SizedBox(width: AppSpace.xs + 2),
-            Text(label, style: AppText.label.copyWith(fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? AppColors.ink : AppColors.muted)),
+            Text(
+              label,
+              style: AppText.label.copyWith(
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                color: active ? AppColors.ink : AppColors.muted,
+              ),
+            ),
           ],
         ),
       ),
@@ -138,14 +182,23 @@ class PanelRail extends StatelessWidget {
         children: [
           const SizedBox(height: AppSpace.sm),
           for (final (t, icon, label) in _tabs) ...[
-            _RailButton(icon: icon, label: label, active: state.isOpen && state.tab == t, onTap: () => state.toggle(t)),
+            _RailButton(
+              icon: icon,
+              label: label,
+              active: state.isOpen && state.tab == t,
+              onTap: () => state.toggle(t),
+            ),
             const SizedBox(height: AppSpace.xs),
           ],
           const Spacer(),
           if (state.isOpen)
             IconButton(
               tooltip: '패널 닫기',
-              icon: const Icon(Icons.keyboard_double_arrow_right, size: 20, color: AppColors.muted),
+              icon: const Icon(
+                Icons.keyboard_double_arrow_right,
+                size: 20,
+                color: AppColors.muted,
+              ),
               onPressed: state.close,
             ),
           const SizedBox(height: AppSpace.xs),
@@ -156,7 +209,12 @@ class PanelRail extends StatelessWidget {
 }
 
 class _RailButton extends StatelessWidget {
-  const _RailButton({required this.icon, required this.label, required this.active, required this.onTap});
+  const _RailButton({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -179,11 +237,21 @@ class _RailButton extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 22, color: active ? AppColors.accentText : AppColors.muted),
+                Icon(
+                  icon,
+                  size: 22,
+                  color: active ? AppColors.accentText : AppColors.muted,
+                ),
                 const SizedBox(height: AppSpace.xs),
-                Text(label.replaceAll(' ', '\n'),
-                    textAlign: TextAlign.center,
-                    style: AppText.micro.copyWith(height: 1.15, color: active ? AppColors.accentText : AppColors.muted, fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+                Text(
+                  label.replaceAll(' ', '\n'),
+                  textAlign: TextAlign.center,
+                  style: AppText.micro.copyWith(
+                    height: 1.15,
+                    color: active ? AppColors.accentText : AppColors.muted,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
               ],
             ),
           ),
