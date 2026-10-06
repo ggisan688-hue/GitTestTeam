@@ -1,3 +1,16 @@
+int _jsonInt(Object? value, {int fallback = 0}) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+String _jsonString(Object? value, String fallback) =>
+    value?.toString() ?? fallback;
+
+String? _jsonNullableString(Object? value) => value?.toString();
+
+bool _jsonBool(Object? value) =>
+    value == true || value?.toString().toLowerCase() == 'true';
+
 class ReadingRoomBook {
   const ReadingRoomBook({
     required this.id,
@@ -13,10 +26,10 @@ class ReadingRoomBook {
 
   factory ReadingRoomBook.fromJson(Map<String, dynamic> json) =>
       ReadingRoomBook(
-        id: (json['id'] as num).toInt(),
-        title: json['title'] as String? ?? '',
-        author: json['author'] as String? ?? '',
-        coverImageUrl: json['coverImageUrl'] as String?,
+        id: _jsonInt(json['id']),
+        title: _jsonString(json['title'], ''),
+        author: _jsonString(json['author'], ''),
+        coverImageUrl: _jsonNullableString(json['coverImageUrl']),
       );
 }
 
@@ -30,15 +43,16 @@ class ReadingRoomMember {
   final int userId;
   final String nickname;
   final String role;
+
   /// The room-specific photo when present; the API falls back to the member's
   /// account photo so callers can render one consistent avatar field.
   final String? roomProfileImageUrl;
   factory ReadingRoomMember.fromJson(Map<String, dynamic> json) =>
       ReadingRoomMember(
-        userId: (json['userId'] as num).toInt(),
-        nickname: json['nickname'] as String,
-        role: json['role'] as String,
-        roomProfileImageUrl: json['roomProfileImageUrl'] as String?,
+        userId: _jsonInt(json['userId']),
+        nickname: _jsonString(json['nickname'], '알 수 없음'),
+        role: _jsonString(json['role'], 'MEMBER'),
+        roomProfileImageUrl: _jsonNullableString(json['roomProfileImageUrl']),
       );
 }
 
@@ -73,6 +87,7 @@ class ReadingRoom {
   final bool isPublic;
   final String ownerNickname;
   final int? ownerId;
+
   /// Authoritative server creation time, retained when a create/join response
   /// is inserted into the local room list before the next reconciliation.
   final DateTime? createdAt;
@@ -86,44 +101,58 @@ class ReadingRoom {
   final List<ReadingRoomMember> participants;
 
   factory ReadingRoom.fromJson(Map<String, dynamic> json) => ReadingRoom(
-    id: (json['id'] as num).toInt(),
-    name: json['name'] as String,
-    description: json['description'] as String?,
-    bookId: (json['bookId'] as num?)?.toInt(),
-    members: (json['members'] as num).toInt(),
-    maxMembers: (json['maxMembers'] as num).toInt(),
-    isPublic: json['isPublic'] == true,
-    ownerNickname: json['ownerNickname'] as String,
-    ownerId: (json['ownerId'] as num?)?.toInt(),
-    createdAt: json['createdAt'] is String
-        ? DateTime.tryParse(json['createdAt'] as String)
+    id: _jsonInt(json['id']),
+    name: _jsonString(json['name'], '이름 없는 독서방'),
+    description: _jsonNullableString(json['description']),
+    bookId: json['bookId'] == null ? null : _jsonInt(json['bookId']),
+    members: _jsonInt(json['members']),
+    maxMembers: _jsonInt(json['maxMembers']),
+    isPublic: _jsonBool(json['isPublic']),
+    ownerNickname: _jsonString(json['ownerNickname'], '알 수 없음'),
+    ownerId: json['ownerId'] == null ? null : _jsonInt(json['ownerId']),
+    createdAt: json['createdAt'] != null
+        ? DateTime.tryParse(json['createdAt'].toString())
         : null,
-    joined: json['joined'] == true,
-    isOwner: json['owner'] == true,
-    joinCode: json['joinCode'] as String?,
-    spoilerLockEnabled: json['spoilerLockEnabled'] == true,
-    selectedAiFriendType: json['selectedAiFriendType'] as String?,
-    book: json['book'] is Map<String, dynamic>
-        ? ReadingRoomBook.fromJson(json['book'] as Map<String, dynamic>)
+    joined: _jsonBool(json['joined']),
+    isOwner: _jsonBool(json['owner']),
+    joinCode: _jsonNullableString(json['joinCode']),
+    spoilerLockEnabled: _jsonBool(json['spoilerLockEnabled']),
+    selectedAiFriendType: _jsonNullableString(json['selectedAiFriendType']),
+    book: json['book'] is Map
+        ? ReadingRoomBook.fromJson(
+            Map<String, dynamic>.from(json['book'] as Map),
+          )
         : null,
-    myRole: json['myRole'] as String?,
-    participants: (json['participants'] as List<dynamic>? ?? const [])
-        .map((item) => ReadingRoomMember.fromJson(item as Map<String, dynamic>))
-        .toList(),
+    myRole: _jsonNullableString(json['myRole']),
+    participants:
+        (json['participants'] is List ? json['participants'] as List : const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  ReadingRoomMember.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
   );
 }
 
 /// Invite-code joins have idempotency metadata that does not belong to a room
 /// list/detail response.
 class ReadingRoomJoinResult {
-  const ReadingRoomJoinResult({required this.room, required this.alreadyJoined});
+  const ReadingRoomJoinResult({
+    required this.room,
+    required this.alreadyJoined,
+  });
 
   final ReadingRoom room;
   final bool alreadyJoined;
 
   factory ReadingRoomJoinResult.fromJson(Map<String, dynamic> json) =>
       ReadingRoomJoinResult(
-        room: ReadingRoom.fromJson(json['room'] as Map<String, dynamic>),
-        alreadyJoined: json['alreadyJoined'] == true,
+        room: ReadingRoom.fromJson(
+          json['room'] is Map
+              ? Map<String, dynamic>.from(json['room'] as Map)
+              : const <String, dynamic>{},
+        ),
+        alreadyJoined: _jsonBool(json['alreadyJoined']),
       );
 }

@@ -37,4 +37,35 @@ void main() {
     );
     expect(ReadingRoomRepository.normalizeInviteCode('too-short'), 'TOOS-HORT');
   });
+
+  test('room DTO tolerates null and malformed optional fields', () {
+    final room = ReadingRoom.fromJson({
+      'id': null,
+      'name': null,
+      'members': null,
+      'maxMembers': null,
+      'ownerNickname': null,
+      'participants': [
+        null,
+        'not-a-member',
+        {
+          'userId': null,
+          'nickname': null,
+          'role': null,
+          'roomProfileImageUrl': 42,
+        },
+      ],
+      'book': {'id': null, 'title': null, 'author': null, 'coverImageUrl': 42},
+    });
+
+    expect(room.id, 0);
+    expect(room.name, '이름 없는 독서방');
+    expect(room.members, 0);
+    expect(room.maxMembers, 0);
+    expect(room.ownerNickname, '알 수 없음');
+    expect(room.participants, hasLength(1));
+    expect(room.participants.single.nickname, '알 수 없음');
+    expect(room.participants.single.role, 'MEMBER');
+    expect(room.book?.coverImageUrl, '42');
+  });
 }

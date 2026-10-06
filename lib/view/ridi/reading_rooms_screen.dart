@@ -55,7 +55,9 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
     if (!mounted) return;
     final revision = ++_roomRevision;
     final load = _loadRooms(revision);
-    setState(() => _rooms = load);
+    setState(() {
+      _rooms = load;
+    });
     await load;
   }
 
