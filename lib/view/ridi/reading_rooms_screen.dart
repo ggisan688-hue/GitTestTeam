@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -30,6 +32,8 @@ class ReadingRoomsScreen extends StatefulWidget {
 class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
   late final ReadingRoomRepository _repository;
   late Future<List<ReadingRoom>> _rooms;
+  List<ReadingRoom> _roomCache = const [];
+  int _roomRevision = 0;
   bool _onlyAvailable = false;
 
   @override
@@ -38,12 +42,70 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
     _repository = ReadingRoomRepository(
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
     );
-    _rooms = _repository.myRooms();
+    _rooms = _loadRooms(++_roomRevision);
   }
 
   void _reload() {
+    unawaited(_reloadAsync());
+  }
+
+  Future<void> _reloadAsync() async {
     if (!mounted) return;
-    setState(() => _rooms = _repository.myRooms());
+    final revision = ++_roomRevision;
+    final load = _loadRooms(revision);
+    setState(() => _rooms = load);
+    await load;
+  }
+
+  Future<List<ReadingRoom>> _loadRooms(int revision) async {
+    final rooms = await _repository.myRooms();
+    if (mounted && revision == _roomRevision) {
+      _roomCache = List.unmodifiable(rooms);
+    }
+    return rooms;
+  }
+
+  /// Mutations render their authoritative response immediately. A following
+  /// reconciliation is deliberately revision-gated so an older GET cannot
+  /// restore a just deleted room or hide a just created one.
+  void _putRoom(ReadingRoom room) {
+    final next = List<ReadingRoom>.unmodifiable([
+      room,
+      ..._roomCache.where((candidate) => candidate.id != room.id),
+    ]);
+    final revision = ++_roomRevision;
+    setState(() {
+      _roomCache = next;
+      _rooms = Future.value(next);
+    });
+    unawaited(_reconcileRooms(revision));
+  }
+
+  void _removeRoom(int roomId) {
+    final next = List<ReadingRoom>.unmodifiable(
+      _roomCache.where((room) => room.id != roomId),
+    );
+    final revision = ++_roomRevision;
+    setState(() {
+      _roomCache = next;
+      _rooms = Future.value(next);
+    });
+    unawaited(_reconcileRooms(revision));
+  }
+
+  Future<void> _reconcileRooms(int revision) async {
+    try {
+      final rooms = await _repository.myRooms();
+      if (mounted && revision == _roomRevision) {
+        setState(() {
+          _roomCache = List.unmodifiable(rooms);
+          _rooms = Future.value(_roomCache);
+        });
+      }
+    } catch (_) {
+      // The authoritative create/join/delete result is already visible. A
+      // later pull-to-refresh exposes a transient reconciliation failure.
+    }
   }
 
   Future<void> _open(ReadingRoom room) async {
@@ -63,7 +125,7 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
     if (!mounted || room == null) return;
     // The create route owns only its controllers and request.  This still
     // mounted parent owns list refresh and the next navigation exactly once.
-    _reload();
+    _putRoom(room);
     await _open(room);
   }
 
@@ -73,7 +135,7 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
       builder: (_) => _JoinRoomByCodeDialog(repository: _repository),
     );
     if (!mounted || room == null) return;
-    _reload();
+    _putRoom(room);
     await _open(room);
   }
 
@@ -86,7 +148,7 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
     if (!confirmed || !mounted) return;
     try {
       await _repository.delete(room.id);
-      if (mounted) _reload();
+      if (mounted) _removeRoom(room.id);
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     }
@@ -139,7 +201,7 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
             .toList();
         if (rooms.isEmpty) return _EmptyRooms(onCreate: _create, onJoin: _join);
         return RefreshIndicator(
-          onRefresh: () async => _reload(),
+          onRefresh: _reloadAsync,
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             itemCount: rooms.length + 1,
@@ -417,7 +479,7 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
   }
 
   Future<void> _submit() async {
-    final code = _code.text.trim();
+    final code = ReadingRoomRepository.normalizeInviteCode(_code.text);
     if (code.isEmpty) {
       setState(() => _error = '입장 코드를 입력해주세요.');
       return;
@@ -429,6 +491,11 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
     try {
       final result = await widget.repository.join(code);
       if (!mounted) return;
+      if (result.alreadyJoined) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이미 참여 중인 독서방입니다. 방을 열었습니다.')),
+        );
+      }
       Navigator.of(context).pop(result.room);
     } on ApiException catch (error) {
       if (!mounted) return;

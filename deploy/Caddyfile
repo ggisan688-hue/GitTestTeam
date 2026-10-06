@@ -1,0 +1,24 @@
+# API_DOMAIN must be a real DNS name pointing to this host before Caddy starts.
+# Caddy obtains and renews the public TLS certificate, and redirects HTTP to HTTPS.
+{$API_DOMAIN} {
+    encode zstd gzip
+
+    request_body {
+        max_size 6MB
+    }
+
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    reverse_proxy api:8088 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Host {host}
+        flush_interval -1
+    }
+}

@@ -53,6 +53,7 @@ class ReadingRoom {
     required this.isPublic,
     required this.ownerNickname,
     this.ownerId,
+    this.createdAt,
     this.joined = false,
     this.isOwner = false,
     this.joinCode,
@@ -72,6 +73,9 @@ class ReadingRoom {
   final bool isPublic;
   final String ownerNickname;
   final int? ownerId;
+  /// Authoritative server creation time, retained when a create/join response
+  /// is inserted into the local room list before the next reconciliation.
+  final DateTime? createdAt;
   final bool joined;
   final bool isOwner;
   final String? joinCode;
@@ -91,6 +95,9 @@ class ReadingRoom {
     isPublic: json['isPublic'] == true,
     ownerNickname: json['ownerNickname'] as String,
     ownerId: (json['ownerId'] as num?)?.toInt(),
+    createdAt: json['createdAt'] is String
+        ? DateTime.tryParse(json['createdAt'] as String)
+        : null,
     joined: json['joined'] == true,
     isOwner: json['owner'] == true,
     joinCode: json['joinCode'] as String?,

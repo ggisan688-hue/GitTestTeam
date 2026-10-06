@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kDebugMode;
@@ -31,6 +32,7 @@ class ApiClient {
 
   final http.Client _client;
   final String _baseUrl;
+  static const _requestTimeout = Duration(seconds: 20);
 
   /// The app installs this once to clear authenticated UI state when a token
   /// has expired. Repositories remain transport-only and do not need to know
@@ -105,10 +107,14 @@ class ApiClient {
       );
     }
     try {
-      final res = await http.Response.fromStream(await _client.send(req));
+      final res = await http.Response.fromStream(
+        await _client.send(req).timeout(_requestTimeout),
+      );
       return _handle(res, parse);
-    } on http.ClientException catch (e) {
-      throw ApiException('서버에 연결할 수 없습니다 (${e.message})');
+    } on TimeoutException {
+      throw ApiException('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+    } on http.ClientException catch (_) {
+      throw ApiException('서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.');
     }
   }
 
@@ -123,7 +129,9 @@ class ApiClient {
     final req = http.Request(method, uri)..headers.addAll(_headers);
     if (body != null) req.body = jsonEncode(body);
     try {
-      final res = await http.Response.fromStream(await _client.send(req));
+      final res = await http.Response.fromStream(
+        await _client.send(req).timeout(_requestTimeout),
+      );
       if (kDebugMode && path.startsWith('/api/reading-rooms')) {
         // Deliberately omit Authorization and full response data. Room create
         // payloads are safe diagnostic fields and make a DTO mismatch visible.
@@ -137,6 +145,8 @@ class ApiClient {
         debugPrint('[Book API] $method $uri -> HTTP ${res.statusCode}');
       }
       return _handle(res, parse);
+    } on TimeoutException {
+      throw ApiException('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
     } on http.ClientException catch (e) {
       if (kDebugMode && path.startsWith('/api/reading-rooms')) {
         debugPrint('[ReadingRoom API] $method $uri failed: ${e.message}');
@@ -144,7 +154,7 @@ class ApiClient {
       if (kDebugMode && path.startsWith('/api/books')) {
         debugPrint('[Book API] $method $uri failed: ${e.message}');
       }
-      throw ApiException('서버에 연결할 수 없습니다 (${e.message})');
+      throw ApiException('서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.');
     }
   }
 

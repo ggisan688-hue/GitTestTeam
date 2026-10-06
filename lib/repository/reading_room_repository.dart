@@ -53,10 +53,18 @@ class ReadingRoomRepository {
   Future<ReadingRoomJoinResult> join(String code) async {
     final response = await _api.post<ReadingRoomJoinResult>(
       '/api/reading-rooms/join-by-code',
-      body: {'inviteCode': code.trim()},
+      body: {'inviteCode': normalizeInviteCode(code)},
       parse: (json) => ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
     );
     return response.data!;
+  }
+
+  /// Codes are displayed as XXXX-XXXX, but accepting copied values without a
+  /// hyphen or with whitespace avoids making presentation part of the API
+  /// contract. The server applies the identical canonical form.
+  static String normalizeInviteCode(String value) {
+    final compact = value.trim().replaceAll(RegExp(r'[\s-]+'), '').toUpperCase();
+    return compact.length == 8 ? '${compact.substring(0, 4)}-${compact.substring(4)}' : compact;
   }
 
   /// Rooms the authenticated user has already joined and that use [bookId]

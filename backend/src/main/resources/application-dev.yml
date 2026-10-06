@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:changebook}
+    username: ${DB_USERNAME:changebook}
+    password: ${DB_PASSWORD}
+    hikari:
+      connection-timeout: 10000
+      validation-timeout: 5000
+      initialization-fail-timeout: 10000
+app:
+  profile-upload-dir: ${PROFILE_UPLOAD_DIR:${java.io.tmpdir}/change-book/profiles}
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://10.0.2.2:*}

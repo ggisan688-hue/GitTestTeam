@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,7 @@ class RidiAuthRepository {
 
   static const _tokenKey = 'ridi_auth_access_token';
   final http.Client _client;
+  static const _requestTimeout = Duration(seconds: 20);
 
   Future<void> signup({required String username, required String password, required String nickname}) async {
     final json = await _request(
@@ -104,14 +106,18 @@ class RidiAuthRepository {
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
     if (body != null) request.body = jsonEncode(body);
     try {
-      final response = await http.Response.fromStream(await _client.send(request));
+      final response = await http.Response.fromStream(
+        await _client.send(request).timeout(_requestTimeout),
+      );
       final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw RidiAuthException(json['message'] as String? ?? '서버 요청에 실패했습니다.', statusCode: response.statusCode);
       }
       return json;
+    } on TimeoutException {
+      throw const RidiAuthException('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
     } on http.ClientException {
-      throw const RidiAuthException('서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해주세요.');
+      throw const RidiAuthException('서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.');
     } on FormatException {
       throw const RidiAuthException('서버 응답을 처리할 수 없습니다.');
     }

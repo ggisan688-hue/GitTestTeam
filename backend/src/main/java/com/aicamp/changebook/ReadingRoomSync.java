@@ -97,9 +97,14 @@ class ReadingRoomSyncService {
 @EnableWebSocket
 class RoomSyncSocketConfig implements WebSocketConfigurer {
   private final RoomSyncSocketHandler handler;
-  RoomSyncSocketConfig(RoomSyncSocketHandler handler) { this.handler = handler; }
+  private final String allowedOrigins;
+  RoomSyncSocketConfig(RoomSyncSocketHandler handler,
+      @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origin-patterns:}") String allowedOrigins) {
+    this.handler = handler; this.allowedOrigins = allowedOrigins;
+  }
   @Override public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-    registry.addHandler(handler, "/ws/reading-room-sync").setAllowedOriginPatterns("http://localhost:*", "http://10.0.2.2:*");
+    registry.addHandler(handler, "/ws/reading-room-sync")
+        .setAllowedOriginPatterns(AuthApplication.originPatterns(allowedOrigins).toArray(String[]::new));
   }
 }
 

@@ -1,6 +1,7 @@
 package com.aicamp.changebook;
 
 import jakarta.persistence.*;
+import jakarta.persistence.LockModeType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -13,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.security.SecureRandom;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -70,6 +72,12 @@ class RoomMemberId implements java.io.Serializable {
 interface RoomRepo extends JpaRepository<ReadingRoom, Long> {
   List<ReadingRoom> findByIsPublicTrueOrderByCreatedAtDesc();
   Optional<ReadingRoom> findByJoinCodeIgnoreCase(String joinCode);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select room from ReadingRoom room where lower(room.joinCode) = lower(:joinCode)")
+  Optional<ReadingRoom> findByJoinCodeForUpdate(@org.springframework.data.repository.query.Param("joinCode") String joinCode);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select room from ReadingRoom room where room.id = :roomId")
+  Optional<ReadingRoom> findByIdForUpdate(@org.springframework.data.repository.query.Param("roomId") Long roomId);
 }
 
 interface RoomMemberRepo extends JpaRepository<RoomMember, RoomMemberId> {
@@ -203,13 +211,15 @@ class RoomService {
     ReadingRoom room = new ReadingRoom();
     apply(room, request, 0);
     room.owner = current;
-    room = rooms.save(room);
+    // Flush both rows before serializing the response. This makes a 201 mean
+    // the generated id/code and owner membership are query-visible together.
+    room = rooms.saveAndFlush(room);
     RoomMember owner = new RoomMember();
     owner.roomId = room.id;
     owner.userId = current.id;
     owner.role = "OWNER";
     owner.roomNickname = java.util.Optional.ofNullable(trimToNull(request.roomNickname())).orElse(current.nickname);
-    members.save(owner);
+    members.saveAndFlush(owner);
     RoomResponse result = response(room, current);
     log.info("reading-room created roomId={} hostUserId={} bookId={} public={}", room.id, current.id, room.bookId, room.isPublic);
     return result;
@@ -259,10 +269,11 @@ class RoomService {
   @org.springframework.transaction.annotation.Transactional
   JoinRoomResponse join(String username, String code, String roomNickname) {
     AppUser current = userFeatures.me(username);
-    if (code == null || code.trim().isEmpty() || code.trim().length() > 16) {
+    String normalizedCode = normalizeCode(code);
+    if (normalizedCode == null) {
       throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_CODE", "Enter a room code.");
     }
-    ReadingRoom room = rooms.findByJoinCodeIgnoreCase(code.trim())
+    ReadingRoom room = rooms.findByJoinCodeForUpdate(normalizedCode)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "Room code not found."));
     if (isMember(room, current)) {
       log.info("reading-room join-by-code already-member roomId={} userId={}", room.id, current.id);
@@ -276,7 +287,8 @@ class RoomService {
   @org.springframework.transaction.annotation.Transactional
   RoomResponse joinPublic(String username, Long roomId) {
     AppUser current = userFeatures.me(username);
-    ReadingRoom room = room(roomId);
+    ReadingRoom room = rooms.findByIdForUpdate(roomId).orElseThrow(
+        () -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "Room not found."));
     if (!room.isPublic) {
       throw new ApiException(HttpStatus.FORBIDDEN, "PRIVATE_ROOM_CODE_REQUIRED", "Use the room code to join this private room.");
     }
@@ -335,6 +347,7 @@ class RoomService {
     ReadingRoom room = room(roomId);
     requireOwner(room, current);
     rooms.delete(room);
+    rooms.flush();
   }
 
   private ReadingRoom room(Long roomId) {
@@ -429,7 +442,7 @@ class RoomService {
     member.userId = user.id;
     member.role = "MEMBER";
     member.roomNickname = trimToNull(roomNickname);
-    members.save(member);
+    members.saveAndFlush(member);
     userFeatures.notify(ownerIdOf(room), "ROOM_JOINED", "새 참여자", user.nickname + "님이 " + room.name + " 방에 참여했습니다.", room.id, user.id);
   }
 
@@ -460,6 +473,12 @@ class RoomService {
       if (rooms.findByJoinCodeIgnoreCase(candidate).isEmpty()) return candidate;
     }
     throw new ApiException(HttpStatus.CONFLICT, "INVITE_CODE_GENERATION_FAILED", "Could not generate a unique invite code.");
+  }
+  private String normalizeCode(String value) {
+    if (value == null) return null;
+    String compact = value.trim().replaceAll("[\\s-]+", "").toUpperCase(java.util.Locale.ROOT);
+    if (!compact.matches("[A-Z0-9]{8}")) return null;
+    return compact.substring(0, 4) + "-" + compact.substring(4);
   }
   private String trimToNull(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
 }

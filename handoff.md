@@ -44,6 +44,8 @@
 - 게스트가 내 서재(교환독서 포함) 또는 마이 탭을 열면 로그인 유도 대화상자를 표시한다. 홈의 도서 탐색은 게스트로 유지한다. 로그아웃 또는 임의 API의 401은 동일한 로그아웃 처리로 책/즐겨찾기 캐시를 비운다.
 - 리더는 `ReaderContext`만 사용한다. 도달 불가능했던 개인 노트 후 독서방 선택 코드와 `_ShareRoomPicker`를 제거했다.
 - 초대코드 가입 API(`POST /api/reading-rooms/join`, `join-by-code`)는 `{ room, alreadyJoined }` envelope를 반환한다. `alreadyJoined`는 더 이상 일반 방 DTO의 필드가 아니다.
+- 생성·입장 성공 응답의 방 DTO는 독서방 목록에 즉시 immutable 반영하고, 삭제 성공 시 즉시 제거한다. 재조회는 revision으로 보호해 오래된 목록 응답이 최신 변경을 덮지 않는다.
+- 초대 코드는 클라이언트/서버 모두 공백·하이픈을 제거해 대문자 `XXXX-XXXX`로 정규화한다. `V20__normalize_reading_room_invite_codes.sql`은 DB의 대소문자 무시 unique index와 형식 제약을 추가한다. 코드 입장과 공개 방 입장은 방 행 비관적 잠금 안에서 정원/중복을 확인한다.
 
 ## 아직 완료해야 할 작업
 

@@ -35,6 +35,12 @@ migrate_working_dir/
 backend/.env
 backend/application-local.yml
 android/local.properties
+android/key.properties
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
 
 # Symbolication related
 app.*.symbols

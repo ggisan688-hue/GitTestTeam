@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8088"
+      PROFILE_UPLOAD_DIR: /var/lib/changebook/profiles
+    volumes:
+      - changebook_profiles:/var/lib/changebook/profiles
+    expose:
+      - "8088"
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file:
+      - .env.production
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  changebook_profiles:
+  caddy_data:
+  caddy_config:

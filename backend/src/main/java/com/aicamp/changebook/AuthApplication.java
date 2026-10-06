@@ -48,6 +48,8 @@ import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 import java.util.List;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 @SpringBootApplication
 public class AuthApplication {
@@ -58,14 +60,22 @@ public class AuthApplication {
   @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
   @Bean
-  CorsConfigurationSource corsConfigurationSource() {
+  CorsConfigurationSource corsConfigurationSource(
+      @Value("${app.cors.allowed-origin-patterns:}") String allowedOrigins) {
     CorsConfiguration configuration = new CorsConfiguration();
-    configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://10.0.2.2:*"));
-    configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+    configuration.setAllowedOriginPatterns(originPatterns(allowedOrigins));
+    configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
     configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+    configuration.setAllowCredentials(false);
+    configuration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/api/**", configuration);
     return source;
+  }
+
+  static List<String> originPatterns(String configured) {
+    return Arrays.stream(configured.split(","))
+        .map(String::trim).filter(value -> !value.isEmpty()).collect(Collectors.toList());
   }
 
   @Bean
@@ -74,6 +84,7 @@ public class AuthApplication {
         .cors(cors -> {})
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
             .requestMatchers("/api/auth/**").permitAll()
             .requestMatchers("/uploads/profiles/**").permitAll()
             .requestMatchers("/ws/**").permitAll()
