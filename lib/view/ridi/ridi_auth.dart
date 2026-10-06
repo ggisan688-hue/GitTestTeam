@@ -14,7 +14,7 @@ import '../../widgets/screen_tag.dart';
 /// 비밀번호 찾기 = POST /api/members/password-reset.
 
 /// 앱 로고·이름 + 아이디/비밀번호 + 로그인 · 회원가입 · 비밀번호 찾기.
-/// 맨 아래 "made by 이팀" 엠블렘(Hero 태그 RidiBrand.emblemHero).
+/// 맨 아래 "made by 2page" (팀 이름 = RidiBrand.teamName).
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -122,14 +122,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-            // 스플래시의 팀 엠블렘이 날아와 앉는 자리
+            // 맨 아래 팀 이름
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Hero(tag: RidiBrand.emblemHero, child: Image(image: AssetImage(RidiBrand.teamEmblem), width: 40, height: 40)),
-                const SizedBox(width: 10),
-                Text('made by ${RidiBrand.teamName}', style: RidiText.sub),
-              ]),
+              child: Text('made by ${RidiBrand.teamName}', style: RidiText.sub),
             ),
           ],
         ),

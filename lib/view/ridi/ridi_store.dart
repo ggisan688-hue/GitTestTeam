@@ -8,7 +8,7 @@ import '../../repository/ridi_auth_repository.dart';
 import '../../repository/user_profile_repository.dart';
 import 'ridi_data.dart';
 
-/// 책담의 메모리 저장소 — 모든 화면이 이 한 곳의 데이터를 보고 고친다 (Provider 로 주입, ridi_app.dart).
+/// 북체인의 메모리 저장소 — 모든 화면이 이 한 곳의 데이터를 보고 고친다 (Provider 로 주입, ridi_app.dart).
 ///
 /// 지금은 서버·DB 없이 폰 메모리에만 있고, 앱을 끄면 시드(_seed) 상태로 돌아간다.
 /// 서버 연결 시: 화면 코드는 그대로 두고 아래 메서드 "안쪽"만 API 호출로 바꾼다.

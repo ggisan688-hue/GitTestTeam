@@ -17,7 +17,7 @@ import 'ridi_store.dart';
 import 'ridi_theme.dart';
 import 'ridi_auth.dart';
 
-/// 책담 앱의 시작점 (main.dart → RidiApp).
+/// 북체인 앱의 시작점 (main.dart → RidiApp).
 ///
 /// 흐름: RidiGate → 로그인 전이면 LoginScreen, 로그인 후면 RidiShell(하단 탭 5개).
 /// RidiStore 하나를 Provider 로 앱 전체에 넣어 두고, 모든 화면이 context.watch / read 로 쓴다.

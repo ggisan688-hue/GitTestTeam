@@ -28,24 +28,19 @@ class RidiColors {
   static const textOnDark = Color(0xFFD9D9D9);
 }
 
-/// 앱 이름·로고·팀 엠블렘 (임시 — 이름과 로고는 확정 전)
+/// 앱 이름·로고·팀 이름
 class RidiBrand {
   RidiBrand._();
 
-  static const appName = '책담';
+  static const appName = '북체인';
   static const tagline = '함께 읽고, 같은 방에서 메모를 나눠요';
-  static const teamName = '이팀';
+  static const teamName = '2page';
 
   static const logo = 'assets/images/app_logo.png';
-  static const teamEmblem = 'assets/images/team_emblem.png';
-  static const teamMain = 'assets/images/team_main.webp';
 
-  /// 스플래시 배경 = 팀 대표 이미지 바탕색
+  /// 크림색 (홈 추천 카드 바탕)
   static const cream = Color(0xFFFEF9F1);
   static const navy = Color(0xFF253B5C);
-
-  static const emblemHero = 'team-emblem';
-  static const splashEmblem = 168.0;
 }
 
 /// 글자 스타일 — UI 는 Pretendard(f). 본문 장 제목만 세리프(NotoSerifKR, 뷰어에서 직접 지정)

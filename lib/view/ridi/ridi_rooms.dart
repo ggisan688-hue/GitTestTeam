@@ -1749,7 +1749,7 @@ class _OwnerRow extends StatelessWidget {
   }
 }
 
-/// 책담 스위치 (검은 트랙)
+/// 북체인 스위치 (검은 트랙)
 class _RidiSwitch extends StatelessWidget {
   const _RidiSwitch({required this.value, required this.onChanged});
 
