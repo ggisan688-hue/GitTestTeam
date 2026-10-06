@@ -35,24 +35,36 @@ class Memo {
   bool get isInk => kind == 'ink';
 
   factory Memo.fromJson(Map<String, dynamic> json) => Memo(
-        id: json['id'] as int,
-        chapter: json['chapter'] as int,
-        lineNo: json['lineNo'] as int,
-        text: json['text'] as String? ?? '',
-        memberId: json['memberId'] as int?,
-        author: json['author'] as String? ?? '나',
-        mine: json['mine'] as bool? ?? true,
-        ai: json['ai'] as bool? ?? false,
-        spoiler: json['spoiler'] as bool? ?? false,
-        commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        kind: json['kind'] as String? ?? 'text',
-        ink: InkMemo.fromJson(json['lineNo'] as int, json['ink']),
-      );
+    id: json['id'] as int,
+    chapter: json['chapter'] as int,
+    lineNo: json['lineNo'] as int,
+    text: json['text'] as String? ?? '',
+    memberId: json['memberId'] as int?,
+    author: json['author'] as String? ?? '나',
+    mine: json['mine'] as bool? ?? true,
+    ai: json['ai'] as bool? ?? false,
+    spoiler: json['spoiler'] as bool? ?? false,
+    commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    kind: json['kind'] as String? ?? 'text',
+    ink: InkMemo.fromJson(json['lineNo'] as int, json['ink']),
+  );
 
   Memo copyWith({int? commentCount}) => Memo(
-        id: id, chapter: chapter, lineNo: lineNo, text: text, author: author, mine: mine, spoiler: spoiler,
-        createdAt: createdAt, memberId: memberId, kind: kind, ink: ink, ai: ai, commentCount: commentCount ?? this.commentCount);
+    id: id,
+    chapter: chapter,
+    lineNo: lineNo,
+    text: text,
+    author: author,
+    mine: mine,
+    spoiler: spoiler,
+    createdAt: createdAt,
+    memberId: memberId,
+    kind: kind,
+    ink: ink,
+    ai: ai,
+    commentCount: commentCount ?? this.commentCount,
+  );
 
   /// "오후 2:10" 형식
   String get timeLabel {

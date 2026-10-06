@@ -27,12 +27,16 @@ class RoomViewModel extends ChangeNotifier {
   String? errorMessage;
 
   Book? bookOf(int id) => catalog.where((b) => b.id == id).firstOrNull;
-  Persona? personaOf(int? memberId) => memberId == null ? null : personas.where((p) => p.memberId == memberId).firstOrNull;
-  List<Book> booksOf(Room r) => r.bookIds.map(bookOf).whereType<Book>().toList();
+  Persona? personaOf(int? memberId) => memberId == null
+      ? null
+      : personas.where((p) => p.memberId == memberId).firstOrNull;
+  List<Book> booksOf(Room r) =>
+      r.bookIds.map(bookOf).whereType<Book>().toList();
   Persona? personaIn(Room r) => personaOf(r.personaMemberId);
 
   /// 이어 읽을 책: 마지막에 연 책, 없으면 첫 책
-  Book? continueBookOf(Room r) => bookOf(r.lastBookId ?? -1) ?? booksOf(r).firstOrNull;
+  Book? continueBookOf(Room r) =>
+      bookOf(r.lastBookId ?? -1) ?? booksOf(r).firstOrNull;
 
   /// 로그인 사용자 기준으로 목록을 읽는다
   Future<void> load({required int memberId, required String memberName}) async {
@@ -45,7 +49,8 @@ class RoomViewModel extends ChangeNotifier {
       rooms = await _store.list(memberId);
       catalog = await _books.books();
       personas = await _friends.personas();
-      if (current != null) current = rooms.where((r) => r.id == current!.id).firstOrNull;
+      if (current != null)
+        current = rooms.where((r) => r.id == current!.id).firstOrNull;
     } on ApiException catch (e) {
       errorMessage = e.message;
     } finally {
@@ -59,14 +64,26 @@ class RoomViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Room?> create({required String name, required List<int> bookIds, Persona? persona}) async {
+  Future<Room?> create({
+    required String name,
+    required List<int> bookIds,
+    Persona? persona,
+  }) async {
     final id = _memberId;
     if (id == null || name.trim().isEmpty) return null;
-    final room = await _store.create(id,
-        name: name,
-        memberName: _memberName,
-        bookIds: bookIds,
-        persona: persona == null ? null : RoomMember(memberId: persona.memberId, name: '${persona.avatar} ${persona.name}', ai: true));
+    final room = await _store.create(
+      id,
+      name: name,
+      memberName: _memberName,
+      bookIds: bookIds,
+      persona: persona == null
+          ? null
+          : RoomMember(
+              memberId: persona.memberId,
+              name: '${persona.avatar} ${persona.name}',
+              ai: true,
+            ),
+    );
     rooms = [room, ...rooms];
     current = room;
     notifyListeners();
@@ -94,18 +111,37 @@ class RoomViewModel extends ChangeNotifier {
   }
 
   Future<void> addBooks(Room room, List<int> bookIds) async {
-    final merged = [...room.bookIds, ...bookIds.where((b) => !room.bookIds.contains(b))];
+    final merged = [
+      ...room.bookIds,
+      ...bookIds.where((b) => !room.bookIds.contains(b)),
+    ];
     await _update(room.copyWith(bookIds: merged));
   }
 
-  Future<void> removeBook(Room room, int bookId) => _update(room.copyWith(bookIds: room.bookIds.where((b) => b != bookId).toList()));
+  Future<void> removeBook(Room room, int bookId) => _update(
+    room.copyWith(bookIds: room.bookIds.where((b) => b != bookId).toList()),
+  );
 
-  Future<void> rename(Room room, String name) => _update(room.copyWith(name: name.trim()));
+  Future<void> rename(Room room, String name) =>
+      _update(room.copyWith(name: name.trim()));
 
   Future<void> setPersona(Room room, Persona? persona) async {
     final members = room.members.where((m) => !m.ai).toList();
-    if (persona != null) members.add(RoomMember(memberId: persona.memberId, name: '${persona.avatar} ${persona.name}', ai: true));
-    await _update(room.copyWith(members: members, personaMemberId: persona?.memberId, clearPersona: persona == null));
+    if (persona != null)
+      members.add(
+        RoomMember(
+          memberId: persona.memberId,
+          name: '${persona.avatar} ${persona.name}',
+          ai: true,
+        ),
+      );
+    await _update(
+      room.copyWith(
+        members: members,
+        personaMemberId: persona?.memberId,
+        clearPersona: persona == null,
+      ),
+    );
     if (persona != null) await _syncPersona(persona.memberId);
   }
 

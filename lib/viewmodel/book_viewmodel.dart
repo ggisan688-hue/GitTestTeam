@@ -36,7 +36,9 @@ class BookViewModel extends ChangeNotifier {
       books = await _repository.books();
       state = books.isEmpty ? BookLoadState.empty : BookLoadState.success;
     } on ApiException catch (e) {
-      state = (e.statusCode == null || e.statusCode! >= 500) ? BookLoadState.networkError : BookLoadState.serverError;
+      state = (e.statusCode == null || e.statusCode! >= 500)
+          ? BookLoadState.networkError
+          : BookLoadState.serverError;
       errorMessage = e.message;
     } catch (_) {
       state = BookLoadState.networkError;
@@ -53,7 +55,9 @@ class BookViewModel extends ChangeNotifier {
       selectedBook = await _repository.book(bookId);
       state = BookLoadState.success;
     } on ApiException catch (e) {
-      state = (e.statusCode == null || e.statusCode! >= 500) ? BookLoadState.networkError : BookLoadState.serverError;
+      state = (e.statusCode == null || e.statusCode! >= 500)
+          ? BookLoadState.networkError
+          : BookLoadState.serverError;
       errorMessage = e.message;
     } catch (_) {
       state = BookLoadState.networkError;
@@ -90,7 +94,10 @@ class BookViewModel extends ChangeNotifier {
     try {
       final result = await Future.wait<Object>([
         _repository.content(bookId),
-        _repository.readingProgress(bookId), _repository.readerChapters(bookId), _repository.readingNotes(bookId), _repository.readerSettings(),
+        _repository.readingProgress(bookId),
+        _repository.readerChapters(bookId),
+        _repository.readingNotes(bookId),
+        _repository.readerSettings(),
       ]);
       content = result[0] as BookContent;
       readingProgress = result[1] as ReadingProgress;
@@ -130,20 +137,74 @@ class BookViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addNote(int bookId, ReaderNoteType type, int paragraphOrder, {String? memo, String? selectedText, int? startOffset, int? endOffset, String? color}) async {
-    await _repository.addReadingNote(bookId, type: type, paragraphOrder: paragraphOrder, memoContent: memo, selectedText: selectedText, startOffset: startOffset, endOffset: endOffset, highlightColor: color);
+  Future<void> addNote(
+    int bookId,
+    ReaderNoteType type,
+    int paragraphOrder, {
+    String? memo,
+    String? selectedText,
+    int? startOffset,
+    int? endOffset,
+    String? color,
+  }) async {
+    await _repository.addReadingNote(
+      bookId,
+      type: type,
+      paragraphOrder: paragraphOrder,
+      memoContent: memo,
+      selectedText: selectedText,
+      startOffset: startOffset,
+      endOffset: endOffset,
+      highlightColor: color,
+    );
     if (_isDisposed) return;
     await loadReadingNotes(bookId);
-    if (type == ReaderNoteType.memo) { statsRevision++; notifyListeners(); }
+    if (type == ReaderNoteType.memo) {
+      statsRevision++;
+      notifyListeners();
+    }
   }
-  Future<void> updateNote(int bookId,int noteId,{String? memo,String? color}) async { await _repository.updateReadingNote(bookId,noteId,memoContent:memo,highlightColor:color);await loadReadingNotes(bookId); }
-  Future<void> deleteNote(int bookId,int noteId) async { final wasMemo=readingNotes.any((n)=>n.id==noteId&&n.type==ReaderNoteType.memo);await _repository.deleteReadingNote(bookId,noteId);await loadReadingNotes(bookId);if(wasMemo){statsRevision++;notifyListeners();} }
-  Future<int> deleteNotes(int bookId, {ReaderNoteType? type}) async { final count=await _repository.deleteReadingNotes(bookId,type:type);await loadReadingNotes(bookId);return count; }
+
+  Future<void> updateNote(
+    int bookId,
+    int noteId, {
+    String? memo,
+    String? color,
+  }) async {
+    await _repository.updateReadingNote(
+      bookId,
+      noteId,
+      memoContent: memo,
+      highlightColor: color,
+    );
+    await loadReadingNotes(bookId);
+  }
+
+  Future<void> deleteNote(int bookId, int noteId) async {
+    final wasMemo = readingNotes.any(
+      (n) => n.id == noteId && n.type == ReaderNoteType.memo,
+    );
+    await _repository.deleteReadingNote(bookId, noteId);
+    await loadReadingNotes(bookId);
+    if (wasMemo) {
+      statsRevision++;
+      notifyListeners();
+    }
+  }
+
+  Future<int> deleteNotes(int bookId, {ReaderNoteType? type}) async {
+    final count = await _repository.deleteReadingNotes(bookId, type: type);
+    await loadReadingNotes(bookId);
+    return count;
+  }
+
   Future<void> saveSettings(ReaderSettings settings) async {
     final previous = readerSettings;
     readerSettings = settings;
     notifyListeners();
-    final operation = _readerSettingsSaveTail.catchError((_) {}).then((_) async {
+    final operation = _readerSettingsSaveTail.catchError((_) {}).then((
+      _,
+    ) async {
       try {
         final saved = await _repository.saveReaderSettings(settings);
         // A later tap is already displayed optimistically; do not let an old
@@ -172,8 +233,16 @@ class BookViewModel extends ChangeNotifier {
     // indexes, so progress survives pagination and typography changes.
     final percent = ((position / total) * 100).round().clamp(0, 100).toInt();
     try {
-      await _repository.recordReading(bookId, progressPercent: percent, lastReadPosition: position);
-      readingProgress = ReadingProgress(bookId: bookId, progressPercent: percent, lastReadPosition: position);
+      await _repository.recordReading(
+        bookId,
+        progressPercent: percent,
+        lastReadPosition: position,
+      );
+      readingProgress = ReadingProgress(
+        bookId: bookId,
+        progressPercent: percent,
+        lastReadPosition: position,
+      );
       statsRevision++;
       await loadRecentBooks();
     } on ApiException catch (e) {

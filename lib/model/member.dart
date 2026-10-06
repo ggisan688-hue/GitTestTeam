@@ -17,11 +17,11 @@ class Member {
   final int? aiPersonaId;
 
   factory Member.fromJson(Map<String, dynamic> json) => Member(
-        id: json['id'] as int,
-        email: json['email'] as String,
-        username: json['username'] as String,
-        name: json['name'] as String,
-        friendCode: json['friendCode'] as String?,
-        aiPersonaId: json['aiPersonaId'] as int?,
-      );
+    id: json['id'] as int,
+    email: json['email'] as String,
+    username: json['username'] as String,
+    name: json['name'] as String,
+    friendCode: json['friendCode'] as String?,
+    aiPersonaId: json['aiPersonaId'] as int?,
+  );
 }

@@ -64,33 +64,112 @@ class AppText {
 
   static const _fallback = ['Pretendard', 'Noto Sans KR', 'sans-serif'];
 
-  static const display = TextStyle(fontFamily: ui, fontSize: 28, fontWeight: FontWeight.w700, height: 1.25, letterSpacing: -0.4, color: AppColors.ink);
-  static const title = TextStyle(fontFamily: ui, fontSize: 20, fontWeight: FontWeight.w600, height: 1.3, letterSpacing: -0.2, color: AppColors.ink);
-  static const heading = TextStyle(fontFamily: ui, fontSize: 16, fontWeight: FontWeight.w600, height: 1.4, color: AppColors.ink);
-  static const body = TextStyle(fontFamily: ui, fontSize: 16, fontWeight: FontWeight.w400, height: 1.55, color: AppColors.ink);
-  static const label = TextStyle(fontFamily: ui, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4, color: AppColors.ink);
-  static const caption = TextStyle(fontFamily: ui, fontSize: 12, fontWeight: FontWeight.w400, height: 1.4, color: AppColors.muted);
-  static const micro = TextStyle(fontFamily: ui, fontSize: 11, fontWeight: FontWeight.w400, height: 1.3, color: AppColors.muted);
+  static const display = TextStyle(
+    fontFamily: ui,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+    letterSpacing: -0.4,
+    color: AppColors.ink,
+  );
+  static const title = TextStyle(
+    fontFamily: ui,
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    letterSpacing: -0.2,
+    color: AppColors.ink,
+  );
+  static const heading = TextStyle(
+    fontFamily: ui,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.4,
+    color: AppColors.ink,
+  );
+  static const body = TextStyle(
+    fontFamily: ui,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    height: 1.55,
+    color: AppColors.ink,
+  );
+  static const label = TextStyle(
+    fontFamily: ui,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    height: 1.4,
+    color: AppColors.ink,
+  );
+  static const caption = TextStyle(
+    fontFamily: ui,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    color: AppColors.muted,
+  );
+  static const micro = TextStyle(
+    fontFamily: ui,
+    fontSize: 11,
+    fontWeight: FontWeight.w400,
+    height: 1.3,
+    color: AppColors.muted,
+  );
 
   /// 자주 쓰는 변형
-  static const bodyMuted = TextStyle(fontFamily: ui, fontSize: 16, fontWeight: FontWeight.w400, height: 1.55, color: AppColors.muted);
-  static const labelMuted = TextStyle(fontFamily: ui, fontSize: 14, fontWeight: FontWeight.w400, height: 1.4, color: AppColors.muted);
-  static const labelAccent = TextStyle(fontFamily: ui, fontSize: 14, fontWeight: FontWeight.w600, height: 1.4, color: AppColors.accentText);
-  static const captionAccent = TextStyle(fontFamily: ui, fontSize: 12, fontWeight: FontWeight.w500, height: 1.4, color: AppColors.accentText);
-  static const error = TextStyle(fontFamily: ui, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4, color: AppColors.accentText);
+  static const bodyMuted = TextStyle(
+    fontFamily: ui,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    height: 1.55,
+    color: AppColors.muted,
+  );
+  static const labelMuted = TextStyle(
+    fontFamily: ui,
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    color: AppColors.muted,
+  );
+  static const labelAccent = TextStyle(
+    fontFamily: ui,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.4,
+    color: AppColors.accentText,
+  );
+  static const captionAccent = TextStyle(
+    fontFamily: ui,
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    height: 1.4,
+    color: AppColors.accentText,
+  );
+  static const error = TextStyle(
+    fontFamily: ui,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    height: 1.4,
+    color: AppColors.accentText,
+  );
 
   /// 본문 읽기용 세리프. 기본 18px / 행간 1.8 / 굵기 500 (RESEARCH_eye_comfort.md 4절)
-  static TextStyle reading({double size = 18, double height = 1.8, Color color = AppColors.ink}) => TextStyle(
-        fontFamily: serif,
-        fontFamilyFallback: _fallback,
-        fontSize: size,
-        height: height,
-        fontWeight: FontWeight.w500,
-        color: color,
-      );
+  static TextStyle reading({
+    double size = 18,
+    double height = 1.8,
+    Color color = AppColors.ink,
+  }) => TextStyle(
+    fontFamily: serif,
+    fontFamilyFallback: _fallback,
+    fontSize: size,
+    height: height,
+    fontWeight: FontWeight.w500,
+    color: color,
+  );
 
   /// 인용된 본문(선택한 문장 등): 세리프, 조금 작게
-  static TextStyle quote({double size = 16}) => reading(size: size, height: 1.65);
+  static TextStyle quote({double size = 16}) =>
+      reading(size: size, height: 1.65);
 }
 
 class AppTheme {
@@ -127,7 +206,10 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: text.apply(bodyColor: AppColors.ink, displayColor: AppColors.ink),
+      textTheme: text.apply(
+        bodyColor: AppColors.ink,
+        displayColor: AppColors.ink,
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.bg,
         foregroundColor: AppColors.ink,
@@ -143,11 +225,18 @@ class AppTheme {
           foregroundColor: AppColors.ink,
         ),
       ),
-      dividerTheme: const DividerThemeData(color: AppColors.line, thickness: 1, space: 1),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.line,
+        thickness: 1,
+        space: 1,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.sceneBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.lg,
+          vertical: AppSpace.md,
+        ),
         hintStyle: AppText.labelMuted,
         labelStyle: AppText.labelMuted,
         helperStyle: AppText.caption,
@@ -161,10 +250,18 @@ class AppTheme {
           backgroundColor: AppColors.accent,
           foregroundColor: Colors.white,
           disabledBackgroundColor: AppColors.accentDisabled,
-          textStyle: AppText.label.copyWith(fontWeight: FontWeight.w600, fontSize: 15),
+          textStyle: AppText.label.copyWith(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
           minimumSize: const Size(AppSpace.touch, AppSpace.touch + 4),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpace.xl, vertical: AppSpace.md),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusControl)),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.xl,
+            vertical: AppSpace.md,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusControl),
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -176,13 +273,23 @@ class AppTheme {
         ),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : AppColors.muted),
-        trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? AppColors.accent : AppColors.line),
+        thumbColor: WidgetStateProperty.resolveWith(
+          (s) =>
+              s.contains(WidgetState.selected) ? Colors.white : AppColors.muted,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected)
+              ? AppColors.accent
+              : AppColors.line,
+        ),
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
       tooltipTheme: TooltipThemeData(
         textStyle: AppText.caption.copyWith(color: Colors.white),
-        decoration: BoxDecoration(color: AppColors.toast, borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(
+          color: AppColors.toast,
+          borderRadius: BorderRadius.circular(8),
+        ),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.toast,
@@ -193,7 +300,8 @@ class AppTheme {
     );
   }
 
-  static OutlineInputBorder _border(Color color, {double width = 1}) => OutlineInputBorder(
+  static OutlineInputBorder _border(Color color, {double width = 1}) =>
+      OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusControl),
         borderSide: BorderSide(color: color, width: width),
       );

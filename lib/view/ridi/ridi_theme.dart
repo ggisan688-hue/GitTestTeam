@@ -16,10 +16,22 @@ class RidiColors {
   static const pillBlack = Color(0xFF111111);
 
   /// 형광펜 5색 (독서노트 색 필터와 같은 순서)
-  static const penColors = [Color(0xFFE2CB5C), Color(0xFFA9CB5C), Color(0xFFBB8CD4), Color(0xFF7FBBE6), Color(0xFFE08A93)];
+  static const penColors = [
+    Color(0xFFE2CB5C),
+    Color(0xFFA9CB5C),
+    Color(0xFFBB8CD4),
+    Color(0xFF7FBBE6),
+    Color(0xFFE08A93),
+  ];
 
   /// 밑줄 5색 — 형광펜 5색의 진한 버전 (글자 아래 선이라 옅으면 안 보인다). 순서는 penColors 와 같다
-  static const penLines = [Color(0xFFC9A800), Color(0xFF6E9E1F), Color(0xFF8E4FB5), Color(0xFF2F86D1), Color(0xFFD2505E)];
+  static const penLines = [
+    Color(0xFFC9A800),
+    Color(0xFF6E9E1F),
+    Color(0xFF8E4FB5),
+    Color(0xFF2F86D1),
+    Color(0xFFD2505E),
+  ];
 
   /// 읽기 테마 — 종이색 / 어두운 테마 글자색
   static const paperLight = Color(0xFFFFFFFF);
@@ -50,43 +62,99 @@ class RidiText {
   static const f = 'Pretendard';
   static const koreanFallback = <String>['Noto Sans KR', 'sans-serif'];
 
-  static const title = TextStyle(fontFamily: f, fontSize: 18, fontWeight: FontWeight.w700, color: RidiColors.ink);
-  static const heading = TextStyle(fontFamily: f, fontSize: 16, fontWeight: FontWeight.w700, color: RidiColors.ink);
-  static const body = TextStyle(fontFamily: f, fontSize: 15, fontWeight: FontWeight.w400, color: RidiColors.text, height: 1.4);
-  static const bodyBold = TextStyle(fontFamily: f, fontSize: 15, fontWeight: FontWeight.w700, color: RidiColors.ink, height: 1.4);
-  static const sub = TextStyle(fontFamily: f, fontSize: 13, fontWeight: FontWeight.w400, color: RidiColors.gray, height: 1.4);
-  static const tab = TextStyle(fontFamily: f, fontSize: 15, fontWeight: FontWeight.w500, color: RidiColors.gray);
-  static const tabOn = TextStyle(fontFamily: f, fontSize: 15, fontWeight: FontWeight.w700, color: RidiColors.ink);
-  static const nav = TextStyle(fontFamily: f, fontSize: 11, fontWeight: FontWeight.w500, color: RidiColors.gray);
-  static const navOn = TextStyle(fontFamily: f, fontSize: 11, fontWeight: FontWeight.w700, color: RidiColors.ink);
+  static const title = TextStyle(
+    fontFamily: f,
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    color: RidiColors.ink,
+  );
+  static const heading = TextStyle(
+    fontFamily: f,
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    color: RidiColors.ink,
+  );
+  static const body = TextStyle(
+    fontFamily: f,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    color: RidiColors.text,
+    height: 1.4,
+  );
+  static const bodyBold = TextStyle(
+    fontFamily: f,
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    color: RidiColors.ink,
+    height: 1.4,
+  );
+  static const sub = TextStyle(
+    fontFamily: f,
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    color: RidiColors.gray,
+    height: 1.4,
+  );
+  static const tab = TextStyle(
+    fontFamily: f,
+    fontSize: 15,
+    fontWeight: FontWeight.w500,
+    color: RidiColors.gray,
+  );
+  static const tabOn = TextStyle(
+    fontFamily: f,
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    color: RidiColors.ink,
+  );
+  static const nav = TextStyle(
+    fontFamily: f,
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    color: RidiColors.gray,
+  );
+  static const navOn = TextStyle(
+    fontFamily: f,
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    color: RidiColors.ink,
+  );
 }
 
 /// 앱 전체 테마 (흰 바탕 · 리디 파랑 · Pretendard). ridi_app.dart 의 MaterialApp 에서 쓴다
 ThemeData ridiTheme() => ThemeData(
-      useMaterial3: true,
+  useMaterial3: true,
+  fontFamily: RidiText.f,
+  scaffoldBackgroundColor: RidiColors.bg,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: RidiColors.blue,
+    primary: RidiColors.blue,
+    surface: RidiColors.bg,
+    onSurface: RidiColors.ink,
+  ),
+  appBarTheme: const AppBarTheme(
+    backgroundColor: RidiColors.bg,
+    foregroundColor: RidiColors.ink,
+    elevation: 0,
+    scrolledUnderElevation: 0,
+    centerTitle: true,
+    toolbarHeight: 56,
+    titleTextStyle: RidiText.title,
+  ),
+  dividerTheme: const DividerThemeData(
+    color: RidiColors.grayLight,
+    thickness: 1,
+    space: 1,
+  ),
+  snackBarTheme: SnackBarThemeData(
+    backgroundColor: const Color(0xFF2B2B2B),
+    behavior: SnackBarBehavior.floating,
+    width: 420,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    contentTextStyle: const TextStyle(
       fontFamily: RidiText.f,
-      scaffoldBackgroundColor: RidiColors.bg,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: RidiColors.blue,
-        primary: RidiColors.blue,
-        surface: RidiColors.bg,
-        onSurface: RidiColors.ink,
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: RidiColors.bg,
-        foregroundColor: RidiColors.ink,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: true,
-        toolbarHeight: 56,
-        titleTextStyle: RidiText.title,
-      ),
-      dividerTheme: const DividerThemeData(color: RidiColors.grayLight, thickness: 1, space: 1),
-      snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF2B2B2B),
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        contentTextStyle: const TextStyle(fontFamily: RidiText.f, fontSize: 14, color: Colors.white),
-      ),
-    );
+      fontSize: 14,
+      color: Colors.white,
+    ),
+  ),
+);

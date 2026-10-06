@@ -35,8 +35,12 @@ class AiRepository {
     required int bookId,
     required int chapter,
     int? lineNo,
-  }) =>
-      _assist({'mode': mode.value, 'bookId': bookId, 'chapter': chapter, 'lineNo': lineNo});
+  }) => _assist({
+    'mode': mode.value,
+    'bookId': bookId,
+    'chapter': chapter,
+    'lineNo': lineNo,
+  });
 
   /// 선택 문장을 두고 자유롭게 물어보기
   Future<AiAnswer> chat({
@@ -44,8 +48,13 @@ class AiRepository {
     required int chapter,
     int? lineNo,
     required String question,
-  }) =>
-      _assist({'mode': 'chat', 'bookId': bookId, 'chapter': chapter, 'lineNo': lineNo, 'question': question});
+  }) => _assist({
+    'mode': 'chat',
+    'bookId': bookId,
+    'chapter': chapter,
+    'lineNo': lineNo,
+    'question': question,
+  });
 
   Future<AiAnswer> _assist(Map<String, dynamic> body) async {
     final res = await _api.post<AiAnswer>(

@@ -21,7 +21,7 @@ class ReadingRoomRepository {
     return response.data ?? const [];
   }
 
-  /// Authenticated user's rooms only.  Unlike [list], this never includes a
+  /// Authenticated user's rooms only. Unlike [list], this never includes a
   /// public room the user has not joined.
   Future<List<ReadingRoom>> myRooms() async {
     final response = await _api.get<List<ReadingRoom>>(
@@ -51,13 +51,45 @@ class ReadingRoomRepository {
   }
 
   Future<ReadingRoomJoinResult> join(String code) async {
-    final response = await _api.post<ReadingRoomJoinResult>(
-      '/api/reading-rooms/join-by-code',
-      body: {'inviteCode': normalizeInviteCode(code)},
-      parse: (json) =>
-          ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
-    );
-    return response.data!;
+    final inviteCode = normalizeInviteCode(code);
+
+    print('[ReadingRoom Join] 입력 코드: $code');
+    print('[ReadingRoom Join] 정규화 코드: $inviteCode');
+
+    try {
+      final response = await _api.post<ReadingRoomJoinResult>(
+        '/api/reading-rooms/join-by-code',
+        body: {'inviteCode': inviteCode},
+        parse: (json) {
+          print('[ReadingRoom Join] 서버 원본 응답: $json');
+
+          final result = ReadingRoomJoinResult.fromJson(
+            json as Map<String, dynamic>,
+          );
+
+          print(
+            '[ReadingRoom Join] 파싱 성공: '
+            'roomId=${result.room.id}, '
+            'roomName=${result.room.name}, '
+            'alreadyJoined=${result.alreadyJoined}',
+          );
+
+          return result;
+        },
+      );
+
+      print(
+        '[ReadingRoom Join] API 완료: '
+        'message=${response.message}, '
+        'hasData=${response.data != null}',
+      );
+
+      return response.data!;
+    } catch (e, stackTrace) {
+      print('[ReadingRoom Join] 실패: $e');
+      print('[ReadingRoom Join] StackTrace:\n$stackTrace');
+      rethrow;
+    }
   }
 
   /// Codes are displayed as XXXX-XXXX, but accepting copied values without a
@@ -68,6 +100,7 @@ class ReadingRoomRepository {
         .trim()
         .replaceAll(RegExp(r'[\s\u00A0\u2000-\u200B\u202F\u205F\u3000-]+'), '')
         .toUpperCase();
+
     return compact.length == 8
         ? '${compact.substring(0, 4)}-${compact.substring(4)}'
         : compact;
@@ -106,6 +139,7 @@ class ReadingRoomRepository {
             .toList(),
       )).data ??
       const [];
+
   Future<SharedRoomNote> createSharedNote(
     int roomId,
     Map<String, dynamic> body,
@@ -114,8 +148,10 @@ class ReadingRoomRepository {
     body: body,
     parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
   )).data!;
+
   Future<void> deleteSharedNote(int roomId, int noteId) =>
       _api.delete('/api/reading-rooms/$roomId/shared-notes/$noteId');
+
   Future<List<SharedRoomNoteComment>> sharedNoteComments(
     int roomId,
     int noteId,
@@ -129,6 +165,7 @@ class ReadingRoomRepository {
             .toList(),
       )).data ??
       const [];
+
   Future<SharedRoomNoteComment> addSharedNoteComment(
     int roomId,
     int noteId,
@@ -139,6 +176,7 @@ class ReadingRoomRepository {
     parse: (json) =>
         SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
   )).data!;
+
   Future<void> deleteSharedNoteComment(int roomId, int noteId, int commentId) =>
       _api.delete(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',

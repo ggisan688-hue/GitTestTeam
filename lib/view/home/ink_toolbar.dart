@@ -29,31 +29,57 @@ class InkToolbar extends StatelessWidget {
           if (on) ...[
             const SizedBox(width: AppSpace.sm),
             for (final c in inkColors)
-              _ColorDot(color: Color(c), active: !vm.eraser && vm.penColor == c, onTap: () => vm.setPenColor(c)),
+              _ColorDot(
+                color: Color(c),
+                active: !vm.eraser && vm.penColor == c,
+                onTap: () => vm.setPenColor(c),
+              ),
             const SizedBox(width: AppSpace.sm),
-            _WidthPicker(step: inkStepFor(vm.penWidth), onChanged: (s) => vm.setPenWidth(inkWidthFor(s))),
+            _WidthPicker(
+              step: inkStepFor(vm.penWidth),
+              onChanged: (s) => vm.setPenWidth(inkWidthFor(s)),
+            ),
             const SizedBox(width: AppSpace.sm),
-            _Tool(icon: Icons.auto_fix_off_outlined, label: '지우개', active: vm.eraser, onTap: () => vm.setEraser(!vm.eraser)),
-            _Tool(icon: Icons.undo, label: '실행취소', active: false, onTap: vm.canUndoInk ? vm.undoInk : null),
+            _Tool(
+              icon: Icons.auto_fix_off_outlined,
+              label: '지우개',
+              active: vm.eraser,
+              onTap: () => vm.setEraser(!vm.eraser),
+            ),
+            _Tool(
+              icon: Icons.undo,
+              label: '실행취소',
+              active: false,
+              onTap: vm.canUndoInk ? vm.undoInk : null,
+            ),
           ],
           const Spacer(),
           if (vm.maskedSharedCount > 0)
             Tooltip(
-              message: '읽는 지점보다 뒤 문장에 친구가 남긴 메모예요. 본문에서 그 문장을 눌러 읽는 지점을 옮기면 보여요.',
+              message:
+                  '읽는 지점보다 뒤 문장에 친구가 남긴 메모예요. 본문에서 그 문장을 눌러 읽는 지점을 옮기면 보여요.',
               child: Padding(
                 padding: const EdgeInsets.only(right: AppSpace.sm),
-                child: StatusBadge('친구 메모 ${vm.maskedSharedCount}개 잠김', tone: StatusTone.locked, icon: Icons.lock_outline),
+                child: StatusBadge(
+                  '친구 메모 ${vm.maskedSharedCount}개 잠김',
+                  tone: StatusTone.locked,
+                  icon: Icons.lock_outline,
+                ),
               ),
             ),
           _Tool(
-            icon: vm.showMyInk ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            icon: vm.showMyInk
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
             label: '내 글씨',
             active: vm.showMyInk,
             onTap: vm.toggleMyInk,
             compact: true,
           ),
           _Tool(
-            icon: vm.showSharedInk ? Icons.people_alt_outlined : Icons.people_outline,
+            icon: vm.showSharedInk
+                ? Icons.people_alt_outlined
+                : Icons.people_outline,
             label: '멤버 글씨',
             active: vm.showSharedInk,
             onTap: vm.toggleSharedInk,
@@ -66,7 +92,13 @@ class InkToolbar extends StatelessWidget {
 }
 
 class _Tool extends StatelessWidget {
-  const _Tool({required this.icon, required this.label, required this.active, required this.onTap, this.compact = false});
+  const _Tool({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.compact = false,
+  });
 
   final IconData icon;
   final String label;
@@ -76,7 +108,11 @@ class _Tool extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = onTap == null ? AppColors.line : active ? AppColors.accentText : AppColors.muted;
+    final fg = onTap == null
+        ? AppColors.line
+        : active
+        ? AppColors.accentText
+        : AppColors.muted;
     return Tooltip(
       message: label,
       child: Material(
@@ -86,8 +122,13 @@ class _Tool extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppTheme.radiusControl),
           child: Container(
-            constraints: const BoxConstraints(minHeight: AppSpace.touch - 4, minWidth: AppSpace.touch - 4),
-            padding: EdgeInsets.symmetric(horizontal: compact ? AppSpace.sm : AppSpace.md),
+            constraints: const BoxConstraints(
+              minHeight: AppSpace.touch - 4,
+              minWidth: AppSpace.touch - 4,
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? AppSpace.sm : AppSpace.md,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -106,7 +147,11 @@ class _Tool extends StatelessWidget {
 }
 
 class _ColorDot extends StatelessWidget {
-  const _ColorDot({required this.color, required this.active, required this.onTap});
+  const _ColorDot({
+    required this.color,
+    required this.active,
+    required this.onTap,
+  });
 
   final Color color;
   final bool active;
@@ -124,9 +169,16 @@ class _ColorDot extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: active ? AppColors.ink : Colors.transparent, width: 1.5),
+          border: Border.all(
+            color: active ? AppColors.ink : Colors.transparent,
+            width: 1.5,
+          ),
         ),
-        child: Container(width: 18, height: 18, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        child: Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
       ),
     );
   }
@@ -157,7 +209,10 @@ class _WidthPicker extends StatelessWidget {
               child: Container(
                 width: 6.0 + i * 4,
                 height: 6.0 + i * 4,
-                decoration: const BoxDecoration(color: AppColors.ink, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: AppColors.ink,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),

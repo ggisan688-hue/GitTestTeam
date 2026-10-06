@@ -50,7 +50,9 @@ class _LineMemoScreenState extends State<LineMemoScreen> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ReadingViewModel>();
-    final line = vm.chapter?.lines.where((l) => l.lineNo == widget.lineNo).firstOrNull;
+    final line = vm.chapter?.lines
+        .where((l) => l.lineNo == widget.lineNo)
+        .firstOrNull;
     final memos = vm.memosOf(widget.lineNo);
     final shared = vm.sharedOf(widget.lineNo);
     final spoiler = vm.isSpoiler(widget.lineNo);
@@ -67,17 +69,32 @@ class _LineMemoScreenState extends State<LineMemoScreen> {
             children: [
               Row(
                 children: [
-                  StatusBadge(spoiler ? '아직 읽지 않은 구간' : '읽은 구간',
-                      tone: spoiler ? StatusTone.locked : StatusTone.success, icon: spoiler ? Icons.lock_outline : Icons.check_rounded),
+                  StatusBadge(
+                    spoiler ? '아직 읽지 않은 구간' : '읽은 구간',
+                    tone: spoiler ? StatusTone.locked : StatusTone.success,
+                    icon: spoiler ? Icons.lock_outline : Icons.check_rounded,
+                  ),
                   const Spacer(),
-                  AppButton('AI에게 물어보기', icon: Icons.smart_toy_outlined, onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => AiAssistScreen(initialMode: AiMode.explain, lineNo: widget.lineNo)),
-                      )),
+                  AppButton(
+                    'AI에게 물어보기',
+                    icon: Icons.smart_toy_outlined,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => AiAssistScreen(
+                          initialMode: AiMode.explain,
+                          lineNo: widget.lineNo,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpace.lg),
               AppCard.flat(
-                child: Text(line?.text ?? '', style: AppText.reading(size: 17, height: 1.7)),
+                child: Text(
+                  line?.text ?? '',
+                  style: AppText.reading(size: 17, height: 1.7),
+                ),
               ),
             ],
           ),
@@ -100,7 +117,9 @@ class _LineMemoScreenState extends State<LineMemoScreen> {
                   fontFamilyFallback: const ['Noto Sans KR', 'sans-serif'],
                 ),
                 enabled: !_saving,
-                decoration: const InputDecoration(hintText: '이 문장에 대한 생각을 남겨보세요'),
+                decoration: const InputDecoration(
+                  hintText: '이 문장에 대한 생각을 남겨보세요',
+                ),
               ),
               const SizedBox(height: AppSpace.md),
               Row(
@@ -117,16 +136,33 @@ class _LineMemoScreenState extends State<LineMemoScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SectionTitle('이 문장의 메모', hint: '내 메모 ${memos.length}개 · 방 메모 ${shared.length}개'),
-              if (memos.isEmpty && shared.isEmpty) const EmptyMemo('아직 메모가 없어요.'),
+              SectionTitle(
+                '이 문장의 메모',
+                hint: '내 메모 ${memos.length}개 · 방 메모 ${shared.length}개',
+              ),
+              if (memos.isEmpty && shared.isEmpty)
+                const EmptyMemo('아직 메모가 없어요.'),
               for (final m in memos) ...[
-                MemoTile(left: '나', right: m.timeLabel, body: m.text, spoiler: spoiler,
-                    commentCount: m.commentCount, onComment: () => showCommentSheet(context, m)),
+                MemoTile(
+                  left: '나',
+                  right: m.timeLabel,
+                  body: m.text,
+                  spoiler: spoiler,
+                  commentCount: m.commentCount,
+                  onComment: () => showCommentSheet(context, m),
+                ),
                 const SizedBox(height: AppSpace.sm),
               ],
               for (final m in shared) ...[
-                MemoTile(left: m.author, right: m.timeLabel, body: m.text, spoiler: m.spoiler, ai: m.ai,
-                    commentCount: m.commentCount, onComment: () => showCommentSheet(context, m)),
+                MemoTile(
+                  left: m.author,
+                  right: m.timeLabel,
+                  body: m.text,
+                  spoiler: m.spoiler,
+                  ai: m.ai,
+                  commentCount: m.commentCount,
+                  onComment: () => showCommentSheet(context, m),
+                ),
                 const SizedBox(height: AppSpace.sm),
               ],
             ],

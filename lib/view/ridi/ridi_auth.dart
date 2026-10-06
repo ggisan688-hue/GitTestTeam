@@ -15,31 +15,41 @@ import '../../widgets/screen_tag.dart';
 
 /// 로그인 창 — 화면 가운데 팝업 (리디처럼). 게스트가 로그인 버튼을 누르면 어디서든 이 창이 뜬다.
 /// 로그인에 성공하면 창이 닫히고, 보던 화면이 로그인 상태로 바뀐다.
-Future<void> showLoginDialog(BuildContext context) => showDialog<void>(
-      context: context,
-      builder: (_) => const _LoginDialog(),
-    );
+Future<void> showLoginDialog(BuildContext context) =>
+    showDialog<void>(context: context, builder: (_) => const _LoginDialog());
 
 class _LoginDialog extends StatelessWidget {
   const _LoginDialog();
 
   @override
   Widget build(BuildContext context) => ScreenTag(
-        'RIDI_LOGIN_01',
-        child: Dialog(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          insetPadding: const EdgeInsets.all(24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // 머리: 가운데 "로그인" + 오른쪽 닫기
-              SizedBox(
-                height: 56,
-                width: double.infinity,
-                child: Stack(alignment: Alignment.center, children: [
-                  const Text('로그인', style: TextStyle(fontFamily: RidiText.f, fontSize: 17, fontWeight: FontWeight.w700, color: RidiColors.ink)),
+    'RIDI_LOGIN_01',
+    child: Dialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 머리: 가운데 "로그인" + 오른쪽 닫기
+            SizedBox(
+              height: 56,
+              width: double.infinity,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Text(
+                    '로그인',
+                    style: TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: RidiColors.ink,
+                    ),
+                  ),
                   Positioned(
                     right: 4,
                     child: IconButton(
@@ -48,19 +58,21 @@ class _LoginDialog extends StatelessWidget {
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
-                ]),
+                ],
               ),
-              const Divider(height: 1, color: RidiColors.grayLight),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
-                  child: const _LoginForm(compact: true),
-                ),
+            ),
+            const Divider(height: 1, color: RidiColors.grayLight),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+                child: const _LoginForm(compact: true),
               ),
-            ]),
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// 로그인 화면(전체 화면) — 로그아웃 직후 등 화면 전체가 필요할 때. 내용은 팝업과 같은 _LoginForm.
@@ -70,25 +82,27 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ScreenTag(
-        'RIDI_LOGIN_01',
-        child: Scaffold(
-          body: SafeArea(
-            child: Column(children: [
-              Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
-                      child: const _RiseIn(child: _LoginForm(compact: false)),
-                    ),
+    'RIDI_LOGIN_01',
+    child: Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: const _RiseIn(child: _LoginForm(compact: false)),
                   ),
                 ),
               ),
-            ]),
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// 앱 로고·이름 + 아이디/비밀번호 + 로그인 · 회원가입 · 비밀번호 찾기 + "made by 2page".
@@ -141,41 +155,95 @@ class _LoginFormState extends State<_LoginForm> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Center(child: Image.asset(RidiBrand.logo, width: c ? 56 : 88, height: c ? 56 : 88)),
+        Center(
+          child: Image.asset(
+            RidiBrand.logo,
+            width: c ? 56 : 88,
+            height: c ? 56 : 88,
+          ),
+        ),
         SizedBox(height: c ? 12 : 18),
-        Text(RidiBrand.appName, textAlign: TextAlign.center, style: TextStyle(fontFamily: RidiText.f, fontSize: c ? 26 : 34, fontWeight: FontWeight.w800, color: RidiColors.ink)),
+        Text(
+          RidiBrand.appName,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: RidiText.f,
+            fontSize: c ? 26 : 34,
+            fontWeight: FontWeight.w800,
+            color: RidiColors.ink,
+          ),
+        ),
         const SizedBox(height: 8),
-        const Text(RidiBrand.tagline, textAlign: TextAlign.center, style: RidiText.sub),
+        const Text(
+          RidiBrand.tagline,
+          textAlign: TextAlign.center,
+          style: RidiText.sub,
+        ),
         SizedBox(height: c ? 28 : 40),
         // "아이디"도 허용하므로 이메일 전용 키보드를 강제하지 않는다.
         // Android 한글 IME가 일반 텍스트 입력 연결을 사용해 조합 상태를 유지할 수 있다.
         RidiInput(controller: _id, hint: '이메일 또는 아이디'),
         const SizedBox(height: 12),
-        RidiInput(controller: _pw, hint: '비밀번호', obscure: true, onSubmitted: (_) => _submit()),
+        RidiInput(
+          controller: _pw,
+          hint: '비밀번호',
+          obscure: true,
+          onSubmitted: (_) => _submit(),
+        ),
         if (_error != null) ...[
           const SizedBox(height: 10),
-          Text(_error!, textAlign: TextAlign.center, style: RidiText.sub.copyWith(color: RidiColors.red)),
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: RidiText.sub.copyWith(color: RidiColors.red),
+          ),
         ],
         const SizedBox(height: 20),
         RidiButton('로그인', onTap: _submit, expand: true),
         const SizedBox(height: 16),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Text('아직 계정이 없나요?', style: RidiText.sub),
-          TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SignupScreen())),
-            child: const Text('회원가입', style: TextStyle(fontFamily: RidiText.f, fontSize: 14, fontWeight: FontWeight.w700, color: RidiColors.ink)),
-          ),
-        ]),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('아직 계정이 없나요?', style: RidiText.sub),
+            TextButton(
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SignupScreen())),
+              child: const Text(
+                '회원가입',
+                style: TextStyle(
+                  fontFamily: RidiText.f,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: RidiColors.ink,
+                ),
+              ),
+            ),
+          ],
+        ),
         Center(
           child: TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PasswordResetScreen())),
-            child: const Text('비밀번호 찾기', style: TextStyle(fontFamily: RidiText.f, fontSize: 14, color: RidiColors.gray)),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PasswordResetScreen()),
+            ),
+            child: const Text(
+              '비밀번호 찾기',
+              style: TextStyle(
+                fontFamily: RidiText.f,
+                fontSize: 14,
+                color: RidiColors.gray,
+              ),
+            ),
           ),
         ),
         // 팀 이름은 전체 화면 로그인에만 (가운데 팝업에서는 뺌)
         if (!c) ...[
           const SizedBox(height: 32),
-          Text('made by ${RidiBrand.teamName}', textAlign: TextAlign.center, style: RidiText.sub),
+          Text(
+            'made by ${RidiBrand.teamName}',
+            textAlign: TextAlign.center,
+            style: RidiText.sub,
+          ),
         ],
       ],
     );
@@ -197,7 +265,10 @@ class _RiseIn extends StatelessWidget {
       child: child,
       builder: (context, v, child) => Opacity(
         opacity: v,
-        child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child),
+        child: Transform.translate(
+          offset: Offset(0, 24 * (1 - v)),
+          child: child,
+        ),
       ),
     );
   }
@@ -276,7 +347,11 @@ class _SignupScreenState extends State<SignupScreen> {
       _busy = true;
       _error = null;
     });
-    final error = await context.read<RidiStore>().signup(username: username, password: _pw.text, nickname: nickname);
+    final error = await context.read<RidiStore>().signup(
+      username: username,
+      password: _pw.text,
+      nickname: nickname,
+    );
     if (!mounted) return;
     setState(() => _busy = false);
     if (error != null) {
@@ -288,7 +363,8 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_SIGNUP_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_SIGNUP_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     return Scaffold(
@@ -302,30 +378,61 @@ class _SignupScreenState extends State<SignupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  RidiInput(controller: _email, hint: '이메일', keyboard: TextInputType.emailAddress),
+                  RidiInput(
+                    controller: _email,
+                    hint: '이메일',
+                    keyboard: TextInputType.emailAddress,
+                  ),
                   const SizedBox(height: 12),
                   RidiInput(controller: _id, hint: '아이디 (영문·숫자·_ 4~30자)'),
                   const SizedBox(height: 12),
-                  RidiInput(controller: _pw, hint: '비밀번호 (8자 이상)', obscure: true),
+                  RidiInput(
+                    controller: _pw,
+                    hint: '비밀번호 (8자 이상)',
+                    obscure: true,
+                  ),
                   const SizedBox(height: 12),
                   RidiInput(controller: _pw2, hint: '비밀번호 확인', obscure: true),
                   const SizedBox(height: 12),
-                  RidiInput(controller: _name, hint: '이름', onSubmitted: (_) => _submit()),
+                  RidiInput(
+                    controller: _name,
+                    hint: '이름',
+                    onSubmitted: (_) => _submit(),
+                  ),
                   const SizedBox(height: 20),
                   InkWell(
                     onTap: () => setState(() => _agree = !_agree),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(children: [
-                        Icon(_agree ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, size: 22, color: _agree ? RidiColors.pillBlack : RidiColors.gray),
-                        const SizedBox(width: 10),
-                        const Expanded(child: Text('이용약관 및 개인정보 처리방침 동의 (필수)', style: RidiText.body)),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _agree
+                                ? Icons.check_box_rounded
+                                : Icons.check_box_outline_blank_rounded,
+                            size: 22,
+                            color: _agree
+                                ? RidiColors.pillBlack
+                                : RidiColors.gray,
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              '이용약관 및 개인정보 처리방침 동의 (필수)',
+                              style: RidiText.body,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, textAlign: TextAlign.center, style: RidiText.sub.copyWith(color: RidiColors.red)),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: RidiText.sub.copyWith(color: RidiColors.red),
+                    ),
                   ],
                   const SizedBox(height: 20),
                   RidiButton('가입하기', onTap: _submit, expand: true),
@@ -333,7 +440,14 @@ class _SignupScreenState extends State<SignupScreen> {
                   Center(
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('이미 계정이 있어요', style: TextStyle(fontFamily: RidiText.f, fontSize: 14, color: RidiColors.gray)),
+                      child: const Text(
+                        '이미 계정이 있어요',
+                        style: TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 14,
+                          color: RidiColors.gray,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -380,7 +494,8 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_PW_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_PW_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     return Scaffold(
@@ -392,35 +507,89 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
               child: _sent
-                  ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      const Icon(Icons.mark_email_read_outlined, size: 56, color: RidiColors.ink),
-                      const SizedBox(height: 16),
-                      const Text('메일을 보냈어요', textAlign: TextAlign.center, style: TextStyle(fontFamily: RidiText.f, fontSize: 22, fontWeight: FontWeight.w800, color: RidiColors.ink)),
-                      const SizedBox(height: 10),
-                      Text('${_email.text.trim()} 로 보낸 링크를 열어 새 비밀번호를 정해주세요.\n메일이 안 오면 스팸함도 확인해주세요.', textAlign: TextAlign.center, style: RidiText.sub.copyWith(fontSize: 14)),
-                      const SizedBox(height: 32),
-                      RidiButton('로그인으로 돌아가기', expand: true, onTap: () => Navigator.of(context).pop()),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: TextButton(
-                          onPressed: () => ridiToast(context, '메일을 다시 보냈어요'),
-                          child: const Text('메일 다시 보내기', style: TextStyle(fontFamily: RidiText.f, fontSize: 14, color: RidiColors.gray)),
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Icon(
+                          Icons.mark_email_read_outlined,
+                          size: 56,
+                          color: RidiColors.ink,
                         ),
-                      ),
-                    ])
-                  : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      const Text('가입한 이메일을 적어주세요', style: TextStyle(fontFamily: RidiText.f, fontSize: 22, fontWeight: FontWeight.w800, color: RidiColors.ink)),
-                      const SizedBox(height: 8),
-                      const Text('비밀번호를 다시 정할 수 있는 링크를 보내드려요', style: RidiText.sub),
-                      const SizedBox(height: 32),
-                      RidiInput(controller: _email, hint: '이메일', keyboard: TextInputType.emailAddress, autofocus: true, onSubmitted: (_) => _send()),
-                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          '메일을 보냈어요',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: RidiText.f,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: RidiColors.ink,
+                          ),
+                        ),
                         const SizedBox(height: 10),
-                        Text(_error!, style: RidiText.sub.copyWith(color: RidiColors.red)),
+                        Text(
+                          '${_email.text.trim()} 로 보낸 링크를 열어 새 비밀번호를 정해주세요.\n메일이 안 오면 스팸함도 확인해주세요.',
+                          textAlign: TextAlign.center,
+                          style: RidiText.sub.copyWith(fontSize: 14),
+                        ),
+                        const SizedBox(height: 32),
+                        RidiButton(
+                          '로그인으로 돌아가기',
+                          expand: true,
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                        const SizedBox(height: 8),
+                        Center(
+                          child: TextButton(
+                            onPressed: () => ridiToast(context, '메일을 다시 보냈어요'),
+                            child: const Text(
+                              '메일 다시 보내기',
+                              style: TextStyle(
+                                fontFamily: RidiText.f,
+                                fontSize: 14,
+                                color: RidiColors.gray,
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
-                      const SizedBox(height: 24),
-                      RidiButton('재설정 메일 보내기', expand: true, onTap: _send),
-                    ]),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          '가입한 이메일을 적어주세요',
+                          style: TextStyle(
+                            fontFamily: RidiText.f,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: RidiColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '비밀번호를 다시 정할 수 있는 링크를 보내드려요',
+                          style: RidiText.sub,
+                        ),
+                        const SizedBox(height: 32),
+                        RidiInput(
+                          controller: _email,
+                          hint: '이메일',
+                          keyboard: TextInputType.emailAddress,
+                          autofocus: true,
+                          onSubmitted: (_) => _send(),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            _error!,
+                            style: RidiText.sub.copyWith(color: RidiColors.red),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        RidiButton('재설정 메일 보내기', expand: true, onTap: _send),
+                      ],
+                    ),
             ),
           ),
         ),

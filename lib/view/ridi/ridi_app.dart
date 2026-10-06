@@ -136,14 +136,14 @@ class _RidiShellState extends State<RidiShell> {
   }
 
   Widget _create(int i) => switch (i) {
-        // Do not use const here: a canonical const widget can retain the old
-        // Element/State even after IndexedStack's slot is replaced.
-        0 => ShelvesScreen(),
-        1 => FriendsScreen(),
-        2 => HomeScreen(),
-        3 => const ServerNotificationsScreen(),
-        _ => const AccountScreen(),
-      };
+    // Do not use const here: a canonical const widget can retain the old
+    // Element/State even after IndexedStack's slot is replaced.
+    0 => ShelvesScreen(),
+    1 => FriendsScreen(),
+    2 => HomeScreen(),
+    3 => const ServerNotificationsScreen(),
+    _ => const AccountScreen(),
+  };
 
   /// 탭 바꾸기. 게스트는 홈 말고는 서버 화면을 만들지 않고 "로그인이 필요" 화면을 보여 준다(build 참고).
   void select(int i) {
@@ -162,23 +162,26 @@ class _RidiShellState extends State<RidiShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Builder(builder: (context) {
-        final loggedIn = context.select<RidiStore, bool>((s) => s.loggedIn);
-        // 게스트 → 로그인 팝업으로 로그인하면, 보던 탭의 실제 화면을 그때 만든다
-        if (loggedIn && _pages[_index] == null) _pages[_index] = _create(_index);
-        return IndexedStack(
-          index: _index,
-          children: [
-            for (var i = 0; i < _pages.length; i++)
-              if (!loggedIn && i == 4)
-                const _GuestMy()
-              else if (!loggedIn && i != 2)
-                _GuestTab(title: _tabs[i].$3)
-              else
-                _pages[i] ?? const SizedBox.shrink(),
-          ],
-        );
-      }),
+      body: Builder(
+        builder: (context) {
+          final loggedIn = context.select<RidiStore, bool>((s) => s.loggedIn);
+          // 게스트 → 로그인 팝업으로 로그인하면, 보던 탭의 실제 화면을 그때 만든다
+          if (loggedIn && _pages[_index] == null)
+            _pages[_index] = _create(_index);
+          return IndexedStack(
+            index: _index,
+            children: [
+              for (var i = 0; i < _pages.length; i++)
+                if (!loggedIn && i == 4)
+                  const _GuestMy()
+                else if (!loggedIn && i != 2)
+                  _GuestTab(title: _tabs[i].$3)
+                else
+                  _pages[i] ?? const SizedBox.shrink(),
+            ],
+          );
+        },
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: RidiColors.grayLight)),
@@ -240,24 +243,35 @@ class _GuestTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(title)),
-        body: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('로그인이 필요한 서비스입니다.', style: TextStyle(fontFamily: RidiText.f, fontSize: 16, fontWeight: FontWeight.w700, color: RidiColors.ink)),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: () => showLoginDialog(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: RidiColors.ink,
-                side: const BorderSide(color: RidiColors.grayLight),
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-              ),
-              child: const Text('로그인'),
+    appBar: AppBar(title: Text(title)),
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            '로그인이 필요한 서비스입니다.',
+            style: TextStyle(
+              fontFamily: RidiText.f,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: RidiColors.ink,
             ),
-          ]),
-        ),
-      );
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: () => showLoginDialog(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: RidiColors.ink,
+              side: const BorderSide(color: RidiColors.grayLight),
+              shape: const StadiumBorder(),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            ),
+            child: const Text('로그인'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// 마이 — 게스트: 위에 "로그인이 필요합니다." + 오른쪽 [로그인] 버튼만 (리디 MY 처럼)
@@ -266,23 +280,41 @@ class _GuestMy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: RidiColors.panel,
-        appBar: AppBar(title: const Text('마이')),
-        body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-            child: Row(children: [
+    backgroundColor: RidiColors.panel,
+    appBar: AppBar(title: const Text('마이')),
+    body: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+          child: Row(
+            children: [
               const Expanded(
-                child: Text('로그인이 필요합니다.', style: TextStyle(fontFamily: RidiText.f, fontSize: 18, fontWeight: FontWeight.w800, color: RidiColors.ink)),
+                child: Text(
+                  '로그인이 필요합니다.',
+                  style: TextStyle(
+                    fontFamily: RidiText.f,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: RidiColors.ink,
+                  ),
+                ),
               ),
               FilledButton(
                 onPressed: () => showLoginDialog(context),
-                style: FilledButton.styleFrom(backgroundColor: RidiColors.blue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                style: FilledButton.styleFrom(
+                  backgroundColor: RidiColors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
                 child: const Text('로그인'),
               ),
-            ]),
+            ],
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 }

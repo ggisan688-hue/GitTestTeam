@@ -20,14 +20,25 @@ Future<void> showRoomMemoDialog(
   int? chapter,
   int? line,
   void Function(int chapter, int line)? onGoto,
-}) =>
-    showDialog<void>(
-      context: context,
-      builder: (_) => _RoomMemoDialog(roomId: roomId, bookId: bookId, chapter: chapter, line: line, onGoto: onGoto),
-    );
+}) => showDialog<void>(
+  context: context,
+  builder: (_) => _RoomMemoDialog(
+    roomId: roomId,
+    bookId: bookId,
+    chapter: chapter,
+    line: line,
+    onGoto: onGoto,
+  ),
+);
 
 class _RoomMemoDialog extends StatefulWidget {
-  const _RoomMemoDialog({required this.roomId, required this.bookId, this.chapter, this.line, this.onGoto});
+  const _RoomMemoDialog({
+    required this.roomId,
+    required this.bookId,
+    this.chapter,
+    this.line,
+    this.onGoto,
+  });
 
   final String roomId;
   final String bookId;
@@ -44,7 +55,8 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
   late bool _oneLine = widget.chapter != null && widget.line != null;
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_ROOM_MEMO_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_ROOM_MEMO_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
@@ -53,9 +65,18 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
 
     // 이 책의 방 메모 → (말풍선에서 열었으면) 그 문장만 → (칩을 골랐으면) 그 사람 것만
     var items = store.roomNotes(widget.roomId, widget.bookId);
-    if (_oneLine) items = items.where((n) => n.chapter == widget.chapter && n.line == widget.line).toList();
-    final authors = <String>{for (final n in items) if (!n.mine) n.author}.toList();
-    if (_who != null) items = items.where((n) => _who!.isEmpty ? n.mine : (!n.mine && n.author == _who)).toList();
+    if (_oneLine)
+      items = items
+          .where((n) => n.chapter == widget.chapter && n.line == widget.line)
+          .toList();
+    final authors = <String>{
+      for (final n in items)
+        if (!n.mine) n.author,
+    }.toList();
+    if (_who != null)
+      items = items
+          .where((n) => _who!.isEmpty ? n.mine : (!n.mine && n.author == _who))
+          .toList();
 
     return RidiDialogFrame(
       child: Column(
@@ -64,42 +85,83 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
           RidiDialogHeader(
             left: '닫기',
             onLeft: () => Navigator.of(context).pop(),
-            title: Text.rich(TextSpan(children: [
-              const TextSpan(text: '방 메모 ', style: RidiText.heading),
-              TextSpan(text: '${items.length}', style: RidiText.sub),
-            ])),
+            title: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: '방 메모 ', style: RidiText.heading),
+                  TextSpan(text: '${items.length}', style: RidiText.sub),
+                ],
+              ),
+            ),
           ),
           const Divider(height: 1),
           // ----- 방 이름 · 스포일러 안내 -----
           Container(
             color: RidiColors.panel,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-            child: Row(children: [
-              const Icon(Icons.groups_2_outlined, size: 18, color: RidiColors.gray),
-              const SizedBox(width: 8),
-              Text(room.name, style: RidiText.bodyBold.copyWith(fontSize: 14)),
-              const Spacer(),
-              Icon(room.spoilerLock ? Icons.lock_outline_rounded : Icons.lock_open_rounded, size: 16, color: RidiColors.gray),
-              const SizedBox(width: 4),
-              Text(room.spoilerLock ? '스포일러 잠금 · 읽은 장까지만 보여요' : '스포일러 잠금 꺼짐', style: RidiText.sub),
-            ]),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.groups_2_outlined,
+                  size: 18,
+                  color: RidiColors.gray,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  room.name,
+                  style: RidiText.bodyBold.copyWith(fontSize: 14),
+                ),
+                const Spacer(),
+                Icon(
+                  room.spoilerLock
+                      ? Icons.lock_outline_rounded
+                      : Icons.lock_open_rounded,
+                  size: 16,
+                  color: RidiColors.gray,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  room.spoilerLock ? '스포일러 잠금 · 읽은 장까지만 보여요' : '스포일러 잠금 꺼짐',
+                  style: RidiText.sub,
+                ),
+              ],
+            ),
           ),
           // ----- 이 문장만 볼 때: 문장 인용 -----
           if (_oneLine)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text('Chapter ${widget.chapter! + 1} · 문장 ${widget.line! + 1}', style: RidiText.sub),
-                  const Spacer(),
-                  InkWell(
-                    onTap: () => setState(() => _oneLine = false),
-                    child: const Text('이 책 방 메모 전체  ›', style: TextStyle(fontFamily: RidiText.f, fontSize: 13, fontWeight: FontWeight.w700, color: RidiColors.ink)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Chapter ${widget.chapter! + 1} · 문장 ${widget.line! + 1}',
+                        style: RidiText.sub,
+                      ),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => setState(() => _oneLine = false),
+                        child: const Text(
+                          '이 책 방 메모 전체  ›',
+                          style: TextStyle(
+                            fontFamily: RidiText.f,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: RidiColors.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ]),
-                const SizedBox(height: 8),
-                _Quote(text: ridiSentence(widget.chapter!, widget.line!), maxLines: 3),
-              ]),
+                  const SizedBox(height: 8),
+                  _Quote(
+                    text: ridiSentence(widget.chapter!, widget.line!),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
             ),
           // ----- 누구 메모만 -----
           SizedBox(
@@ -108,12 +170,24 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               children: [
-                RidiChip('전체', on: _who == null, onTap: () => setState(() => _who = null)),
+                RidiChip(
+                  '전체',
+                  on: _who == null,
+                  onTap: () => setState(() => _who = null),
+                ),
                 const SizedBox(width: 8),
-                RidiChip('나', on: _who == '', onTap: () => setState(() => _who = '')),
+                RidiChip(
+                  '나',
+                  on: _who == '',
+                  onTap: () => setState(() => _who = ''),
+                ),
                 for (final a in authors) ...[
                   const SizedBox(width: 8),
-                  RidiChip(a, on: _who == a, onTap: () => setState(() => _who = a)),
+                  RidiChip(
+                    a,
+                    on: _who == a,
+                    onTap: () => setState(() => _who = a),
+                  ),
                 ],
               ],
             ),
@@ -124,17 +198,27 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
             child: items.isEmpty
                 ? RidiEmpty(
                     icon: Icons.forum_outlined,
-                    text: _oneLine ? '이 문장에는 아직 방 메모가 없어요' : '아직 이 방에 남겨진 메모가 없어요\n문장을 길게 눌러 첫 메모를 남겨보세요',
+                    text: _oneLine
+                        ? '이 문장에는 아직 방 메모가 없어요'
+                        : '아직 이 방에 남겨진 메모가 없어요\n문장을 길게 눌러 첫 메모를 남겨보세요',
                   )
                 : ListView(
                     children: [
-                      for (final chapter in items.map((n) => n.chapter).toSet().toList()..sort()) ...[
+                      for (final chapter
+                          in items.map((n) => n.chapter).toSet().toList()
+                            ..sort()) ...[
                         if (!_oneLine)
                           Padding(
                             padding: const EdgeInsets.only(top: 20, bottom: 4),
-                            child: Text('Chapter ${chapter + 1}', textAlign: TextAlign.center, style: RidiText.sub.copyWith(fontSize: 15)),
+                            child: Text(
+                              'Chapter ${chapter + 1}',
+                              textAlign: TextAlign.center,
+                              style: RidiText.sub.copyWith(fontSize: 15),
+                            ),
                           ),
-                        for (final n in items.where((e) => e.chapter == chapter))
+                        for (final n in items.where(
+                          (e) => e.chapter == chapter,
+                        ))
                           _RoomMemoTile(
                             roomId: widget.roomId,
                             note: n,
@@ -159,7 +243,12 @@ class _RoomMemoDialogState extends State<_RoomMemoDialog> {
 /// 방 메모 한 건 — 이름 · 나/AI 배지 · 시간 · 형광펜 색 · 인용 문장 · 메모 · 댓글 N · 이 문장으로.
 /// 스포일러면 인용 문장까지 가리고 자물쇠 문구, 댓글도 못 연다.
 class _RoomMemoTile extends StatelessWidget {
-  const _RoomMemoTile({required this.roomId, required this.note, required this.showQuote, this.onGoto});
+  const _RoomMemoTile({
+    required this.roomId,
+    required this.note,
+    required this.showQuote,
+    this.onGoto,
+  });
 
   /// 보고 있는 방 — 스포일러는 이 방의 잠금 설정으로 판단 (메모가 여러 방에 공유될 수 있음)
   final String roomId;
@@ -175,59 +264,119 @@ class _RoomMemoTile extends StatelessWidget {
     final name = store.authorOf(note);
 
     return InkWell(
-      onTap: spoiler ? () => ridiToast(context, '${note.chapter + 1}장까지 읽으면 보여요') : () => showCommentsDialog(context, noteId: note.id),
+      onTap: spoiler
+          ? () => ridiToast(context, '${note.chapter + 1}장까지 읽으면 보여요')
+          : () => showCommentsDialog(context, noteId: note.id),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            RidiAvatar(label: name, ai: note.ai, size: 32),
-            const SizedBox(width: 10),
-            Text(name, style: RidiText.bodyBold.copyWith(fontSize: 14)),
-            if (note.mine) const _Badge('나'),
-            if (note.ai) const _Badge('AI', purple: true),
-            const SizedBox(width: 8),
-            Text(ridiAgo(note.createdAt), style: RidiText.sub.copyWith(fontSize: 12)),
-            const Spacer(),
-            RidiPenMark(colorIndex: note.colorIndex, underline: note.penStyle == PenStyle.underline, size: 12),
-          ]),
-          if (showQuote && !spoiler) ...[
-            const SizedBox(height: 10),
-            Padding(padding: const EdgeInsets.only(left: 42), child: _Quote(text: ridiSentence(note.chapter, note.line), maxLines: 2)),
-          ],
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.only(left: 42),
-            child: spoiler
-                ? Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(color: RidiColors.panel, borderRadius: BorderRadius.circular(4)),
-                    child: Row(children: [
-                      const Icon(Icons.lock_outline_rounded, size: 16, color: RidiColors.gray),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('아직 안 읽은 부분의 메모예요 · ${note.chapter + 1}장까지 읽으면 보여요', style: RidiText.sub)),
-                    ]),
-                  )
-                : Text(note.memo.isEmpty ? '(형광펜만 남겼어요)' : note.memo, style: note.memo.isEmpty ? RidiText.sub : RidiText.body),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 30),
-            child: Row(children: [
-              TextButton.icon(
-                onPressed: spoiler ? null : () => showCommentsDialog(context, noteId: note.id),
-                icon: Icon(Icons.mode_comment_outlined, size: 16, color: spoiler ? RidiColors.grayLight : RidiColors.gray),
-                label: Text(count == 0 ? '댓글 쓰기' : '댓글 $count', style: RidiText.sub.copyWith(color: spoiler ? RidiColors.grayLight : RidiColors.text)),
-              ),
-              const Spacer(),
-              if (onGoto != null)
-                TextButton(
-                  onPressed: onGoto,
-                  child: const Text('이 문장으로  ›', style: TextStyle(fontFamily: RidiText.f, fontSize: 13, color: RidiColors.gray)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                RidiAvatar(label: name, ai: note.ai, size: 32),
+                const SizedBox(width: 10),
+                Text(name, style: RidiText.bodyBold.copyWith(fontSize: 14)),
+                if (note.mine) const _Badge('나'),
+                if (note.ai) const _Badge('AI', purple: true),
+                const SizedBox(width: 8),
+                Text(
+                  ridiAgo(note.createdAt),
+                  style: RidiText.sub.copyWith(fontSize: 12),
                 ),
-            ]),
-          ),
-          const Divider(height: 1),
-        ]),
+                const Spacer(),
+                RidiPenMark(
+                  colorIndex: note.colorIndex,
+                  underline: note.penStyle == PenStyle.underline,
+                  size: 12,
+                ),
+              ],
+            ),
+            if (showQuote && !spoiler) ...[
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.only(left: 42),
+                child: _Quote(
+                  text: ridiSentence(note.chapter, note.line),
+                  maxLines: 2,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(left: 42),
+              child: spoiler
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: RidiColors.panel,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.lock_outline_rounded,
+                            size: 16,
+                            color: RidiColors.gray,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '아직 안 읽은 부분의 메모예요 · ${note.chapter + 1}장까지 읽으면 보여요',
+                              style: RidiText.sub,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Text(
+                      note.memo.isEmpty ? '(형광펜만 남겼어요)' : note.memo,
+                      style: note.memo.isEmpty ? RidiText.sub : RidiText.body,
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 30),
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: spoiler
+                        ? null
+                        : () => showCommentsDialog(context, noteId: note.id),
+                    icon: Icon(
+                      Icons.mode_comment_outlined,
+                      size: 16,
+                      color: spoiler ? RidiColors.grayLight : RidiColors.gray,
+                    ),
+                    label: Text(
+                      count == 0 ? '댓글 쓰기' : '댓글 $count',
+                      style: RidiText.sub.copyWith(
+                        color: spoiler ? RidiColors.grayLight : RidiColors.text,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (onGoto != null)
+                    TextButton(
+                      onPressed: onGoto,
+                      child: const Text(
+                        '이 문장으로  ›',
+                        style: TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 13,
+                          color: RidiColors.gray,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+        ),
       ),
     );
   }
@@ -235,10 +384,13 @@ class _RoomMemoTile extends StatelessWidget {
 
 // ================= 댓글 =================
 /// 댓글 창 열기 (방 메모 항목 · 댓글 알림에서)
-Future<void> showCommentsDialog(BuildContext context, {required String noteId}) => showDialog<void>(
-      context: context,
-      builder: (_) => _CommentsDialog(noteId: noteId),
-    );
+Future<void> showCommentsDialog(
+  BuildContext context, {
+  required String noteId,
+}) => showDialog<void>(
+  context: context,
+  builder: (_) => _CommentsDialog(noteId: noteId),
+);
 
 class _CommentsDialog extends StatefulWidget {
   const _CommentsDialog({required this.noteId});
@@ -266,12 +418,18 @@ class _CommentsDialogState extends State<_CommentsDialog> {
     _text.clear();
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      if (_scroll.hasClients)
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
     });
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag('RIDI_COMMENT_01', child: _screen(context));
+  Widget build(BuildContext context) =>
+      ScreenTag('RIDI_COMMENT_01', child: _screen(context));
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
@@ -279,7 +437,14 @@ class _CommentsDialogState extends State<_CommentsDialog> {
     if (note == null) {
       return RidiDialogFrame(
         height: 300,
-        child: RidiEmpty(icon: Icons.delete_outline_rounded, text: '지워진 메모예요', action: RidiOutlineButton('닫기', onTap: () => Navigator.of(context).pop())),
+        child: RidiEmpty(
+          icon: Icons.delete_outline_rounded,
+          text: '지워진 메모예요',
+          action: RidiOutlineButton(
+            '닫기',
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ),
       );
     }
     final list = store.commentsOf(note.id);
@@ -293,10 +458,14 @@ class _CommentsDialogState extends State<_CommentsDialog> {
           RidiDialogHeader(
             left: '닫기',
             onLeft: () => Navigator.of(context).pop(),
-            title: Text.rich(TextSpan(children: [
-              const TextSpan(text: '댓글 ', style: RidiText.heading),
-              TextSpan(text: '${list.length}', style: RidiText.sub),
-            ])),
+            title: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: '댓글 ', style: RidiText.heading),
+                  TextSpan(text: '${list.length}', style: RidiText.sub),
+                ],
+              ),
+            ),
           ),
           const Divider(height: 1),
           Expanded(
@@ -305,28 +474,56 @@ class _CommentsDialogState extends State<_CommentsDialog> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               children: [
                 // ----- 원래 메모 -----
-                Row(children: [
-                  RidiAvatar(label: name, ai: note.ai, size: 36),
-                  const SizedBox(width: 10),
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text(name, style: RidiText.bodyBold.copyWith(fontSize: 15)),
-                      if (note.ai) const _Badge('AI', purple: true),
-                    ]),
-                    Text([?roomName, 'Chapter ${note.chapter + 1} · 문장 ${note.line + 1}', ridiAgo(note.createdAt)].join('  ·  '), style: RidiText.sub.copyWith(fontSize: 12)),
-                  ]),
-                ]),
+                Row(
+                  children: [
+                    RidiAvatar(label: name, ai: note.ai, size: 36),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              name,
+                              style: RidiText.bodyBold.copyWith(fontSize: 15),
+                            ),
+                            if (note.ai) const _Badge('AI', purple: true),
+                          ],
+                        ),
+                        Text(
+                          [
+                            ?roomName,
+                            'Chapter ${note.chapter + 1} · 문장 ${note.line + 1}',
+                            ridiAgo(note.createdAt),
+                          ].join('  ·  '),
+                          style: RidiText.sub.copyWith(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
-                _Quote(text: ridiSentence(note.chapter, note.line), maxLines: 3, color: RidiColors.penColors[note.colorIndex]),
+                _Quote(
+                  text: ridiSentence(note.chapter, note.line),
+                  maxLines: 3,
+                  color: RidiColors.penColors[note.colorIndex],
+                ),
                 const SizedBox(height: 10),
-                Text(note.memo.isEmpty ? '(형광펜만 남겼어요)' : note.memo, style: RidiText.body.copyWith(fontSize: 16)),
+                Text(
+                  note.memo.isEmpty ? '(형광펜만 남겼어요)' : note.memo,
+                  style: RidiText.body.copyWith(fontSize: 16),
+                ),
                 const SizedBox(height: 16),
                 const Divider(height: 1),
                 const SizedBox(height: 8),
                 if (list.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Text('첫 댓글을 남겨보세요', textAlign: TextAlign.center, style: RidiText.sub),
+                    child: Text(
+                      '첫 댓글을 남겨보세요',
+                      textAlign: TextAlign.center,
+                      style: RidiText.sub,
+                    ),
                   ),
                 for (final c in list) _CommentRow(comment: c),
               ],
@@ -334,27 +531,35 @@ class _CommentsDialogState extends State<_CommentsDialog> {
           ),
           // ----- 입력 -----
           Container(
-            decoration: const BoxDecoration(border: Border(top: BorderSide(color: RidiColors.grayLight))),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: RidiColors.grayLight)),
+            ),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Row(children: [
-              Expanded(
-                child: RidiInput(
-                  controller: _text,
-                  hint: '댓글을 남겨보세요',
-                  maxLength: 300,
-                  onSubmitted: (_) => _send(store),
+            child: Row(
+              children: [
+                Expanded(
+                  child: RidiInput(
+                    controller: _text,
+                    hint: '댓글을 남겨보세요',
+                    maxLength: 300,
+                    onSubmitted: (_) => _send(store),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _text,
-                builder: (context, value, child) => Opacity(
-                  opacity: value.text.trim().isEmpty ? 0.35 : 1,
-                  child: child,
+                const SizedBox(width: 10),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _text,
+                  builder: (context, value, child) => Opacity(
+                    opacity: value.text.trim().isEmpty ? 0.35 : 1,
+                    child: child,
+                  ),
+                  child: RidiButton(
+                    '등록',
+                    height: 48,
+                    onTap: () => _send(store),
+                  ),
                 ),
-                child: RidiButton('등록', height: 48, onTap: () => _send(store)),
-              ),
-            ]),
+              ],
+            ),
           ),
         ],
       ),
@@ -374,31 +579,51 @@ class _CommentRow extends StatelessWidget {
     final name = store.commentAuthor(comment);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        RidiAvatar(label: name, ai: comment.ai, size: 30),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text(name, style: RidiText.bodyBold.copyWith(fontSize: 13)),
-              if (comment.mine) const _Badge('나'),
-              const SizedBox(width: 8),
-              Text(ridiAgo(comment.createdAt), style: RidiText.sub.copyWith(fontSize: 12)),
-            ]),
-            const SizedBox(height: 4),
-            Text(comment.text, style: RidiText.body),
-          ]),
-        ),
-        if (comment.mine)
-          IconButton(
-            tooltip: '댓글 지우기',
-            icon: const Icon(Icons.close_rounded, size: 18, color: RidiColors.gray),
-            onPressed: () async {
-              final ok = await ridiConfirm(context, title: '댓글을 지울까요?', ok: '삭제', danger: true);
-              if (ok) store.deleteComment(comment.id);
-            },
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RidiAvatar(label: name, ai: comment.ai, size: 30),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(name, style: RidiText.bodyBold.copyWith(fontSize: 13)),
+                    if (comment.mine) const _Badge('나'),
+                    const SizedBox(width: 8),
+                    Text(
+                      ridiAgo(comment.createdAt),
+                      style: RidiText.sub.copyWith(fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(comment.text, style: RidiText.body),
+              ],
+            ),
           ),
-      ]),
+          if (comment.mine)
+            IconButton(
+              tooltip: '댓글 지우기',
+              icon: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: RidiColors.gray,
+              ),
+              onPressed: () async {
+                final ok = await ridiConfirm(
+                  context,
+                  title: '댓글을 지울까요?',
+                  ok: '삭제',
+                  danger: true,
+                );
+                if (ok) store.deleteComment(comment.id);
+              },
+            ),
+        ],
+      ),
     );
   }
 }
@@ -406,7 +631,11 @@ class _CommentRow extends StatelessWidget {
 // ---------------- 작은 부품 ----------------
 /// 인용 문장 (왼쪽 띠 색 = 형광펜 색)
 class _Quote extends StatelessWidget {
-  const _Quote({required this.text, this.maxLines = 2, this.color = RidiColors.grayLight});
+  const _Quote({
+    required this.text,
+    this.maxLines = 2,
+    this.color = RidiColors.grayLight,
+  });
 
   final String text;
   final int maxLines;
@@ -416,8 +645,19 @@ class _Quote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(left: 12),
-      decoration: BoxDecoration(border: Border(left: BorderSide(color: color, width: 3))),
-      child: Text(text, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: RidiText.sub.copyWith(fontSize: 14, color: RidiColors.text, fontFamily: 'NotoSerifKR')),
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Text(
+        text,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: RidiText.sub.copyWith(
+          fontSize: 14,
+          color: RidiColors.text,
+          fontFamily: 'NotoSerifKR',
+        ),
+      ),
     );
   }
 }
@@ -438,7 +678,15 @@ class _Badge extends StatelessWidget {
         color: purple ? const Color(0xFFEDE8F6) : RidiColors.panel,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(label, style: TextStyle(fontFamily: RidiText.f, fontSize: 11, fontWeight: FontWeight.w700, color: purple ? const Color(0xFF7A5FB0) : RidiColors.gray)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: RidiText.f,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: purple ? const Color(0xFF7A5FB0) : RidiColors.gray,
+        ),
+      ),
     );
   }
 }

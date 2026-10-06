@@ -23,11 +23,22 @@ class MemberAvatars extends StatelessWidget {
       width: step * (shown.length + (rest > 0 ? 1 : 0)) + (size - step),
       child: Stack(
         children: [
-          for (var i = 0; i < shown.length; i++) Positioned(left: i * step, child: MemberAvatar(shown[i], size: size)),
+          for (var i = 0; i < shown.length; i++)
+            Positioned(
+              left: i * step,
+              child: MemberAvatar(shown[i], size: size),
+            ),
           if (rest > 0)
             Positioned(
               left: shown.length * step,
-              child: _Circle(size: size, bg: AppColors.codeBg, child: Text('+$rest', style: AppText.micro.copyWith(fontWeight: FontWeight.w600))),
+              child: _Circle(
+                size: size,
+                bg: AppColors.codeBg,
+                child: Text(
+                  '+$rest',
+                  style: AppText.micro.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
         ],
       ),
@@ -44,12 +55,27 @@ class MemberAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (member.ai) {
-      return _Circle(size: size, bg: const Color(0xFFEDE8F6), child: Icon(Icons.smart_toy_outlined, size: size * 0.55, color: AppColors.ai));
+      return _Circle(
+        size: size,
+        bg: const Color(0xFFEDE8F6),
+        child: Icon(
+          Icons.smart_toy_outlined,
+          size: size * 0.55,
+          color: AppColors.ai,
+        ),
+      );
     }
     return _Circle(
       size: size,
       bg: AppColors.accentSoft,
-      child: Text(member.initial, style: AppText.label.copyWith(fontSize: size * 0.42, fontWeight: FontWeight.w700, color: AppColors.accentText)),
+      child: Text(
+        member.initial,
+        style: AppText.label.copyWith(
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.w700,
+          color: AppColors.accentText,
+        ),
+      ),
     );
   }
 }
@@ -67,7 +93,11 @@ class _Circle extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle, border: Border.all(color: AppColors.panel, width: 2)),
+      decoration: BoxDecoration(
+        color: bg,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.panel, width: 2),
+      ),
       child: child,
     );
   }
@@ -94,13 +124,29 @@ class RoomCodeChip extends StatelessWidget {
         onTap: () => _copy(context),
         borderRadius: BorderRadius.circular(AppTheme.radiusControl),
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: large ? AppSpace.lg : AppSpace.md, vertical: large ? AppSpace.md : AppSpace.sm),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(code,
-                style: (large ? AppText.display : AppText.label).copyWith(color: AppColors.accentText, letterSpacing: large ? 3 : 1, fontWeight: FontWeight.w700)),
-            SizedBox(width: large ? AppSpace.md : AppSpace.sm),
-            Icon(Icons.copy_rounded, size: large ? 22 : 16, color: AppColors.accentText),
-          ]),
+          padding: EdgeInsets.symmetric(
+            horizontal: large ? AppSpace.lg : AppSpace.md,
+            vertical: large ? AppSpace.md : AppSpace.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                code,
+                style: (large ? AppText.display : AppText.label).copyWith(
+                  color: AppColors.accentText,
+                  letterSpacing: large ? 3 : 1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(width: large ? AppSpace.md : AppSpace.sm),
+              Icon(
+                Icons.copy_rounded,
+                size: large ? 22 : 16,
+                color: AppColors.accentText,
+              ),
+            ],
+          ),
         ),
       ),
     );

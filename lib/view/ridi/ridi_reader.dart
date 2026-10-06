@@ -48,7 +48,8 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
   void initState() {
     super.initState();
     final store = context.read<RidiStore>();
-    _index = ((store.book(widget.bookId)?.page ?? kFirstPage) - kFirstPage).clamp(0, 999);
+    _index = ((store.book(widget.bookId)?.page ?? kFirstPage) - kFirstPage)
+        .clamp(0, 999);
     _controller = PageController(initialPage: _index);
   }
 
@@ -76,14 +77,16 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
         final first = i == 0;
         final leftN = first ? perColumn - 3 : perColumn; // 첫 페이지는 장 제목 자리만큼 적게
         final rightN = twoColumn ? perColumn : 0;
-        pages.add(_PageSpec(
-          chapter: c,
-          leftFrom: i,
-          leftTo: (i + leftN).clamp(0, lines.length),
-          rightFrom: (i + leftN).clamp(0, lines.length),
-          rightTo: (i + leftN + rightN).clamp(0, lines.length),
-          showTitle: first,
-        ));
+        pages.add(
+          _PageSpec(
+            chapter: c,
+            leftFrom: i,
+            leftTo: (i + leftN).clamp(0, lines.length),
+            rightFrom: (i + leftN).clamp(0, lines.length),
+            rightTo: (i + leftN + rightN).clamp(0, lines.length),
+            showTitle: first,
+          ),
+        );
         i += leftN + rightN;
       }
     }
@@ -104,12 +107,21 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
   /// 장·문장이 들어 있는 페이지로
   void _gotoLine(int chapter, int line) {
     final pages = _pages(context.read<RidiStore>());
-    final i = pages.indexWhere((p) => p.chapter == chapter && ((line >= p.leftFrom && line < p.leftTo) || (line >= p.rightFrom && line < p.rightTo)));
+    final i = pages.indexWhere(
+      (p) =>
+          p.chapter == chapter &&
+          ((line >= p.leftFrom && line < p.leftTo) ||
+              (line >= p.rightFrom && line < p.rightTo)),
+    );
     if (i >= 0) _goto(i);
   }
 
   @override
-  Widget build(BuildContext context) => ScreenTag(_chrome ? 'RIDI_READER_02' : 'RIDI_READER_01', alignment: Alignment.bottomCenter, child: _screen(context));
+  Widget build(BuildContext context) => ScreenTag(
+    _chrome ? 'RIDI_READER_02' : 'RIDI_READER_01',
+    alignment: Alignment.bottomCenter,
+    child: _screen(context),
+  );
 
   Widget _screen(BuildContext context) {
     final store = context.watch<RidiStore>();
@@ -117,7 +129,8 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
     final pages = _pages(store);
     final safeIndex = _index.clamp(0, pages.length - 1);
     // 단 수·글자 크기·행간이 바뀌면 페이지 수가 달라지므로, 그린 뒤 지금 위치로 다시 맞춘다
-    final layout = '${store.twoColumn}/${store.fontScale}/${store.lineHeightStep}';
+    final layout =
+        '${store.twoColumn}/${store.fontScale}/${store.lineHeightStep}';
     if (_lastLayout != layout) {
       _lastLayout = layout;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -133,7 +146,9 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
       PaperTheme.sepia => RidiColors.paperSepia,
       PaperTheme.dark => RidiColors.paperDark,
     };
-    final fg = store.paper == PaperTheme.dark ? RidiColors.textOnDark : RidiColors.ink;
+    final fg = store.paper == PaperTheme.dark
+        ? RidiColors.textOnDark
+        : RidiColors.ink;
     final marked = store.hasBookmark(widget.bookId, page);
 
     return Scaffold(
@@ -149,7 +164,11 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
               itemCount: pages.length,
               onPageChanged: (i) {
                 setState(() => _index = i);
-                store.setPage(widget.bookId, i + kFirstPage, chapter: pages[i].chapter);
+                store.setPage(
+                  widget.bookId,
+                  i + kFirstPage,
+                  chapter: pages[i].chapter,
+                );
               },
               itemBuilder: (_, i) => _PageBody(
                 spec: pages[i],
@@ -168,17 +187,29 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
             right: 64,
             bottom: 36,
             child: IgnorePointer(
-              child: Row(children: [
-                Text('Chapter ${spec.chapter + 1}', style: RidiText.sub.copyWith(fontSize: 14)),
-                const Spacer(),
-                Text('$page / $ridiTotalPages', style: RidiText.sub.copyWith(fontSize: 14)),
-              ]),
+              child: Row(
+                children: [
+                  Text(
+                    'Chapter ${spec.chapter + 1}',
+                    style: RidiText.sub.copyWith(fontSize: 14),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$page / $ridiTotalPages',
+                    style: RidiText.sub.copyWith(fontSize: 14),
+                  ),
+                ],
+              ),
             ),
           ),
           // ----- 책갈피 리본 -----
           if (marked)
             // 상태 표시줄(시계·배터리) 아래, 모서리 둥근 화면에서도 잘리지 않게 안쪽으로
-            Positioned(top: MediaQuery.paddingOf(context).top, right: 40, child: const IgnorePointer(child: _Ribbon())),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top,
+              right: 40,
+              child: const IgnorePointer(child: _Ribbon()),
+            ),
           // ----- 도구 -----
           if (_chrome) ...[
             Positioned(
@@ -209,7 +240,9 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
               bottom: 0,
               child: _BottomBar(
                 page: page,
-                ratio: _dragging ?? (pages.length <= 1 ? 0 : safeIndex / (pages.length - 1)),
+                ratio:
+                    _dragging ??
+                    (pages.length <= 1 ? 0 : safeIndex / (pages.length - 1)),
                 canUndo: _undoIndex != null,
                 roomId: widget.roomId,
                 onSlide: (v) => setState(() => _dragging = v),
@@ -225,15 +258,28 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
                   _goto(back, remember: false);
                 },
                 onChapters: () async {
-                  final c = await showChapterList(context, current: spec.chapter);
+                  final c = await showChapterList(
+                    context,
+                    current: spec.chapter,
+                  );
                   if (c == null) return;
                   final target = pages.indexWhere((p) => p.chapter == c);
                   if (target >= 0) _goto(target);
                 },
-                onNote: () => showRidiNoteDialog(context, bookId: widget.bookId, onGoto: (p) => _goto((p - kFirstPage).clamp(0, pages.length - 1))),
+                onNote: () => showRidiNoteDialog(
+                  context,
+                  bookId: widget.bookId,
+                  onGoto: (p) =>
+                      _goto((p - kFirstPage).clamp(0, pages.length - 1)),
+                ),
                 onRoomMemo: widget.roomId == null
                     ? null
-                    : () => showRoomMemoDialog(context, roomId: widget.roomId!, bookId: widget.bookId, onGoto: _gotoLine),
+                    : () => showRoomMemoDialog(
+                        context,
+                        roomId: widget.roomId!,
+                        bookId: widget.bookId,
+                        onGoto: _gotoLine,
+                      ),
                 onView: () => showViewSettings(context),
                 onViewer: () => showViewerSettings(context),
               ),
@@ -247,7 +293,14 @@ class _RidiReaderScreenState extends State<RidiReaderScreen> {
 
 /// 한 페이지에 담을 범위 — 장 번호, 왼쪽 단·오른쪽 단의 문장 범위(from~to, to 는 제외), 장 제목 표시 여부
 class _PageSpec {
-  const _PageSpec({required this.chapter, required this.leftFrom, required this.leftTo, required this.rightFrom, required this.rightTo, required this.showTitle});
+  const _PageSpec({
+    required this.chapter,
+    required this.leftFrom,
+    required this.leftTo,
+    required this.rightFrom,
+    required this.rightTo,
+    required this.showTitle,
+  });
 
   final int chapter;
   final int leftFrom;
@@ -259,7 +312,15 @@ class _PageSpec {
 
 /// 한 페이지 — 2단이면 좌우 두 단, 1단이면 가운데 한 단(최대 폭 720)
 class _PageBody extends StatelessWidget {
-  const _PageBody({required this.spec, required this.bookId, this.roomId, this.onBlankTap, required this.page, required this.twoColumn, required this.fg});
+  const _PageBody({
+    required this.spec,
+    required this.bookId,
+    this.roomId,
+    this.onBlankTap,
+    required this.page,
+    required this.twoColumn,
+    required this.fg,
+  });
 
   final _PageSpec spec;
   final String bookId;
@@ -271,23 +332,63 @@ class _PageBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = _Column(spec: spec, bookId: bookId, roomId: roomId, onBlankTap: onBlankTap, page: page, from: spec.leftFrom, to: spec.leftTo, title: spec.showTitle ? 'Chapter ${spec.chapter + 1}' : null, fg: fg);
+    final left = _Column(
+      spec: spec,
+      bookId: bookId,
+      roomId: roomId,
+      onBlankTap: onBlankTap,
+      page: page,
+      from: spec.leftFrom,
+      to: spec.leftTo,
+      title: spec.showTitle ? 'Chapter ${spec.chapter + 1}' : null,
+      fg: fg,
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(64, 72, 64, 80),
       child: twoColumn
-          ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: left),
-              const SizedBox(width: 56),
-              Expanded(child: _Column(spec: spec, bookId: bookId, roomId: roomId, onBlankTap: onBlankTap, page: page, from: spec.rightFrom, to: spec.rightTo, fg: fg)),
-            ])
-          : Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: left)),
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: left),
+                const SizedBox(width: 56),
+                Expanded(
+                  child: _Column(
+                    spec: spec,
+                    bookId: bookId,
+                    roomId: roomId,
+                    onBlankTap: onBlankTap,
+                    page: page,
+                    from: spec.rightFrom,
+                    to: spec.rightTo,
+                    fg: fg,
+                  ),
+                ),
+              ],
+            )
+          : Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: left,
+              ),
+            ),
     );
   }
 }
 
 /// 한 단 — (장 첫 페이지면) 장 제목 + 문장들
 class _Column extends StatelessWidget {
-  const _Column({required this.spec, required this.bookId, this.roomId, this.onBlankTap, required this.page, required this.from, required this.to, required this.fg, this.title});
+  const _Column({
+    required this.spec,
+    required this.bookId,
+    this.roomId,
+    this.onBlankTap,
+    required this.page,
+    required this.from,
+    required this.to,
+    required this.fg,
+    this.title,
+  });
 
   final _PageSpec spec;
   final String bookId;
@@ -303,19 +404,42 @@ class _Column extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<RidiStore>();
     final lines = ridiChapters[spec.chapter].lines;
-    final style = TextStyle(fontFamily: RidiText.f, fontSize: 17 * store.fontScale, height: store.lineHeight, color: fg, fontWeight: FontWeight.w400);
+    final style = TextStyle(
+      fontFamily: RidiText.f,
+      fontSize: 17 * store.fontScale,
+      height: store.lineHeight,
+      color: fg,
+      fontWeight: FontWeight.w400,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (title != null) ...[
-          Text(title!, style: TextStyle(fontFamily: 'NotoSerifKR', fontSize: 30 * store.fontScale, fontWeight: FontWeight.w700, color: fg)),
+          Text(
+            title!,
+            style: TextStyle(
+              fontFamily: 'NotoSerifKR',
+              fontSize: 30 * store.fontScale,
+              fontWeight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
           SizedBox(height: 120 * store.fontScale),
         ],
         for (var i = from; i < to && i < lines.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
-            child: _Line(bookId: bookId, roomId: roomId, onBlankTap: onBlankTap, chapter: spec.chapter, page: page, index: i, text: lines[i], style: style),
+            child: _Line(
+              bookId: bookId,
+              roomId: roomId,
+              onBlankTap: onBlankTap,
+              chapter: spec.chapter,
+              page: page,
+              index: i,
+              text: lines[i],
+              style: style,
+            ),
           ),
       ],
     );
@@ -326,7 +450,16 @@ class _Column extends StatelessWidget {
 /// 형광펜을 누르면 메모 편집, 방에서 읽을 때는 끝의 말풍선을 누르면 그 문장의 방 메모.
 /// 한 문장에 형광펜 여러 개 가능 (어절 범위가 겹치지 않게).
 class _Line extends StatefulWidget {
-  const _Line({required this.bookId, this.roomId, required this.chapter, required this.page, required this.index, required this.text, required this.style, this.onBlankTap});
+  const _Line({
+    required this.bookId,
+    this.roomId,
+    required this.chapter,
+    required this.page,
+    required this.index,
+    required this.text,
+    required this.style,
+    this.onBlankTap,
+  });
 
   final String bookId;
   final String? roomId;
@@ -382,20 +515,46 @@ class _LineState extends State<_Line> {
   }
 
   /// 이 어절을 덮고 있는 내 형광펜 (없으면 null)
-  RidiNote? _noteAt(List<RidiNote> mine, int word) => mine.where((n) => word >= n.wordStart(_words.length) && word <= n.wordEnd(_words.length)).firstOrNull;
+  RidiNote? _noteAt(List<RidiNote> mine, int word) => mine
+      .where(
+        (n) =>
+            word >= n.wordStart(_words.length) &&
+            word <= n.wordEnd(_words.length),
+      )
+      .firstOrNull;
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<RidiStore>();
     final style = widget.style;
     // 이 문장의 내 형광펜들 · 같은 방 남의 메모(말풍선용)
-    final mine = store.notes
-        .where((n) => n.mine && n.bookId == widget.bookId && n.kind == NoteKind.highlight && n.chapter == widget.chapter && n.line == widget.index)
-        .toList()
-      ..sort((a, b) => a.wordStart(_words.length).compareTo(b.wordStart(_words.length)));
+    final mine =
+        store.notes
+            .where(
+              (n) =>
+                  n.mine &&
+                  n.bookId == widget.bookId &&
+                  n.kind == NoteKind.highlight &&
+                  n.chapter == widget.chapter &&
+                  n.line == widget.index,
+            )
+            .toList()
+          ..sort(
+            (a, b) => a
+                .wordStart(_words.length)
+                .compareTo(b.wordStart(_words.length)),
+          );
     final others = widget.roomId == null || store.onlyMyNotes
         ? const <RidiNote>[]
-        : store.roomNotes(widget.roomId!, widget.bookId).where((n) => !n.mine && n.chapter == widget.chapter && n.line == widget.index).toList();
+        : store
+              .roomNotes(widget.roomId!, widget.bookId)
+              .where(
+                (n) =>
+                    !n.mine &&
+                    n.chapter == widget.chapter &&
+                    n.line == widget.index,
+              )
+              .toList();
 
     // ----- 어절 단위로 span 을 만들면서 글자 위치를 기록 -----
     final spans = <InlineSpan>[TextSpan(text: '  ', style: style)];
@@ -406,12 +565,21 @@ class _LineState extends State<_Line> {
     final (sa, sb) = selecting ? _sel : (-1, -1);
     // 어절 하나(또는 그 뒤 공백)의 모양: 선택 중이면 파란 배경, 형광펜이면 색 배경, 밑줄이면 진한 색 밑줄
     TextStyle paint(RidiNote? note, bool selected) {
-      if (selected) return style.copyWith(backgroundColor: RidiColors.blue.withValues(alpha: 0.28));
+      if (selected)
+        return style.copyWith(
+          backgroundColor: RidiColors.blue.withValues(alpha: 0.28),
+        );
       if (note == null) return style;
       if (note.penStyle == PenStyle.underline) {
-        return style.copyWith(decoration: TextDecoration.underline, decorationColor: RidiColors.penLines[note.colorIndex], decorationThickness: 2.2);
+        return style.copyWith(
+          decoration: TextDecoration.underline,
+          decorationColor: RidiColors.penLines[note.colorIndex],
+          decorationThickness: 2.2,
+        );
       }
-      return style.copyWith(backgroundColor: RidiColors.penColors[note.colorIndex]);
+      return style.copyWith(
+        backgroundColor: RidiColors.penColors[note.colorIndex],
+      );
     }
 
     for (var i = 0; i < _words.length; i++) {
@@ -425,29 +593,53 @@ class _LineState extends State<_Line> {
       final nextSame = !last && note != null && _noteAt(mine, i + 1) == note;
       final nextSel = !last && inSel && i + 1 <= sb;
       if (!last) {
-        spans.add(TextSpan(text: ' ', style: paint(nextSame && !inSel ? note : null, nextSel)));
+        spans.add(
+          TextSpan(
+            text: ' ',
+            style: paint(nextSame && !inSel ? note : null, nextSel),
+          ),
+        );
         offset += 1;
       }
       _ends.add(offset);
       // 형광펜 끝 어절 뒤에 메모 핀
-      if (note != null && note.memo.isNotEmpty && i == note.wordEnd(_words.length)) {
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.bottom,
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: Icon(Icons.push_pin_rounded, size: 14 * store.fontScale, color: style.color)),
-        ));
+      if (note != null &&
+          note.memo.isNotEmpty &&
+          i == note.wordEnd(_words.length)) {
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.bottom,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Icon(
+                Icons.push_pin_rounded,
+                size: 14 * store.fontScale,
+                color: style.color,
+              ),
+            ),
+          ),
+        );
         offset += 1;
       }
     }
     if (others.isNotEmpty) {
-      spans.add(WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: _RoomBadge(
-          notes: others,
-          locked: others.every((n) => store.isSpoiler(n, widget.roomId!)),
-          scale: store.fontScale,
-          onTap: () => showRoomMemoDialog(context, roomId: widget.roomId!, bookId: widget.bookId, chapter: widget.chapter, line: widget.index),
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: _RoomBadge(
+            notes: others,
+            locked: others.every((n) => store.isSpoiler(n, widget.roomId!)),
+            scale: store.fontScale,
+            onTap: () => showRoomMemoDialog(
+              context,
+              roomId: widget.roomId!,
+              bookId: widget.bookId,
+              chapter: widget.chapter,
+              line: widget.index,
+            ),
+          ),
         ),
-      ));
+      );
     }
 
     // 탭: 형광펜 위면 메모 창, 아니면 도구 열고 닫기
@@ -461,7 +653,16 @@ class _LineState extends State<_Line> {
           widget.onBlankTap?.call();
           return;
         }
-        showRidiMemoDialog(context, bookId: widget.bookId, chapter: widget.chapter, page: widget.page, line: widget.index, phrase: note.phrase, note: note, roomId: widget.roomId);
+        showRidiMemoDialog(
+          context,
+          bookId: widget.bookId,
+          chapter: widget.chapter,
+          page: widget.page,
+          line: widget.index,
+          phrase: note.phrase,
+          note: note,
+          roomId: widget.roomId,
+        );
       },
       onLongPressStart: (d) {
         final w = _wordAt(d.globalPosition);
@@ -478,11 +679,21 @@ class _LineState extends State<_Line> {
         if (_selFrom == null) return;
         final (a, b) = _sel;
         // 누른 곳에 이미 형광펜이 있으면 그 형광펜을 편집
-        final existing = mine.where((n) => n.wordStart(_words.length) <= b && n.wordEnd(_words.length) >= a).firstOrNull;
+        final existing = mine
+            .where(
+              (n) =>
+                  n.wordStart(_words.length) <= b &&
+                  n.wordEnd(_words.length) >= a,
+            )
+            .firstOrNull;
         await _openPenMenu(context, store, a, b, note: existing);
         if (mounted) setState(() => _selFrom = _selTo = null);
       },
-      child: Text.rich(TextSpan(children: spans), key: _key, textAlign: TextAlign.justify),
+      child: Text.rich(
+        TextSpan(children: spans),
+        key: _key,
+        textAlign: TextAlign.justify,
+      ),
     );
   }
 
@@ -490,118 +701,186 @@ class _LineState extends State<_Line> {
   /// 새 선택이면 색을 누를 때 고른 모양(형광펜/밑줄)으로 만들고, 이미 칠한 곳이면 모양·색 바꾸기 · 지우기.
   /// 모양은 마지막에 쓴 것을 기억한다(store.lastPenStyle).
   /// "메모 남기기"는 (없으면 분홍으로 만든 뒤) 메모 창으로. 방에서 읽는 중이면 그 방에 공유된다(메모 창에서 방을 더 고를 수 있음).
-  Future<void> _openPenMenu(BuildContext context, RidiStore store, int from, int to, {RidiNote? note}) {
+  Future<void> _openPenMenu(
+    BuildContext context,
+    RidiStore store,
+    int from,
+    int to, {
+    RidiNote? note,
+  }) {
     final phrase = note?.phrase ?? _words.sublist(from, to + 1).join(' ');
     final roomId = widget.roomId;
     var penStyle = note?.penStyle ?? store.lastPenStyle;
     RidiNote add(int color) => store.addNote(
-          bookId: widget.bookId,
-          kind: NoteKind.highlight,
-          chapter: widget.chapter,
-          page: widget.page,
-          line: widget.index,
-          phrase: phrase,
-          colorIndex: color,
-          roomIds: [?roomId],
-          penStyle: penStyle,
-          wordFrom: from,
-          wordTo: to,
-        );
+      bookId: widget.bookId,
+      kind: NoteKind.highlight,
+      chapter: widget.chapter,
+      page: widget.page,
+      line: widget.index,
+      phrase: phrase,
+      colorIndex: color,
+      roomIds: [?roomId],
+      penStyle: penStyle,
+      wordFrom: from,
+      wordTo: to,
+    );
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
       barrierColor: Colors.black26,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
-      builder: (ctx) => ScreenTag('RIDI_READER_03', alignment: Alignment.bottomRight, child: StatefulBuilder(builder: (ctx, setSheet) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('“$phrase”', style: RidiText.body.copyWith(fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Text(
-              [
-                if (note == null) '누른 채 끌면 선택을 늘릴 수 있어요',
-                if (note == null && roomId != null) '${store.room(roomId)?.name ?? '방'} 에 공유돼요',
-                if (note != null) switch (store.sharedLabel(note)) { null => '나만 보기', final s => '$s 에 공유됨' },
-              ].join('  ·  '),
-              style: RidiText.sub,
-            ),
-            const SizedBox(height: 16),
-            // 펜 모양 — 이미 칠한 곳이면 누르는 즉시 바뀐다
-            Row(children: [
-              for (final (s, label) in const [(PenStyle.highlight, '형광펜'), (PenStyle.underline, '밑줄')]) ...[
-                RidiChip(label, on: penStyle == s, onTap: () {
-                  setSheet(() => penStyle = s);
-                  if (note != null) store.setNotePenStyle(note.id, s);
-                }),
-                const SizedBox(width: 8),
-              ],
-            ]),
-            const SizedBox(height: 14),
-            Row(children: [
-              for (var c = 0; c < RidiColors.penColors.length; c++)
-                Padding(
-                  padding: const EdgeInsets.only(right: 14),
-                  child: InkWell(
-                    onTap: () {
-                      if (note == null) {
-                        add(c);
-                      } else {
-                        store.setNoteColor(note.id, c);
-                      }
-                      Navigator.pop(ctx);
-                    },
-                    borderRadius: BorderRadius.circular(18),
-                    // 형광펜 = 색 동그라미, 밑줄 = 가운데 "가" 아래 색 줄
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: penStyle == PenStyle.highlight ? RidiColors.penColors[c] : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: note?.colorIndex == c ? RidiColors.ink : (penStyle == PenStyle.highlight ? Colors.transparent : RidiColors.grayLight),
-                          width: note?.colorIndex == c ? 2 : 1,
-                        ),
-                      ),
-                      child: penStyle == PenStyle.highlight
-                          ? null
-                          : Text(
-                              '가',
-                              style: TextStyle(
-                                fontFamily: RidiText.f,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: RidiColors.text,
-                                decoration: TextDecoration.underline,
-                                decorationColor: RidiColors.penLines[c],
-                                decorationThickness: 3,
-                              ),
-                            ),
-                    ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      builder: (ctx) => ScreenTag(
+        'RIDI_READER_03',
+        alignment: Alignment.bottomRight,
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '“$phrase”',
+                    style: RidiText.body.copyWith(fontWeight: FontWeight.w700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              const Spacer(),
-              if (note != null)
-                TextButton.icon(
-                  onPressed: () {
-                    store.deleteNotes([note.id]);
-                    Navigator.pop(ctx);
-                  },
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: RidiColors.red),
-                  label: const Text('지우기', style: TextStyle(fontFamily: RidiText.f, color: RidiColors.red)),
-                ),
-            ]),
-            const SizedBox(height: 12),
-            RidiOutlineButton('메모 남기기', icon: Icons.sticky_note_2_outlined, onTap: () {
-              final n = note ?? add(4);
-              Navigator.pop(ctx);
-              showRidiMemoDialog(context, bookId: widget.bookId, chapter: widget.chapter, page: widget.page, line: widget.index, phrase: n.phrase, note: n, roomId: roomId);
-            }),
-          ]),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      if (note == null) '누른 채 끌면 선택을 늘릴 수 있어요',
+                      if (note == null && roomId != null)
+                        '${store.room(roomId)?.name ?? '방'} 에 공유돼요',
+                      if (note != null)
+                        switch (store.sharedLabel(note)) {
+                          null => '나만 보기',
+                          final s => '$s 에 공유됨',
+                        },
+                    ].join('  ·  '),
+                    style: RidiText.sub,
+                  ),
+                  const SizedBox(height: 16),
+                  // 펜 모양 — 이미 칠한 곳이면 누르는 즉시 바뀐다
+                  Row(
+                    children: [
+                      for (final (s, label) in const [
+                        (PenStyle.highlight, '형광펜'),
+                        (PenStyle.underline, '밑줄'),
+                      ]) ...[
+                        RidiChip(
+                          label,
+                          on: penStyle == s,
+                          onTap: () {
+                            setSheet(() => penStyle = s);
+                            if (note != null) store.setNotePenStyle(note.id, s);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      for (var c = 0; c < RidiColors.penColors.length; c++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 14),
+                          child: InkWell(
+                            onTap: () {
+                              if (note == null) {
+                                add(c);
+                              } else {
+                                store.setNoteColor(note.id, c);
+                              }
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: BorderRadius.circular(18),
+                            // 형광펜 = 색 동그라미, 밑줄 = 가운데 "가" 아래 색 줄
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: penStyle == PenStyle.highlight
+                                    ? RidiColors.penColors[c]
+                                    : Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: note?.colorIndex == c
+                                      ? RidiColors.ink
+                                      : (penStyle == PenStyle.highlight
+                                            ? Colors.transparent
+                                            : RidiColors.grayLight),
+                                  width: note?.colorIndex == c ? 2 : 1,
+                                ),
+                              ),
+                              child: penStyle == PenStyle.highlight
+                                  ? null
+                                  : Text(
+                                      '가',
+                                      style: TextStyle(
+                                        fontFamily: RidiText.f,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: RidiColors.text,
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: RidiColors.penLines[c],
+                                        decorationThickness: 3,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      const Spacer(),
+                      if (note != null)
+                        TextButton.icon(
+                          onPressed: () {
+                            store.deleteNotes([note.id]);
+                            Navigator.pop(ctx);
+                          },
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: RidiColors.red,
+                          ),
+                          label: const Text(
+                            '지우기',
+                            style: TextStyle(
+                              fontFamily: RidiText.f,
+                              color: RidiColors.red,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  RidiOutlineButton(
+                    '메모 남기기',
+                    icon: Icons.sticky_note_2_outlined,
+                    onTap: () {
+                      final n = note ?? add(4);
+                      Navigator.pop(ctx);
+                      showRidiMemoDialog(
+                        context,
+                        bookId: widget.bookId,
+                        chapter: widget.chapter,
+                        page: widget.page,
+                        line: widget.index,
+                        phrase: n.phrase,
+                        note: n,
+                        roomId: roomId,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ))),
+      ),
     );
   }
 }
@@ -609,7 +888,12 @@ class _LineState extends State<_Line> {
 // ---------------- 상단 도구 ----------------
 /// 상단 도구 — 뒤로 · 책 제목(방이면 방 이름도) · 책갈피 켜기/끄기
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title, required this.marked, required this.onBack, required this.onBookmark});
+  const _TopBar({
+    required this.title,
+    required this.marked,
+    required this.onBack,
+    required this.onBookmark,
+  });
 
   final String title;
   final bool marked;
@@ -621,21 +905,47 @@ class _TopBar extends StatelessWidget {
     return Material(
       color: Colors.white,
       child: Container(
-        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: RidiColors.grayLight))),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: RidiColors.grayLight)),
+        ),
         child: SafeArea(
           bottom: false,
           child: SizedBox(
             height: 56,
-            child: Row(children: [
-              IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: RidiColors.gray), onPressed: onBack),
-              Expanded(child: Text(title, textAlign: TextAlign.center, style: RidiText.body.copyWith(color: RidiColors.gray, fontSize: 16))),
-              IconButton(
-                tooltip: '책갈피',
-                icon: Icon(marked ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded, size: 24, color: marked ? RidiColors.red : RidiColors.ink),
-                onPressed: onBookmark,
-              ),
-              const SizedBox(width: 8),
-            ]),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 22,
+                    color: RidiColors.gray,
+                  ),
+                  onPressed: onBack,
+                ),
+                Expanded(
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: RidiText.body.copyWith(
+                      color: RidiColors.gray,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '책갈피',
+                  icon: Icon(
+                    marked
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_outline_rounded,
+                    size: 24,
+                    color: marked ? RidiColors.red : RidiColors.ink,
+                  ),
+                  onPressed: onBookmark,
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -680,7 +990,9 @@ class _BottomBar extends StatelessWidget {
     return Material(
       color: Colors.white,
       child: Container(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: RidiColors.grayLight))),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: RidiColors.grayLight)),
+        ),
         child: SafeArea(
           top: false,
           child: Padding(
@@ -691,8 +1003,17 @@ class _BottomBar extends StatelessWidget {
                   width: 56,
                   height: 56,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: RidiColors.grayLight)),
-                  child: Text('$page / $ridiTotalPages', style: RidiText.sub.copyWith(fontSize: 11, color: RidiColors.ink)),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: RidiColors.grayLight),
+                  ),
+                  child: Text(
+                    '$page / $ridiTotalPages',
+                    style: RidiText.sub.copyWith(
+                      fontSize: 11,
+                      color: RidiColors.ink,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -702,43 +1023,78 @@ class _BottomBar extends StatelessWidget {
                       activeTrackColor: RidiColors.gray,
                       inactiveTrackColor: RidiColors.grayLight,
                       thumbColor: Colors.white,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12, elevation: 2),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 12,
+                        elevation: 2,
+                      ),
                       overlayShape: SliderComponentShape.noOverlay,
                     ),
-                    child: Slider(value: ratio.clamp(0.0, 1.0), onChanged: onSlide, onChangeEnd: onSlideEnd),
+                    child: Slider(
+                      value: ratio.clamp(0.0, 1.0),
+                      onChanged: onSlide,
+                      onChangeEnd: onSlideEnd,
+                    ),
                   ),
                 ),
                 IconButton(
                   tooltip: '이동 전으로',
-                  icon: Icon(Icons.undo_rounded, color: canUndo ? RidiColors.ink : RidiColors.grayLight),
+                  icon: Icon(
+                    Icons.undo_rounded,
+                    color: canUndo ? RidiColors.ink : RidiColors.grayLight,
+                  ),
                   onPressed: canUndo ? onUndo : null,
                 ),
                 const SizedBox(width: 16),
-                _Tool(icon: Icons.format_list_bulleted_rounded, label: '목차', onTap: onChapters),
-                _Tool(icon: Icons.sticky_note_2_outlined, label: '독서노트', onTap: onNote),
-                if (onRoomMemo != null) _Tool(icon: Icons.forum_outlined, label: '방 메모', onTap: onRoomMemo!),
+                _Tool(
+                  icon: Icons.format_list_bulleted_rounded,
+                  label: '목차',
+                  onTap: onChapters,
+                ),
+                _Tool(
+                  icon: Icons.sticky_note_2_outlined,
+                  label: '독서노트',
+                  onTap: onNote,
+                ),
+                if (onRoomMemo != null)
+                  _Tool(
+                    icon: Icons.forum_outlined,
+                    label: '방 메모',
+                    onTap: onRoomMemo!,
+                  ),
                 if (roomId != null)
-                  Builder(builder: (context) {
-                    final store = context.watch<RidiStore>();
-                    final on = store.onlyMyNotes;
-                    return _Tool(
-                      icon: on ? Icons.person_rounded : Icons.person_outline_rounded,
-                      label: '내 메모만',
-                      on: on,
-                      onTap: () {
-                        store.setOnlyMyNotes(!on);
-                        ridiToast(context, on ? '멤버 메모도 보여요' : '내 메모만 보여요');
-                      },
-                    );
-                  }),
+                  Builder(
+                    builder: (context) {
+                      final store = context.watch<RidiStore>();
+                      final on = store.onlyMyNotes;
+                      return _Tool(
+                        icon: on
+                            ? Icons.person_rounded
+                            : Icons.person_outline_rounded,
+                        label: '내 메모만',
+                        on: on,
+                        onTap: () {
+                          store.setOnlyMyNotes(!on);
+                          ridiToast(context, on ? '멤버 메모도 보여요' : '내 메모만 보여요');
+                        },
+                      );
+                    },
+                  ),
                 if (roomId != null)
                   _Tool(
                     icon: Icons.smart_toy_outlined,
                     label: 'AI 친구',
                     onTap: () => showPersonaPicker(context, roomId: roomId!),
                   ),
-                _Tool(icon: Icons.text_fields_rounded, label: '보기 설정', onTap: onView),
-                _Tool(icon: Icons.settings_outlined, label: '뷰어 설정', onTap: onViewer),
+                _Tool(
+                  icon: Icons.text_fields_rounded,
+                  label: '보기 설정',
+                  onTap: onView,
+                ),
+                _Tool(
+                  icon: Icons.settings_outlined,
+                  label: '뷰어 설정',
+                  onTap: onViewer,
+                ),
               ],
             ),
           ),
@@ -750,7 +1106,12 @@ class _BottomBar extends StatelessWidget {
 
 /// 하단 도구 버튼 하나 (아이콘 + 글자). on = 켜진 상태(파랑)
 class _Tool extends StatelessWidget {
-  const _Tool({required this.icon, required this.label, required this.onTap, this.on = false});
+  const _Tool({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.on = false,
+  });
 
   final IconData icon;
   final String label;
@@ -765,11 +1126,21 @@ class _Tool extends StatelessWidget {
       child: SizedBox(
         width: 78,
         height: 60,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, size: 26, color: on ? RidiColors.blue : RidiColors.ink),
-          const SizedBox(height: 6),
-          Text(label, style: RidiText.sub.copyWith(fontSize: 11, color: on ? RidiColors.blue : RidiColors.gray, fontWeight: on ? FontWeight.w700 : null)),
-        ]),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 26, color: on ? RidiColors.blue : RidiColors.ink),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: RidiText.sub.copyWith(
+                fontSize: 11,
+                color: on ? RidiColors.blue : RidiColors.gray,
+                fontWeight: on ? FontWeight.w700 : null,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -777,7 +1148,12 @@ class _Tool extends StatelessWidget {
 
 /// 문장 끝 방 메모 말풍선 — 첫 멤버 아바타 + 개수. 전부 스포일러면 자물쇠
 class _RoomBadge extends StatelessWidget {
-  const _RoomBadge({required this.notes, required this.locked, required this.scale, required this.onTap});
+  const _RoomBadge({
+    required this.notes,
+    required this.locked,
+    required this.scale,
+    required this.onTap,
+  });
 
   final List<RidiNote> notes;
   final bool locked;
@@ -791,19 +1167,42 @@ class _RoomBadge extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(left: 6),
-        padding: EdgeInsets.fromLTRB(3 * scale, 2 * scale, 8 * scale, 2 * scale),
+        padding: EdgeInsets.fromLTRB(
+          3 * scale,
+          2 * scale,
+          8 * scale,
+          2 * scale,
+        ),
         decoration: BoxDecoration(
           color: locked ? RidiColors.panel : const Color(0xFFE8F2FC),
           borderRadius: BorderRadius.circular(14 * scale),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (locked)
-            Padding(padding: EdgeInsets.all(3 * scale), child: Icon(Icons.lock_outline_rounded, size: 14 * scale, color: RidiColors.gray))
-          else
-            RidiAvatar(label: first.author, ai: first.ai, size: 20 * scale),
-          SizedBox(width: 4 * scale),
-          Text('${notes.length}', style: TextStyle(fontFamily: RidiText.f, fontSize: 12 * scale, fontWeight: FontWeight.w700, color: locked ? RidiColors.gray : RidiColors.blue)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (locked)
+              Padding(
+                padding: EdgeInsets.all(3 * scale),
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  size: 14 * scale,
+                  color: RidiColors.gray,
+                ),
+              )
+            else
+              RidiAvatar(label: first.author, ai: first.ai, size: 20 * scale),
+            SizedBox(width: 4 * scale),
+            Text(
+              '${notes.length}',
+              style: TextStyle(
+                fontFamily: RidiText.f,
+                fontSize: 12 * scale,
+                fontWeight: FontWeight.w700,
+                color: locked ? RidiColors.gray : RidiColors.blue,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -814,7 +1213,8 @@ class _Ribbon extends StatelessWidget {
   const _Ribbon();
 
   @override
-  Widget build(BuildContext context) => const CustomPaint(size: Size(22, 38), painter: _RibbonPainter());
+  Widget build(BuildContext context) =>
+      const CustomPaint(size: Size(22, 38), painter: _RibbonPainter());
 }
 
 /// 위는 평평하고 아래는 V 로 파인 리본 모양 + 옅은 그림자
