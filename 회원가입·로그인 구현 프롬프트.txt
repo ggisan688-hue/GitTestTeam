@@ -1,0 +1,454 @@
+현재 Android Studio 프로젝트의 로그인 기능을 실제 회원가입·로그인 기능으로 구현해줘.
+
+반드시 기존 프로젝트 구조와 디자인을 먼저 분석한 뒤 구현해줘. 기존에 Jetpack Compose, XML View, ViewModel, Repository, Retrofit, DataStore, Navigation 등 어떤 구조를 사용 중인지 파악하고, 가능한 한 현재 구조를 유지해. 불필요하게 전체 앱 구조를 새로 만들지 말고 필요한 부분만 확장·수정해줘.
+
+# 최종 목표
+
+현재는 사용자가 아이디와 비밀번호를 아무거나 입력해도 로그인되는 임시/더미 로그인 방식이다.
+
+이 더미 로그인 로직을 완전히 제거하고 아래 구조로 실제 회원가입, 로그인, JWT 인증, 자동 로그인, 로그아웃 기능을 구현해줘.
+
+Android 앱 → 백엔드 REST API 서버 → PostgreSQL 데이터베이스
+                                      ↳ pgAdmin은 DB 확인·관리 용도
+
+중요:
+- Android 앱은 PostgreSQL DB나 pgAdmin에 직접 접속하면 안 된다.
+- Android 앱은 백엔드 API만 호출한다.
+- 백엔드 서버가 PostgreSQL DB와 통신한다.
+- DB 비밀번호, JWT Secret 등 민감 정보는 Android 앱 코드에 절대 넣지 않는다.
+
+---
+
+# 1. PostgreSQL DB 연결 정보
+
+DB 종류: PostgreSQL
+
+백엔드에서 다음 환경변수를 사용해 DB에 연결해줘.
+
+```env
+DB_HOST=project-db-campus.smhrd.com
+DB_PORT=3310
+DB_NAME=campus_26k_lgdx19_p3_2
+DB_USERNAME=campus_26k_lgdx19_p3_2
+DB_PASSWORD=실제_DB_비밀번호를_로컬_env에_직접_입력
+JWT_SECRET=충분히_길고_무작위인_시크릿_값
+JWT_EXPIRATION_MS=86400000
+```
+
+PostgreSQL JDBC URL 형식:
+
+```text
+jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+```
+
+실제 연결 URL은 아래와 같아야 한다.
+
+```text
+jdbc:postgresql://project-db-campus.smhrd.com:3310/campus_26k_lgdx19_p3_2
+```
+
+환경변수 처리 원칙:
+- 실제 `DB_PASSWORD`와 `JWT_SECRET`은 코드, Git, README에 절대 작성하지 않는다.
+- `.env`, `application-local.yml`, `local.properties` 등 민감 설정 파일은 `.gitignore`에 추가한다.
+- Spring Boot 설정 파일은 `${DB_HOST}`, `${DB_PORT}` 등 환경변수 참조 방식을 사용한다.
+- DB 접속 실패 시 비밀번호를 로그에 출력하지 않는다.
+- 연결 실패 시 호스트, 포트, DB 이름, 계정, 외부 접속 권한, 방화벽 여부를 순서대로 점검할 수 있도록 명확한 오류 메시지를 남긴다.
+
+---
+
+# 2. 작업 시작 전 프로젝트 분석
+
+코드를 수정하기 전에 반드시 아래 내용을 확인해줘.
+
+1. Android 앱 로그인 화면과 네비게이션 구조를 확인한다.
+2. 아이디/비밀번호가 무엇이든 로그인되는 기존 임시 로그인 코드를 찾는다.
+3. 로그인 성공 후 어디로 이동하는지(홈 화면 등)를 확인한다.
+4. 회원가입 화면이 이미 존재하는지 확인한다.
+5. 앱이 Jetpack Compose 기반인지 XML View 기반인지 확인한다.
+6. 기존 ViewModel, Repository, DataStore, Retrofit/OkHttp 등의 사용 여부를 확인한다.
+7. 백엔드 프로젝트가 이미 있는지 확인한다.
+   - 있으면 기존 언어·프레임워크·패키지 구조를 최대한 유지한다.
+   - 없으면 Android 앱과 분리된 새 백엔드 프로젝트를 생성한다.
+   - 새 백엔드는 Spring Boot 기반으로 구현한다.
+   - 기존 프로젝트가 Kotlin 중심이면 Spring Boot Kotlin을, Java 중심이면 Spring Boot Java를 선택한다.
+
+---
+
+# 3. 백엔드 구현
+
+백엔드는 Spring Boot 기반으로 구현해줘.
+
+필요한 기능:
+- Spring Web
+- Spring Data JPA
+- PostgreSQL JDBC Driver
+- Spring Security
+- JWT 인증 라이브러리
+- BCrypt Password Encoder
+- Validation
+- Flyway migration
+- 필요한 경우 Lombok 또는 Kotlin 관련 라이브러리
+
+패키지는 현재 프로젝트의 패키지 규칙을 따르고, 없다면 다음과 같이 역할별로 분리해줘.
+
+```text
+controller
+service
+repository
+entity
+dto
+security
+config
+exception
+```
+
+## 3-1. PostgreSQL users 테이블
+
+Flyway migration을 우선 사용해 `users` 테이블을 생성해줘.
+기존 프로젝트에 Liquibase 등 다른 migration 도구가 있으면 기존 방식을 유지해줘.
+
+최소 테이블 구조:
+
+```sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(20) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+필수 조건:
+- `username`에 UNIQUE 제약 조건을 설정한다.
+- username 조회 성능을 위한 인덱스를 적절히 고려한다.
+- 한글 닉네임이 UTF-8 환경에서 정상적으로 저장·조회되어야 한다.
+- 비밀번호 원문은 절대 저장하지 않는다.
+- BCrypt로 암호화한 값만 `password_hash`에 저장한다.
+- `updated_at`이 변경 시 갱신되도록 JPA Auditing, 엔티티 콜백 또는 PostgreSQL trigger 중 기존 구조에 적합한 방법을 적용한다.
+- 이미 존재하는 테이블과 충돌하지 않도록 migration 파일명 및 버전을 관리한다.
+
+## 3-2. 회원가입 API
+
+### POST /api/auth/signup
+
+요청 예시:
+
+```json
+{
+  "username": "test_user",
+  "password": "password123",
+  "nickname": "테스트사용자"
+}
+```
+
+검증 조건:
+- username: 영문, 숫자, 밑줄(`_`)만 허용하며 4~20자
+- password: 최소 8자 이상
+- nickname: 빈 문자열 불가, 한글 포함 가능
+- username 중복 여부를 서버와 DB에서 확인
+- 클라이언트 검증만 믿지 않고 서버에서도 반드시 재검증
+
+처리:
+- 중복 username이면 적절한 오류 응답을 반환한다.
+- 비밀번호는 BCrypt로 해싱한 뒤 저장한다.
+- 회원가입 성공 시 성공 메시지를 반환한다.
+
+성공 응답:
+
+```json
+{
+  "success": true,
+  "message": "회원가입이 완료되었습니다."
+}
+```
+
+## 3-3. 로그인 API
+
+### POST /api/auth/login
+
+요청 예시:
+
+```json
+{
+  "username": "test_user",
+  "password": "password123"
+}
+```
+
+처리:
+1. username으로 사용자를 조회한다.
+2. 사용자가 없거나 BCrypt 비밀번호 검증에 실패하면 동일한 인증 실패 메시지를 반환한다.
+3. 성공 시 JWT access token을 생성한다.
+4. 토큰과 최소 사용자 정보를 반환한다.
+
+성공 응답:
+
+```json
+{
+  "accessToken": "JWT_TOKEN",
+  "tokenType": "Bearer",
+  "user": {
+    "id": 1,
+    "username": "test_user",
+    "nickname": "테스트사용자"
+  }
+}
+```
+
+## 3-4. 내 정보 API
+
+### GET /api/users/me
+
+요청 헤더:
+
+```text
+Authorization: Bearer {accessToken}
+```
+
+성공 응답 예시:
+
+```json
+{
+  "id": 1,
+  "username": "test_user",
+  "nickname": "테스트사용자"
+}
+```
+
+이 API는 유효한 JWT access token이 있을 때만 접근할 수 있게 해줘.
+
+## 3-5. 공통 오류 응답
+
+오류 응답 형식을 통일해줘.
+
+```json
+{
+  "success": false,
+  "code": "DUPLICATE_USERNAME",
+  "message": "이미 사용 중인 아이디입니다."
+}
+```
+
+최소 오류 코드:
+- `DUPLICATE_USERNAME`
+- `INVALID_REQUEST`
+- `INVALID_CREDENTIALS`
+- `UNAUTHORIZED`
+- `INTERNAL_SERVER_ERROR`
+
+전역 예외 처리(`@RestControllerAdvice` 등)를 구현해서, validation 오류·중복 오류·인증 오류·예상하지 못한 서버 오류를 일관된 형식으로 반환해줘.
+
+## 3-6. Spring Security 및 JWT
+
+- Spring Security를 적용한다.
+- `/api/auth/signup`, `/api/auth/login`은 인증 없이 접근 가능해야 한다.
+- `/api/users/me`는 JWT 인증이 필요하다.
+- Stateless session 정책을 사용한다.
+- JWT secret은 반드시 `JWT_SECRET` 환경변수에서 읽는다.
+- JWT 만료 시간은 `JWT_EXPIRATION_MS` 환경변수에서 읽는다.
+- JWT 검증 필터를 구현해 Authorization Bearer 토큰을 검증한다.
+- 토큰이 만료·위조·잘못된 형식이면 적절히 401 응답한다.
+- DB 연결 정보, JWT 값, 비밀번호 원문은 절대 로그에 출력하지 않는다.
+- 개발 단계에서 필요한 범위에 한해 CORS를 설정한다.
+
+---
+
+# 4. Android 앱 구현
+
+현재 Android 프로젝트의 구조를 유지하면서 구현해줘.
+
+## 4-1. 더미 로그인 제거
+
+- 아이디와 비밀번호에 어떤 값이 입력되어도 로그인되는 기존 임시 로직을 완전히 삭제한다.
+- 로그인 버튼을 누르면 실제 백엔드 `POST /api/auth/login` API를 호출하도록 변경한다.
+- 서버 로그인 성공 시에만 홈 화면으로 이동하게 한다.
+- 서버 로그인 실패 시 홈 화면으로 이동하면 안 된다.
+
+## 4-2. 회원가입 UI 및 동작
+
+회원가입 화면이 없다면 현재 앱 디자인·폰트·색상·네비게이션 방식에 맞춰 추가해줘.
+
+입력 필드:
+- 아이디
+- 비밀번호
+- 비밀번호 확인
+- 닉네임
+
+클라이언트 입력 검증:
+- 아이디: 영문, 숫자, 밑줄만 허용, 4~20자
+- 비밀번호: 최소 8자
+- 비밀번호 확인 일치 여부
+- 닉네임 필수 입력
+- 한글 닉네임 입력 및 표시가 정상 동작해야 함
+
+회원가입:
+- `POST /api/auth/signup` API를 호출한다.
+- 요청 중에는 버튼 중복 클릭을 막고 로딩 상태를 표시한다.
+- 성공하면 성공 메시지를 표시하고 로그인 화면으로 이동한다.
+- 실패하면 서버 코드와 메시지에 맞는 오류를 표시한다.
+- 키보드 입력 중 한글 조합이 끊기거나 분리되지 않게 한다.
+
+## 4-3. 로그인 UI 및 동작
+
+로그인 화면에서:
+- 아이디와 비밀번호 입력값을 검증한다.
+- 로그인 버튼 클릭 시 `POST /api/auth/login`을 호출한다.
+- 요청 중에는 버튼 중복 클릭을 막고 로딩 상태를 보여준다.
+- 성공하면 access token을 저장한 후 기존 홈 화면으로 이동한다.
+- 실패하면 오류 메시지를 표시한다.
+
+구분해야 할 오류:
+- 아이디 또는 비밀번호가 일치하지 않음
+- 입력값 누락 또는 형식 오류
+- 서버 연결 실패
+- 서버 내부 오류
+
+## 4-4. 네트워크 및 상태 관리
+
+- 현재 Retrofit, OkHttp, Ktor 등 네트워크 라이브러리가 있으면 기존 방식을 유지한다.
+- 없으면 Retrofit + OkHttp를 사용한다.
+- API 요청/응답 DTO와 앱 내부 도메인 모델을 분리한다.
+- Repository에서 API 호출을 수행한다.
+- ViewModel에서 UI 상태(입력값, 로딩, 성공, 오류)를 관리한다.
+- Compose라면 StateFlow 기반으로, XML이라면 현재 프로젝트의 LiveData/Flow 방식에 맞춰 구현한다.
+- AndroidManifest.xml에 인터넷 권한이 없다면 아래 권한을 추가한다.
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+## 4-5. API Base URL 관리
+
+- Android 앱 코드에 백엔드 API 주소를 직접 하드코딩하지 않는다.
+- `local.properties` + BuildConfig 또는 현재 프로젝트가 쓰는 환경 설정 방식으로 API Base URL을 분리한다.
+- 개발용과 배포용 URL을 분리할 수 있게 한다.
+- `local.properties`는 Git에 포함되지 않도록 `.gitignore`에 추가한다.
+- Android 앱에는 PostgreSQL DB 주소, 포트, DB 계정, DB 비밀번호를 넣지 않는다.
+
+개발 단계에서 백엔드가 로컬 PC에서 실행되는 경우:
+- Android Emulator는 `http://10.0.2.2:8080/`을 사용한다.
+- 실제 기기 테스트는 PC의 LAN IP 또는 배포된 API 서버 주소를 사용하도록 문서화한다.
+- HTTP 로컬 테스트가 필요한 경우에만 개발 빌드에서 cleartext 설정을 제한적으로 허용하고, 운영 환경은 HTTPS 사용을 전제로 구성한다.
+
+## 4-6. 토큰 저장과 자동 로그인
+
+- 로그인 성공 후 access token을 DataStore 또는 EncryptedSharedPreferences에 저장한다.
+- 현재 앱에 DataStore가 있다면 이를 우선 활용한다.
+- 비밀번호는 DataStore, SharedPreferences, 로그, 저장 상태 어디에도 저장하지 않는다.
+- 앱 시작 시 저장된 access token을 확인한다.
+- 유효한 토큰이면 로그인 상태를 복원하고 홈 화면으로 이동한다.
+- 필요하면 `/api/users/me` 호출로 토큰 유효성을 확인한다.
+- 토큰이 만료·무효이거나 API 요청에서 401 Unauthorized를 받으면 토큰을 삭제하고 로그인 화면으로 이동한다.
+- OkHttp Interceptor를 구현해 인증이 필요한 요청에 `Authorization: Bearer {token}` 헤더를 자동 추가한다.
+
+## 4-7. 로그아웃
+
+- 앱의 적절한 위치(마이페이지 또는 설정 화면 등 기존 구조에 맞는 곳)에 로그아웃 기능을 추가한다.
+- 로그아웃 시 access token 및 로컬 사용자 정보를 삭제한다.
+- 로그인 화면으로 이동한다.
+- 뒤로가기를 눌러 홈 화면으로 돌아가지 않도록 back stack을 적절히 정리한다.
+
+---
+
+# 5. 보안 원칙
+
+반드시 지켜줘.
+
+- Android 앱에서 PostgreSQL DB에 직접 연결하지 않는다.
+- pgAdmin은 앱에서 사용하지 않는다.
+- Android 앱에 DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD, JWT_SECRET을 넣지 않는다.
+- DB 연결 정보와 JWT secret은 백엔드 환경변수에서만 사용한다.
+- 비밀번호 원문을 DB, 로그, API 응답, Android 로컬 저장소에 저장하거나 출력하지 않는다.
+- `.env`, `application-local.yml`, `local.properties` 등 민감한 파일은 Git에 커밋되지 않게 한다.
+- DB 계정 정보와 JWT secret이 외부에 노출되지 않도록 README에는 예시 placeholder만 작성한다.
+
+---
+
+# 6. README 또는 SETUP.md 작성
+
+프로젝트에 README 또는 `SETUP.md`를 추가·보완해줘.
+
+반드시 포함할 내용:
+
+1. 전체 아키텍처
+
+```text
+Android 앱 → 백엔드 REST API → PostgreSQL
+```
+
+2. PostgreSQL 환경변수 설정 예시  
+실제 비밀번호와 JWT secret은 넣지 않는다.
+
+```env
+DB_HOST=project-db-campus.smhrd.com
+DB_PORT=3310
+DB_NAME=campus_26k_lgdx19_p3_2
+DB_USERNAME=campus_26k_lgdx19_p3_2
+DB_PASSWORD=YOUR_DB_PASSWORD
+JWT_SECRET=YOUR_LONG_RANDOM_SECRET
+JWT_EXPIRATION_MS=86400000
+```
+
+3. PostgreSQL JDBC URL 형식
+
+```text
+jdbc:postgresql://project-db-campus.smhrd.com:3310/campus_26k_lgdx19_p3_2
+```
+
+4. 백엔드 환경변수 설정 방법
+5. 백엔드 서버 실행 방법
+6. Flyway migration으로 `users` 테이블을 만드는 방법
+7. pgAdmin에서 `users` 테이블과 가입 회원 데이터를 확인하는 방법
+8. Android 앱 API Base URL 설정 방법
+9. Android 에뮬레이터와 실제 기기에서 API를 테스트하는 방법
+10. 회원가입 → 로그인 → 앱 재시작 자동 로그인 → 로그아웃 테스트 절차
+11. DB 비밀번호와 JWT secret을 Git에 올리면 안 되는 이유 및 보안 주의 사항
+
+---
+
+# 7. 구현 후 테스트 및 검증
+
+작업 완료 전에 아래 항목을 확인해줘.
+
+- 기존의 더미 로그인 로직이 완전히 제거되었는지
+- 회원가입하지 않은 계정으로 로그인할 수 없는지
+- 회원가입한 계정으로만 로그인 가능한지
+- 중복 아이디로 회원가입이 차단되는지
+- 잘못된 비밀번호가 차단되는지
+- 비밀번호가 BCrypt 해시로만 PostgreSQL에 저장되는지
+- 한글 닉네임이 DB에 정상 저장 및 조회되는지
+- JWT 토큰이 로그인 후 안전한 로컬 저장소에 저장되는지
+- 앱 재시작 후 로그인 상태가 복원되는지
+- 로그아웃 시 토큰이 삭제되는지
+- 무효·만료 토큰 또는 401 응답 시 로그인 화면으로 이동하는지
+- Android 빌드 오류, import 오류, Gradle dependency 누락이 없는지
+- AndroidManifest 인터넷 권한이 있는지
+- 백엔드가 PostgreSQL의 아래 주소를 사용하도록 설정되었는지
+
+```text
+project-db-campus.smhrd.com:3310
+```
+
+- DB 연결 오류가 발생한 경우 비밀번호를 노출하지 않고 원인을 확인할 수 있는지
+
+가능하다면 다음 테스트도 추가해줘.
+- 백엔드: 회원가입 성공, 중복 가입 실패, 로그인 성공, 로그인 실패 테스트
+- Android: ViewModel 또는 Repository의 로그인/회원가입 상태 처리 최소 테스트
+
+---
+
+# 8. 작업 완료 후 보고 형식
+
+구현을 끝낸 뒤 아래를 정리해줘.
+
+1. 생성하거나 수정한 파일 목록
+2. Android 앱 → 백엔드 → PostgreSQL 연결 구조
+3. 백엔드 실행 방법
+4. 실제 사용한 환경변수 목록과 설정 위치
+5. Android API Base URL 설정 방법
+6. 회원가입, 로그인, 자동 로그인, 로그아웃 테스트 방법
+7. 적용한 보안 처리 방식
+8. 사용자가 별도로 설정해야 하는 값 또는 작업
+9. DB 연결이 실패할 경우 확인할 항목

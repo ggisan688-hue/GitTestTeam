@@ -1,0 +1,38 @@
+server:
+  port: ${SERVER_PORT:8088}
+logging:
+  file:
+    # Keeps diagnostic stack traces out of API responses while making local
+    # integration failures inspectable after a server restart.
+    name: ${LOG_FILE:logs/change-book.log}
+spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:project-db-campus.smhrd.com}:${DB_PORT:3310}/${DB_NAME:campus_26k_lgdx19_p3_2}
+    username: ${DB_USERNAME:campus_26k_lgdx19_p3_2}
+    password: ${DB_PASSWORD}
+    hikari:
+      # Fail with a clear error instead of leaving bootRun apparently stalled
+      # when a network, firewall, or database-credential issue occurs.
+      connection-timeout: 10000
+      validation-timeout: 5000
+      initialization-fail-timeout: 10000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    # The shared database already contains objects but has no Flyway history.
+    # Version 0 records only this application's starting point, so V1 still
+    # runs and no existing table or data is treated as this project's schema.
+    baseline-on-migrate: true
+    baseline-version: 0
+app:
+  profile-upload-dir: ${PROFILE_UPLOAD_DIR:${java.io.tmpdir}/change-book/profiles}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}

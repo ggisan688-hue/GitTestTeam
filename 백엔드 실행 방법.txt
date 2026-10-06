@@ -1,0 +1,10 @@
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+복사 후 터미널에 붙여넣고 실행
+
+.\run-backend.ps1
+붙여넣고 실행
+
+이 후
+Tomcat started on port 8088 (http)
+Started AuthApplication
+나오는거 확인

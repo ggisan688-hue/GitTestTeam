@@ -1,0 +1,52 @@
+현재 Android Studio 프로젝트에서 영어는 정상적으로 입력되지만 한글 입력이 되지 않는 문제를 해결해줘.
+
+코드를 수정하기 전에 먼저 프로젝트의 입력 화면, EditText 또는 TextField 구현부, AndroidManifest.xml, Gradle 설정, 테마, 폰트 설정, 키보드 관련 설정을 확인해서 한글 입력을 막는 원인을 찾아줘. 현재 사용 중인 UI 방식이 Jetpack Compose인지 XML인지에 맞춰 기존 구조를 유지하며 수정해줘.
+
+[목표]
+- 모든 텍스트 입력창에서 영어뿐 아니라 한글 조합 입력(자음/모음 조합 포함)이 정상적으로 가능해야 한다.
+- 한글 입력 중 글자가 분리되거나, 입력 직후 사라지거나, 한 글자만 입력되는 문제가 없어야 한다.
+- 기기 기본 키보드 및 Gboard/삼성 키보드에서 모두 정상적으로 동작할 수 있게 한다.
+- 한글 텍스트가 입력된 뒤 화면에도 깨지지 않고 정상적으로 표시되어야 한다.
+
+[점검 및 수정 항목]
+1. 입력 컴포넌트 점검
+- Compose라면 TextField, OutlinedTextField, BasicTextField의 상태 관리 방식을 점검한다.
+- XML이라면 EditText, TextInputEditText의 inputType, imeOptions, filters, TextWatcher를 점검한다.
+- inputType을 영문 전용으로 제한하는 설정(예: textVisiblePassword, textEmailAddress, ASCII 제한 등)이 있다면 일반 텍스트 입력이 가능하도록 수정한다.
+- inputFilter, 정규식, TextWatcher, onValueChange 등에서 영문/숫자만 허용하도록 필터링하는 코드가 있다면 한글(완성형 및 조합 중 텍스트)을 허용하도록 수정한다.
+- 입력 중인 한글 조합 상태(composing text)를 깨뜨리지 않도록, 입력값을 강제로 trim, replace, 재설정하거나 매 입력마다 포커스를 잃게 만드는 로직이 있는지 확인하고 수정한다.
+
+2. Jetpack Compose 사용 시 특히 확인할 사항
+- TextField의 value를 String으로 잘못 변환하거나 onValueChange에서 불필요하게 값을 가공해 한글 조합이 끊기지 않도록 수정한다.
+- 필요한 경우 TextFieldValue를 사용하여 selection 및 composition 상태가 유지되도록 구현한다.
+- rememberSaveable, ViewModel StateFlow 등 상태 관리 구조에서도 입력 중 값이 다시 초기화되지 않게 한다.
+- KeyboardOptions에 영문 전용 keyboardType 또는 제한적인 imeAction 설정이 있는지 확인한다.
+- VisualTransformation 또는 입력값 검증 로직이 한글 조합을 방해하지 않도록 한다.
+
+3. XML View 기반인 경우 특히 확인할 사항
+- EditText의 android:inputType이 text 또는 textMultiLine 등 한글 입력을 지원하는 값인지 확인한다.
+- android:digits 속성이나 InputFilter가 있다면 한글을 배제하지 않도록 수정하거나 제거한다.
+- TextWatcher의 afterTextChanged 등에서 입력값을 강제로 다시 setText 하는 구조가 있으면 한글 조합이 유지되도록 안전하게 수정한다.
+- editText.setText 호출로 인해 커서 위치나 조합 상태가 지속적으로 초기화되지 않도록 한다.
+
+4. 한글 표시 및 인코딩
+- 앱 전체에서 한글이 깨지지 않도록 UTF-8 인코딩을 유지한다.
+- 커스텀 폰트를 사용 중이라면 해당 폰트가 한글 글리프를 지원하는지 확인한다.
+- 한글 미지원 폰트라면 시스템 기본 폰트 또는 한글을 지원하는 폰트로 fallback되도록 수정한다.
+- strings.xml 및 화면의 한글 문구도 정상적으로 렌더링되는지 확인한다.
+
+5. 검증
+- 최소한 아래 입력을 실제로 테스트 가능한 구조로 확인해줘.
+  - “안녕하세요”
+  - “책담 앱”
+  - “가나다라마바사”
+  - “한글 English 123”
+  - 긴 문장 및 공백 포함 문장
+- 한글 입력 도중 백스페이스, 커서 이동, 붙여넣기, 줄바꿈(멀티라인 입력창인 경우)도 정상 동작해야 한다.
+- 기존 영어/숫자 입력 기능은 훼손하지 않는다.
+
+[완료 후 제공할 내용]
+- 한글 입력을 막던 정확한 원인을 설명해줘.
+- 수정하거나 생성한 파일 목록을 알려줘.
+- 핵심 수정 코드와 왜 한글 조합 입력 문제가 해결되는지 간단히 설명해줘.
+- 빌드 오류가 없도록 import 및 필요한 설정까지 반영해줘.
