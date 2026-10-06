@@ -135,45 +135,7 @@ class _RidiShellState extends State<RidiShell> {
     _pages[_index] = const HomeScreen();
   }
 
-  Future<void> select(int i) async {
-    final store = context.read<RidiStore>();
-    // Home remains browseable as a guest.  Personal shelves (including
-    // exchange reading) and MY are account data, so never construct their
-    // server-backed screens before authentication.
-    if (!store.loggedIn && (i == 0 || i == 4)) {
-      final login = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('로그인이 필요해요'),
-          content: Text(i == 0
-              ? '내 책장과 교환독서는 로그인한 뒤 사용할 수 있습니다.'
-              : '마이 페이지는 로그인한 뒤 사용할 수 있습니다.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('나중에'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('로그인'),
-            ),
-          ],
-        ),
-      );
-      if (login == true && mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
-      return;
-    }
-    setState(() {
-      _index = i;
-      // IndexedStack keeps visited tabs alive, so their initState fetches do
-      // not run again. Recreate only server-backed tabs on selection; reader
-      // routes themselves stay outside this shell and are unaffected.
-      if (i == 0 || i == 1 || i == 2) _pages[i] = null;
-      _pages[i] ??= switch (i) {
+  Widget _create(int i) => switch (i) {
         // Do not use const here: a canonical const widget can retain the old
         // Element/State even after IndexedStack's slot is replaced.
         0 => ShelvesScreen(),
@@ -182,16 +144,41 @@ class _RidiShellState extends State<RidiShell> {
         3 => const ServerNotificationsScreen(),
         _ => const AccountScreen(),
       };
+
+  /// 탭 바꾸기. 게스트는 홈 말고는 서버 화면을 만들지 않고 "로그인이 필요" 화면을 보여 준다(build 참고).
+  void select(int i) {
+    final loggedIn = context.read<RidiStore>().loggedIn;
+    setState(() {
+      _index = i;
+      if (!loggedIn && i != 2) return;
+      // IndexedStack keeps visited tabs alive, so their initState fetches do
+      // not run again. Recreate only server-backed tabs on selection; reader
+      // routes themselves stay outside this shell and are unaffected.
+      if (i == 0 || i == 1 || i == 2) _pages[i] = null;
+      _pages[i] ??= _create(i);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [for (final page in _pages) page ?? const SizedBox.shrink()],
-      ),
+      body: Builder(builder: (context) {
+        final loggedIn = context.select<RidiStore, bool>((s) => s.loggedIn);
+        // 게스트 → 로그인 팝업으로 로그인하면, 보던 탭의 실제 화면을 그때 만든다
+        if (loggedIn && _pages[_index] == null) _pages[_index] = _create(_index);
+        return IndexedStack(
+          index: _index,
+          children: [
+            for (var i = 0; i < _pages.length; i++)
+              if (!loggedIn && i == 4)
+                const _GuestMy()
+              else if (!loggedIn && i != 2)
+                _GuestTab(title: _tabs[i].$3)
+              else
+                _pages[i] ?? const SizedBox.shrink(),
+          ],
+        );
+      }),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: RidiColors.grayLight)),
@@ -242,4 +229,60 @@ class _RidiShellState extends State<RidiShell> {
       ),
     );
   }
+}
+
+// ---------------- 게스트(로그인 전) 탭 화면 ----------------
+/// 내 서재 · AI 친구 · 알림 — 가운데 "로그인이 필요한 서비스입니다." + [로그인] (누르면 가운데 로그인 창)
+class _GuestTab extends StatelessWidget {
+  const _GuestTab({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('로그인이 필요한 서비스입니다.', style: TextStyle(fontFamily: RidiText.f, fontSize: 16, fontWeight: FontWeight.w700, color: RidiColors.ink)),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => showLoginDialog(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: RidiColors.ink,
+                side: const BorderSide(color: RidiColors.grayLight),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              ),
+              child: const Text('로그인'),
+            ),
+          ]),
+        ),
+      );
+}
+
+/// 마이 — 게스트: 위에 "로그인이 필요합니다." + 오른쪽 [로그인] 버튼만 (리디 MY 처럼)
+class _GuestMy extends StatelessWidget {
+  const _GuestMy();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: RidiColors.panel,
+        appBar: AppBar(title: const Text('마이')),
+        body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            child: Row(children: [
+              const Expanded(
+                child: Text('로그인이 필요합니다.', style: TextStyle(fontFamily: RidiText.f, fontSize: 18, fontWeight: FontWeight.w800, color: RidiColors.ink)),
+              ),
+              FilledButton(
+                onPressed: () => showLoginDialog(context),
+                style: FilledButton.styleFrom(backgroundColor: RidiColors.blue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                child: const Text('로그인'),
+              ),
+            ]),
+          ),
+        ]),
+      );
 }

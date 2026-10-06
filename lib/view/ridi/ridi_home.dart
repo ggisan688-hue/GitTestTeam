@@ -41,9 +41,7 @@ class HomeScreen extends StatelessWidget {
         actions: [
           if (!store.loggedIn)
             TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
+              onPressed: () => showLoginDialog(context),
               icon: const Icon(Icons.login),
               label: const Text('로그인하세요'),
             ),
@@ -63,24 +61,29 @@ class HomeScreen extends StatelessWidget {
       ),
       body: LayoutBuilder(builder: (context, c) {
         final wide = c.maxWidth >= 900;
+        // 로그인하면 최근 읽은 도서가 위, 전체 도서가 아래 (수정1-7)
         final serverMain = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (store.loggedIn) ...const [
+            _SectionTitle('최근 읽은 도서'),
+            RecentReadingSection(),
+            SizedBox(height: 36),
+          ],
           _SectionTitle('전체 도서'),
           BookCatalogSection(),
-          if (store.loggedIn) ...const [SizedBox(height: 36),
-          _SectionTitle('최근 읽은 도서'),
-          RecentReadingSection(),
-          ],
         ]);
-        final side = store.loggedIn
+        // 게스트는 오른쪽 칸(프로필·통계) 없이 책 목록만 넓게
+        final Widget? side = store.loggedIn
             ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _ProfileCard(store: store),
           const SizedBox(height: 16),
           _StatsCard(key: ValueKey(statsRevision)),
         ])
-            : const _GuestHomeCard();
+            : null;
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-          child: wide
+          child: side == null
+              ? serverMain
+              : wide
               ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: serverMain),
                   const SizedBox(width: 40),
@@ -94,31 +97,6 @@ class HomeScreen extends StatelessWidget {
 }
 
 /// 구역 제목
-class _GuestHomeCard extends StatelessWidget {
-  const _GuestHomeCard();
-
-  @override
-  Widget build(BuildContext context) => _Panel(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.auto_stories_outlined, size: 32),
-        const SizedBox(height: 12),
-        Text('게스트로 책을 둘러보고 있습니다.', style: RidiText.bodyBold),
-        const SizedBox(height: 6),
-        const Text('로그인하면 최근 읽은 책, 통계, 책장과 교환독서를 사용할 수 있습니다.'),
-        const SizedBox(height: 14),
-        FilledButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
-          child: const Text('로그인하세요'),
-        ),
-      ],
-    ),
-  );
-}
-
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
 
@@ -366,7 +344,45 @@ String _timeLabel(int m) => m >= 60 ? '${m ~/ 60}시간${m % 60 == 0 ? '' : ' ${
 class _StatsCard extends StatefulWidget { const _StatsCard({super.key}); @override State<_StatsCard> createState()=>_StatsCardState(); }
 class _StatsCardState extends State<_StatsCard>{late final BookRepository _repo;late Future<ReadingStats> _future;@override void initState(){super.initState();_repo=BookRepository(ApiClient(tokenProvider:()=>context.read<RidiStore>().accessToken));_future=_repo.readingStats();}void _reload()=>setState(()=>_future=_repo.readingStats());@override Widget build(BuildContext context)=>FutureBuilder<ReadingStats>(future:_future,builder:(context,s){if(s.connectionState!=ConnectionState.done)return const _Panel(child:SizedBox(height:150,child:Center(child:CircularProgressIndicator())));if(s.hasError)return _Panel(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('이번 주 독서',style:RidiText.sub),const SizedBox(height:12),const Text('통계를 불러오지 못했습니다.'),TextButton(onPressed:_reload,child:const Text('다시 시도'))]));final stats=s.data!;final peak=stats.dailyReading.fold(1,(a,b)=>b.paragraphsRead>a?b.paragraphsRead:a);return InkWell(onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ReadingStatsScreen(repository:_repo))),child:_Panel(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Row(children:[Text('이번 주 독서',style:RidiText.sub),Spacer(),Text('자세히 보기',style:RidiText.sub)]),Text('${stats.periodParagraphsRead}문단',style:RidiText.title.copyWith(fontSize:24)),const SizedBox(height:16),SizedBox(height:76,child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[for(final day in stats.dailyReading)Expanded(child:Column(mainAxisAlignment:MainAxisAlignment.end,children:[Container(width:18,height:day.paragraphsRead==0?3:52*day.paragraphsRead/peak,decoration:BoxDecoration(color:RidiColors.blue.withValues(alpha:.7),borderRadius:BorderRadius.circular(4))),const SizedBox(height:6),Text(day.dayLabel,style:RidiText.sub.copyWith(fontSize:11))]))])),const Divider(height:28),Row(children:[_Stat(value:'${stats.currentStreakDays}일',label:'연속 읽기'),_Stat(value:'${stats.completedBooksCount}권',label:'다 읽은 책'),_Stat(value:'${stats.memoCount}개',label:'남긴 메모')])])));});}
 class ReadingStatsScreen extends StatefulWidget{const ReadingStatsScreen({super.key,required this.repository});final BookRepository repository;@override State<ReadingStatsScreen> createState()=>_ReadingStatsScreenState();}
-class _ReadingStatsScreenState extends State<ReadingStatsScreen>{String _period='week';late Future<ReadingStats> _future;@override void initState(){super.initState();_future=widget.repository.readingStats();}void _load(String p)=>setState((){_period=p;_future=widget.repository.readingStats(period:p);});@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('독서 통계')),body:FutureBuilder<ReadingStats>(future:_future,builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final x=s.data!;return ListView(padding:const EdgeInsets.all(20),children:[SegmentedButton<String>(segments:const[ButtonSegment(value:'week',label:Text('이번 주')),ButtonSegment(value:'month',label:Text('이번 달'))],selected:{_period},onSelectionChanged:(v)=>_load(v.first)),const SizedBox(height:20),Text('${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',style:RidiText.sub),for(final d in x.dailyReading)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[SizedBox(width:28,child:Text(d.dayLabel)),Expanded(child:LinearProgressIndicator(value:x.periodParagraphsRead==0?0:d.paragraphsRead/x.periodParagraphsRead)),const SizedBox(width:12),Text('${d.paragraphsRead}문단')])),const Divider(height:32),Row(children:[_Stat(value:'${x.currentStreakDays}일',label:'연속 읽기'),_Stat(value:'${x.completedBooksCount}권',label:'다 읽은 책'),_Stat(value:'${x.memoCount}개',label:'전체 메모')])]);}));}
+class _ReadingStatsScreenState extends State<ReadingStatsScreen>{String _period='week';late Future<ReadingStats> _future;@override void initState(){super.initState();_future=widget.repository.readingStats();}void _load(String p)=>setState((){_period=p;_future=widget.repository.readingStats(period:p);});@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('독서 통계')),body:FutureBuilder<ReadingStats>(future:_future,builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final x=s.data!;return ListView(padding:const EdgeInsets.all(20),children:[SegmentedButton<String>(segments:const[ButtonSegment(value:'week',label:Text('이번 주')),ButtonSegment(value:'month',label:Text('이번 달'))],selected:{_period},onSelectionChanged:(v)=>_load(v.first)),const SizedBox(height:20),Text('${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',style:RidiText.sub),const SizedBox(height:12),_WeekBars(days:x.dailyReading,month:_period=='month'),const Divider(height:32),Row(children:[_Stat(value:'${x.currentStreakDays}일',label:'연속 읽기'),_Stat(value:'${x.completedBooksCount}권',label:'다 읽은 책'),_Stat(value:'${x.memoCount}개',label:'전체 메모')])]);}));}
+
+/// 독서 통계 — 이번 주: 요일별 세로 막대 (막대 위 = 읽은 문단 수, 아래 = 요일)
+class _WeekBars extends StatelessWidget {
+  const _WeekBars({required this.days, this.month = false});
+
+  final List<DailyReading> days;
+  /// 이번 달: 날짜별 막대 31개 — 막대를 가늘게, 아래 글자는 날짜(일), 막대 위 숫자는 읽은 날만
+  final bool month;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxV = days.fold<int>(0, (m, d) => d.paragraphsRead > m ? d.paragraphsRead : m);
+    const barMax = 220.0;
+    return SizedBox(
+      height: barMax + 64,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        for (final d in days)
+          Expanded(
+            child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+              Text(month ? (d.paragraphsRead > 0 ? '${d.paragraphsRead}' : '') : '${d.paragraphsRead}문단',
+                  maxLines: 1, style: RidiText.sub.copyWith(fontSize: month ? 10 : 12, color: d.paragraphsRead > 0 ? RidiColors.ink : RidiColors.gray)),
+              const SizedBox(height: 6),
+              Container(
+                width: month ? 12 : 36,
+                height: maxV == 0 || d.paragraphsRead == 0 ? 4 : (barMax * d.paragraphsRead / maxV).clamp(4.0, barMax),
+                decoration: BoxDecoration(
+                  color: d.paragraphsRead > 0 ? RidiColors.blue : RidiColors.grayLight,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(month ? '${d.date.day}' : d.dayLabel, style: RidiText.sub.copyWith(fontSize: month ? 10 : null)),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
 
 class _Stat extends StatelessWidget {
   const _Stat({required this.value, required this.label});

@@ -55,12 +55,13 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
         ),
       );
     }
+    // 표지가 주인공인 세로 카드 (리디처럼): 표지 → 제목 → 저자
     return SizedBox(
-      height: 188,
+      height: _CatalogCard.coverH + 62,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: vm.books.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 14),
+        separatorBuilder: (_, _) => const SizedBox(width: 20),
         itemBuilder: (_, index) => _CatalogCard(book: vm.books[index]),
       ),
     );
@@ -70,46 +71,33 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
 class _CatalogCard extends StatelessWidget {
   const _CatalogCard({required this.book});
   final Book book;
+  static const coverW = 132.0;
+  static const coverH = 196.0;
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: () => Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => BookDetailScreen(bookId: book.id)),
     ),
-    borderRadius: BorderRadius.circular(12),
-    child: Container(
-      width: 280,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: RidiColors.grayLight),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    borderRadius: BorderRadius.circular(8),
+    child: SizedBox(
+      width: coverW,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          BookCover(url: book.coverImageUrl, width: 76, height: 116),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (book.category?.isNotEmpty == true)
-                  _Category(label: book.category!),
-                const SizedBox(height: 6),
-                Text(
-                  book.title,
-                  style: RidiText.bodyBold.copyWith(fontSize: 16),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  book.author ?? '',
-                  style: RidiText.sub,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+          BookCover(url: book.coverImageUrl, width: coverW, height: coverH),
+          const SizedBox(height: 10),
+          Text(
+            book.title,
+            style: RidiText.bodyBold.copyWith(fontSize: 15),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            book.author ?? '',
+            style: RidiText.sub,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

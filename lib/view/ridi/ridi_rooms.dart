@@ -788,12 +788,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     maxLength: 300,
                   ),
                   const SizedBox(height: 24),
-                  const _Label('아이디'),
-                  Text(
-                    context.watch<RidiStore>().username,
-                    style: RidiText.sub,
-                  ),
-                  const SizedBox(height: 24),
                   const Text('선택한 프로필은 방 멤버에게 보여요.', style: RidiText.sub),
                 ],
               ),

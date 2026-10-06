@@ -22,7 +22,7 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
   Timer? _debounce;
   late final BookRepository _repository;
   Future<List<Book>>? _results;
-  String? _category;
+  final String? _category = null; // 카테고리 선택은 화면에서 뺌 → 항상 전체
   Object? _error;
 
   @override
@@ -65,16 +65,6 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DropdownButtonFormField<String?>(
-              value: _category,
-              decoration: const InputDecoration(labelText: '카테고리', border: OutlineInputBorder()),
-              items: const [DropdownMenuItem(value: null, child: Text('전체 카테고리'))],
-              onChanged: (value) { setState(() => _category = value); _search(_query.text); },
-            ),
-          ),
-          const SizedBox(height: 8),
           Expanded(child: _body()),
         ]),
       );

@@ -213,7 +213,8 @@ class _ShelvesScreenState extends State<ShelvesScreen>
           future: _shelves,
           builder: (context, snapshot) {
             final shelves = snapshot.data ?? const <Shelf>[];
-            if (shelves.isEmpty) return const SizedBox.shrink();
+            // 책장 메뉴(⋮)는 내 책장 탭에서만 — 교환독서 탭에서는 숨김 (수정 확인 피드백)
+            if (shelves.isEmpty || _section != 0) return const SizedBox.shrink();
             return PopupMenuButton<String>(
               tooltip: '책장 메뉴',
               onSelected: (value) {
@@ -304,34 +305,22 @@ class _ShelvesScreenState extends State<ShelvesScreen>
                     child: _EmptyShelves(onCreate: _create),
                   ),
                 );
-              return SliverList.separated(
-                itemCount: shelves.length,
-                itemBuilder: (context, index) {
-                  final shelf = shelves[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    child: Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.collections_bookmark_outlined),
-                        ),
-                        title: Text(
-                          shelf.name,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '${shelf.description?.isNotEmpty == true ? shelf.description : '설명 없음'}\n${shelf.bookCount}권 · ${shelf.isPublic ? '공개' : '비공개'}',
-                          ),
-                        ),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
+              // 책장을 세로 카드로 나란히 (필기 수정2-36)
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                sliver: SliverGrid.builder(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 190,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: .68,
+                  ),
+                  itemCount: shelves.length,
+                  itemBuilder: (context, index) {
+                    final shelf = shelves[index];
+                    return _ShelfTile(
+                      shelf: shelf,
+                      onTap: () async {
                           final deletedShelfId = await Navigator.of(context)
                               .push<int>(
                                 MaterialPageRoute(
@@ -347,12 +336,10 @@ class _ShelvesScreenState extends State<ShelvesScreen>
                           } else {
                             _reloadShelves();
                           }
-                        },
-                      ),
-                    ),
-                  );
-                },
-                separatorBuilder: (_, _) => const SizedBox(height: 2),
+},
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -515,33 +502,15 @@ class _FavoriteBooksScreenState extends State<FavoriteBooksScreen> {
         }
         return RefreshIndicator(
           onRefresh: () async => _reload(),
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          // 표지가 큰 세로 카드 격자 (필기 수정2-33)
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            gridDelegate: _coverGrid,
             itemCount: books.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final book = books[index];
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                leading: BookCover(
-                  url: book.coverImageUrl,
-                  width: 48,
-                  height: 70,
-                ),
-                title: Text(
-                  book.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  [book.author, book.category]
-                      .whereType<String>()
-                      .where((value) => value.isNotEmpty)
-                      .join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right),
+              return _CoverTile(
+                book: book,
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -776,32 +745,44 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
             if (detail.books.isEmpty)
               _EmptyBooks(onAdd: _addBook)
             else
-              for (final book in detail.books)
-                ListTile(
-                  leading: const Icon(Icons.menu_book_outlined),
-                  title: Text(book.title),
-                  subtitle: Text(book.author ?? ''),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => BookDetailScreen(bookId: book.id),
+              // 표지 격자 (필기 수정2-38). 표지 오른쪽 위 [−] = 책장에서 빼기
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: _coverGrid,
+                itemCount: detail.books.length,
+                itemBuilder: (context, index) {
+                  final book = detail.books[index];
+                  return _CoverTile(
+                    book: book,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BookDetailScreen(bookId: book.id),
+                      ),
                     ),
-                  ),
-                  trailing: IconButton(
-                    tooltip: '책장에서 제거',
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: () async {
-                      try {
-                        await widget.repository.removeBook(
-                          widget.shelfId,
-                          book.id,
-                        );
-                        _reload();
-                      } on ApiException catch (error) {
-                        if (mounted) _showError(context, error);
-                      }
-                    },
-                  ),
-                ),
+                    overlay: Material(
+                      color: Colors.white.withValues(alpha: .92),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: '책장에서 제거',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.remove_circle_outline, size: 20),
+                        onPressed: () async {
+                          try {
+                            await widget.repository.removeBook(
+                              widget.shelfId,
+                              book.id,
+                            );
+                            _reload();
+                          } on ApiException catch (error) {
+                            if (mounted) _showError(context, error);
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         );
       },
@@ -972,41 +953,31 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
                   .toList();
               if (books.isEmpty)
                 return const Center(child: Text('조건에 맞는 도서가 없습니다.'));
-              return ListView.builder(
+              // 표지 격자에서 눌러서 고르기 (필기 수정2-34). 고른 책은 표지에 파란 체크
+              return GridView.builder(
+                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                gridDelegate: _coverGrid,
                 itemCount: books.length,
                 itemBuilder: (context, index) {
                   final book = books[index];
                   final selected = _selectedIds.contains(book.id);
-                  return CheckboxListTile(
-                    value: selected,
-                    onChanged: _saving
+                  return _CoverTile(
+                    book: book,
+                    onTap: _saving
                         ? null
-                        : (_) => setState(() {
+                        : () => setState(() {
                             if (selected) {
                               _selectedIds.remove(book.id);
                             } else {
                               _selectedIds.add(book.id);
                             }
                           }),
-                    secondary: BookCover(
-                      url: book.coverImageUrl,
-                      width: 40,
-                      height: 58,
+                    overlay: Icon(
+                      selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                      size: 28,
+                      color: selected ? const Color(0xFF1E88E5) : Colors.white,
+                      shadows: const [Shadow(color: Colors.black38, blurRadius: 4)],
                     ),
-                    title: Text(
-                      book.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      [book.author, book.category]
-                          .whereType<String>()
-                          .where((value) => value.isNotEmpty)
-                          .join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    controlAffinity: ListTileControlAffinity.trailing,
                   );
                 },
               );
@@ -1139,73 +1110,147 @@ class _ShelfValues {
 Future<_ShelfValues?> showShelfEditor(
   BuildContext context, {
   Shelf? shelf,
-}) async {
-  final name = TextEditingController(text: shelf?.name ?? '');
-  final description = TextEditingController(text: shelf?.description ?? '');
-  var isPublic = shelf?.isPublic ?? false;
-  try {
-    return await showDialog<_ShelfValues>(
+}) =>
+    showDialog<_ShelfValues>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(shelf == null ? '새 책장 만들기' : '책장 수정'),
-          // The dialog form must be allowed to scroll when the keyboard reduces
-          // the available height; otherwise its Column overflows vertically.
-          scrollable: true,
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: name,
-                  autofocus: true,
-                  maxLength: 80,
-                  onChanged: (_) => setDialogState(() {}),
-                  decoration: const InputDecoration(labelText: '책장 이름'),
-                ),
-                TextField(
-                  controller: description,
-                  maxLength: 300,
-                  decoration: const InputDecoration(labelText: '설명 (선택)'),
-                ),
-                SwitchListTile(
-                  title: const Text('공개 책장'),
-                  value: isPublic,
-                  onChanged: (value) => setDialogState(() => isPublic = value),
-                ),
-              ],
-            ),
+      builder: (_) => _ShelfEditorDialog(shelf: shelf),
+    );
+
+/// 책장 이름·설명 팝업. 입력 칸(controller)은 팝업이 완전히 닫힐 때 같이 정리한다.
+/// (전에는 닫히는 순간 바로 정리해서, 뒤로가기로 닫으면 닫히는 애니메이션 중에 빨간 오류 화면이 났다)
+class _ShelfEditorDialog extends StatefulWidget {
+  const _ShelfEditorDialog({this.shelf});
+  final Shelf? shelf;
+  @override
+  State<_ShelfEditorDialog> createState() => _ShelfEditorDialogState();
+}
+
+class _ShelfEditorDialogState extends State<_ShelfEditorDialog> {
+  late final _name = TextEditingController(text: widget.shelf?.name ?? '');
+  late final _description = TextEditingController(text: widget.shelf?.description ?? '');
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.shelf == null ? '새 책장 만들기' : '책장 수정'),
+        // The dialog form must be allowed to scroll when the keyboard reduces
+        // the available height; otherwise its Column overflows vertically.
+        scrollable: true,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _name,
+                autofocus: true,
+                maxLength: 80,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: '책장 이름'),
+              ),
+              TextField(
+                controller: _description,
+                maxLength: 300,
+                decoration: const InputDecoration(labelText: '설명 (선택)'),
+              ),
+              // 공개 책장 켜기/끄기는 뺌 (필기 수정2-41) — 지금 값 그대로 저장
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: name.text.trim().isEmpty
-                  ? null
-                  : () => Navigator.pop(
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: _name.text.trim().isEmpty
+                ? null
+                : () => Navigator.pop(
                       context,
                       _ShelfValues(
-                        name.text.trim(),
-                        description.text.trim(),
-                        isPublic,
+                        _name.text.trim(),
+                        _description.text.trim(),
+                        widget.shelf?.isPublic ?? false,
                       ),
                     ),
-              child: const Text('저장'),
-            ),
-          ],
-        ),
-      ),
-    );
-  } finally {
-    name.dispose();
-    description.dispose();
-  }
+            child: const Text('저장'),
+          ),
+        ],
+      );
 }
 
 void _showError(BuildContext context, ApiException error) {
   ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(error.message)));
+}
+
+/// 내 책장 한 칸 — 세로 카드 (위: 책장 그림, 아래: 이름 · 권수 · 공개 여부)
+class _ShelfTile extends StatelessWidget {
+  const _ShelfTile({required this.shelf, required this.onTap});
+  final Shelf shelf;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F3F8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE3E6EE)),
+              ),
+              child: const Icon(Icons.collections_bookmark_outlined, size: 44, color: Color(0xFF8A94A8)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(shelf.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('${shelf.bookCount}권 · ${shelf.isPublic ? '공개' : '비공개'}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF8A8A8A))),
+        ]),
+      );
+}
+
+/// 표지 격자 공통 간격 — 즐겨찾기 · 책장 상세 · 책장 만들기 도서 선택
+const _coverGrid = SliverGridDelegateWithMaxCrossAxisExtent(
+  maxCrossAxisExtent: 150,
+  mainAxisSpacing: 20,
+  crossAxisSpacing: 18,
+  childAspectRatio: .5,
+);
+
+/// 책 한 권 — 표지(세로) · 제목 · 저자. overlay 는 표지 위 오른쪽 위(체크·빼기 버튼 등)
+class _CoverTile extends StatelessWidget {
+  const _CoverTile({required this.book, this.onTap, this.overlay});
+  final Book book;
+  final VoidCallback? onTap;
+  final Widget? overlay;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) => Stack(children: [
+                BookCover(url: book.coverImageUrl, width: c.maxWidth, height: c.maxHeight),
+                if (overlay != null) Positioned(top: 6, right: 6, child: overlay!),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          Text(book.author ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8A))),
+        ]),
+      );
 }
