@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show VoidCallback, debugPrint, kDebugMode;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -11,11 +13,14 @@ import 'app_config.dart';
 
 /// 서버 응답이 success=false 이거나 통신 자체가 실패했을 때 던지는 예외
 class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode, this.errorCode});
+  ApiException(this.message, {this.statusCode, this.errorCode, this.requestId});
 
   final String message;
   final int? statusCode;
   final String? errorCode;
+
+  /// Safe-to-share support identifier returned by the API. Never a token.
+  final String? requestId;
 
   bool get isUnauthorized => statusCode == 401;
 
@@ -33,6 +38,7 @@ class ApiClient {
   final http.Client _client;
   final String _baseUrl;
   static const _requestTimeout = Duration(seconds: 20);
+  static final Random _requestIdRandom = Random.secure();
 
   /// The app installs this once to clear authenticated UI state when a token
   /// has expired. Repositories remain transport-only and do not need to know
@@ -50,6 +56,10 @@ class ApiClient {
     'Content-Type': 'application/json; charset=utf-8',
     if (tokenProvider?.call() case final t?) 'Authorization': 'Bearer $t',
   };
+
+  String _newRequestId() =>
+      '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'
+      '${_requestIdRandom.nextInt(1 << 32).toRadixString(36)}';
 
   Future<ApiResponse<T>> get<T>(
     String path, {
@@ -92,7 +102,9 @@ class ApiClient {
     Map<String, String> fields = const {},
     T Function(Object? json)? parse,
   }) async {
+    final requestId = _newRequestId();
     final req = http.MultipartRequest(method, Uri.parse('$_baseUrl$path'));
+    req.headers['X-Request-ID'] = requestId;
     if (tokenProvider?.call() case final t?)
       req.headers['Authorization'] = 'Bearer $t';
     req.fields.addAll(fields);
@@ -110,11 +122,17 @@ class ApiClient {
       final res = await http.Response.fromStream(
         await _client.send(req).timeout(_requestTimeout),
       );
-      return _handle(res, parse);
+      return _handle(res, parse, requestId);
     } on TimeoutException {
-      throw ApiException('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+      throw ApiException(
+        '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+        requestId: requestId,
+      );
     } on http.ClientException catch (_) {
-      throw ApiException('서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.');
+      throw ApiException(
+        '서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.',
+        requestId: requestId,
+      );
     }
   }
 
@@ -125,49 +143,62 @@ class ApiClient {
     Object? body,
     T Function(Object? json)? parse,
   }) async {
+    final requestId = _newRequestId();
     final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
-    final req = http.Request(method, uri)..headers.addAll(_headers);
+    final req = http.Request(method, uri)
+      ..headers.addAll(_headers)
+      ..headers['X-Request-ID'] = requestId;
     if (body != null) req.body = jsonEncode(body);
     try {
       final res = await http.Response.fromStream(
         await _client.send(req).timeout(_requestTimeout),
       );
       if (kDebugMode && path.startsWith('/api/reading-rooms')) {
-        // Deliberately omit Authorization and full response data. Room create
-        // payloads are safe diagnostic fields and make a DTO mismatch visible.
+        // Never write invite codes, request/response bodies, or JWTs to
+        // logcat. The request ID links this event to the server log.
         debugPrint(
-          '[ReadingRoom API] $method $uri -> HTTP ${res.statusCode}'
-          '${body == null ? '' : ' body=${jsonEncode(body)}'}'
-          ' response=${_safeDebugBody(res.body)}',
+          '[ReadingRoom API] requestId=${res.headers['x-request-id'] ?? requestId} '
+          '$method $path -> HTTP ${res.statusCode} bytes=${res.contentLength}',
         );
       }
       if (kDebugMode && path.startsWith('/api/books')) {
         debugPrint('[Book API] $method $uri -> HTTP ${res.statusCode}');
       }
-      return _handle(res, parse);
+      return _handle(res, parse, requestId);
     } on TimeoutException {
-      throw ApiException('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+      throw ApiException(
+        '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+        requestId: requestId,
+      );
     } on http.ClientException catch (e) {
       if (kDebugMode && path.startsWith('/api/reading-rooms')) {
-        debugPrint('[ReadingRoom API] $method $uri failed: ${e.message}');
+        debugPrint(
+          '[ReadingRoom API] requestId=$requestId $method $path failed: ${e.runtimeType}',
+        );
       }
       if (kDebugMode && path.startsWith('/api/books')) {
         debugPrint('[Book API] $method $uri failed: ${e.message}');
       }
-      throw ApiException('서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.');
+      throw ApiException(
+        '서버에 연결할 수 없습니다. 네트워크 또는 서버 상태를 확인해주세요.',
+        requestId: requestId,
+      );
     }
   }
 
   // Diagnostic output intentionally excludes request headers (and therefore
   // JWTs).  Keep response logging bounded so an accidental large payload does
   // not flood an Android logcat session.
+  // ignore: unused_element
   String _safeDebugBody(String body) =>
       body.length <= 1000 ? body : '${body.substring(0, 1000)}…';
 
   ApiResponse<T> _handle<T>(
     http.Response res,
     T Function(Object? json)? parse,
+    String requestId,
   ) {
+    final responseRequestId = res.headers['x-request-id'] ?? requestId;
     if (res.statusCode == 401) {
       onUnauthorized?.call();
     }
@@ -177,17 +208,29 @@ class ApiClient {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         return ApiResponse<T>(success: true, data: null);
       }
-      throw ApiException('Request failed.', statusCode: res.statusCode);
+      throw ApiException(
+        'Request failed.',
+        statusCode: res.statusCode,
+        requestId: responseRequestId,
+      );
     }
     final Object? json;
     try {
       json = jsonDecode(utf8.decode(res.bodyBytes));
     } catch (_) {
-      throw ApiException('서버 응답을 해석할 수 없습니다', statusCode: res.statusCode);
+      throw ApiException(
+        '서버 응답을 해석할 수 없습니다',
+        statusCode: res.statusCode,
+        requestId: responseRequestId,
+      );
     }
     if (json is! Map<String, dynamic> || !json.containsKey('success')) {
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw ApiException('요청에 실패했습니다.', statusCode: res.statusCode);
+        throw ApiException(
+          '요청에 실패했습니다.',
+          statusCode: res.statusCode,
+          requestId: responseRequestId,
+        );
       }
       return ApiResponse<T>(
         success: true,
@@ -200,6 +243,7 @@ class ApiClient {
         response.message ?? '요청에 실패했습니다',
         statusCode: res.statusCode,
         errorCode: json['code'] as String?,
+        requestId: (json['requestId'] as String?) ?? responseRequestId,
       );
     }
     return response;

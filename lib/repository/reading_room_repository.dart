@@ -54,7 +54,8 @@ class ReadingRoomRepository {
     final response = await _api.post<ReadingRoomJoinResult>(
       '/api/reading-rooms/join-by-code',
       body: {'inviteCode': normalizeInviteCode(code)},
-      parse: (json) => ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
+      parse: (json) =>
+          ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
     );
     return response.data!;
   }
@@ -63,8 +64,13 @@ class ReadingRoomRepository {
   /// hyphen or with whitespace avoids making presentation part of the API
   /// contract. The server applies the identical canonical form.
   static String normalizeInviteCode(String value) {
-    final compact = value.trim().replaceAll(RegExp(r'[\s-]+'), '').toUpperCase();
-    return compact.length == 8 ? '${compact.substring(0, 4)}-${compact.substring(4)}' : compact;
+    final compact = value
+        .trim()
+        .replaceAll(RegExp(r'[\s\u00A0\u2000-\u200B\u202F\u205F\u3000-]+'), '')
+        .toUpperCase();
+    return compact.length == 8
+        ? '${compact.substring(0, 4)}-${compact.substring(4)}'
+        : compact;
   }
 
   /// Rooms the authenticated user has already joined and that use [bookId]
@@ -184,19 +190,16 @@ class ReadingRoomRepository {
     required Uint8List bytes,
     required String filename,
     required String contentType,
-  }) async =>
-      (await _api.uploadFile<ReadingRoomMember>(
-        '/api/reading-rooms/$roomId/members/me/profile-image',
-        method: 'PUT',
-        fieldName: 'profileImage',
-        bytes: bytes,
-        filename: filename,
-        contentType: contentType,
-        parse: (json) =>
-            ReadingRoomMember.fromJson(json as Map<String, dynamic>),
-      )).data!;
-
-  Future<void> deleteMyRoomProfileImage(int roomId) => _api.delete(
+  }) async => (await _api.uploadFile<ReadingRoomMember>(
     '/api/reading-rooms/$roomId/members/me/profile-image',
-  );
+    method: 'PUT',
+    fieldName: 'profileImage',
+    bytes: bytes,
+    filename: filename,
+    contentType: contentType,
+    parse: (json) => ReadingRoomMember.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
+  Future<void> deleteMyRoomProfileImage(int roomId) =>
+      _api.delete('/api/reading-rooms/$roomId/members/me/profile-image');
 }

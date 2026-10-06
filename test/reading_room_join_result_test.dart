@@ -26,8 +26,15 @@ void main() {
   });
 
   test('invite codes use one canonical form at the API boundary', () {
-    expect(ReadingRoomRepository.normalizeInviteCode(' abcd  - ef12 '), 'ABCD-EF12');
+    expect(
+      ReadingRoomRepository.normalizeInviteCode(' abcd  - ef12 '),
+      'ABCD-EF12',
+    );
     expect(ReadingRoomRepository.normalizeInviteCode('abcdEF12'), 'ABCD-EF12');
+    expect(
+      ReadingRoomRepository.normalizeInviteCode(' abcd\u00A0-\u3000ef12\n'),
+      'ABCD-EF12',
+    );
     expect(ReadingRoomRepository.normalizeInviteCode('too-short'), 'TOOS-HORT');
   });
 }

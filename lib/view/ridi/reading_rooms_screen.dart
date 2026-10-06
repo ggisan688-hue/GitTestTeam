@@ -35,6 +35,8 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
   List<ReadingRoom> _roomCache = const [];
   int _roomRevision = 0;
   bool _onlyAvailable = false;
+  bool _joinFlowInProgress = false;
+  int? _openingRoomId;
 
   @override
   void initState() {
@@ -109,13 +111,19 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
   }
 
   Future<void> _open(ReadingRoom room) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) =>
-            ReadingRoomDetailScreen(repository: _repository, roomId: room.id),
-      ),
-    );
-    if (changed == true && mounted) _reload();
+    if (_openingRoomId == room.id) return;
+    _openingRoomId = room.id;
+    try {
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              ReadingRoomDetailScreen(repository: _repository, roomId: room.id),
+        ),
+      );
+      if (changed == true && mounted) _reload();
+    } finally {
+      _openingRoomId = null;
+    }
   }
 
   Future<void> _create() async {
@@ -130,13 +138,40 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
   }
 
   Future<void> _join() async {
-    final room = await showDialog<ReadingRoom>(
+    if (_joinFlowInProgress) return;
+    final result = await showDialog<ReadingRoomJoinResult>(
       context: context,
       builder: (_) => _JoinRoomByCodeDialog(repository: _repository),
     );
-    if (!mounted || room == null) return;
-    _putRoom(room);
-    await _open(room);
+    if (!mounted || result == null || _joinFlowInProgress) return;
+    _joinFlowInProgress = true;
+    try {
+      // The join response is rendered only after /my confirms the committed
+      // membership. This avoids navigating to a stale detail route after a
+      // proxy retry or an eventual DB read.
+      await _reloadAsync();
+      if (!mounted) return;
+      ReadingRoom? room;
+      for (final candidate in _roomCache) {
+        if (candidate.id == result.room.id) {
+          room = candidate;
+          break;
+        }
+      }
+      if (room == null) {
+        throw ApiException('Joined room is missing from the refreshed list.');
+      }
+      if (result.alreadyJoined && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이미 참여 중인 독서방입니다. 방을 열었습니다.')),
+        );
+      }
+      await _open(room);
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    } finally {
+      _joinFlowInProgress = false;
+    }
   }
 
   Future<void> _deleteRoomFromList(ReadingRoom room) async {
@@ -496,7 +531,7 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
           const SnackBar(content: Text('이미 참여 중인 독서방입니다. 방을 열었습니다.')),
         );
       }
-      Navigator.of(context).pop(result.room);
+      Navigator.of(context).pop(result);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -621,20 +656,16 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('갤러리에서 선택'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                _RoomProfileImageAction.gallery,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RoomProfileImageAction.gallery),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('방 프로필 사진 삭제'),
               textColor: Colors.red,
               iconColor: Colors.red,
-              onTap: () => Navigator.pop(
-                sheetContext,
-                _RoomProfileImageAction.remove,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RoomProfileImageAction.remove),
             ),
             ListTile(
               leading: const Icon(Icons.close),
@@ -666,11 +697,13 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
           throw ApiException('JPG, PNG, WEBP 형식의 5MB 이하 이미지만 선택할 수 있습니다.');
         }
         final extension = image.name.split('.').last.toLowerCase();
-        final contentType = image.mimeType ?? switch (extension) {
-          'png' => 'image/png',
-          'webp' => 'image/webp',
-          _ => 'image/jpeg',
-        };
+        final contentType =
+            image.mimeType ??
+            switch (extension) {
+              'png' => 'image/png',
+              'webp' => 'image/webp',
+              _ => 'image/jpeg',
+            };
         await widget.repository.uploadMyRoomProfileImage(
           widget.roomId,
           bytes: bytes,
@@ -683,9 +716,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       if (mounted) _showError(context, error);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('방 프로필 사진을 변경하지 못했습니다.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('방 프로필 사진을 변경하지 못했습니다.')));
       }
     } finally {
       if (mounted) setState(() => _updatingProfileImage = false);
@@ -880,8 +913,13 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
             for (final member in room.participants)
               ListTile(
                 leading: CircleAvatar(
-                  foregroundImage: member.roomProfileImageUrl?.isNotEmpty == true
-                      ? NetworkImage(widget.repository.absoluteUrl(member.roomProfileImageUrl!))
+                  foregroundImage:
+                      member.roomProfileImageUrl?.isNotEmpty == true
+                      ? NetworkImage(
+                          widget.repository.absoluteUrl(
+                            member.roomProfileImageUrl!,
+                          ),
+                        )
                       : null,
                   child: Text(
                     member.nickname.isEmpty
@@ -917,7 +955,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
             const SizedBox(height: 24),
             if (room.joined)
               OutlinedButton.icon(
-                onPressed: _updatingProfileImage ? null : _editMyRoomProfileImage,
+                onPressed: _updatingProfileImage
+                    ? null
+                    : _editMyRoomProfileImage,
                 icon: _updatingProfileImage
                     ? const SizedBox(
                         width: 18,

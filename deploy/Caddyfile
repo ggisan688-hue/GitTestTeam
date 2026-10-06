@@ -3,6 +3,19 @@
 {$API_DOMAIN} {
     encode zstd gzip
 
+    # JSON access logs keep method/path/status/latency and X-Request-ID while
+    # explicitly suppressing bearer tokens and cookies.
+    log {
+        output stdout
+        format filter {
+            wrap json
+            fields {
+                request>headers>Authorization delete
+                request>headers>Cookie delete
+            }
+        }
+    }
+
     request_body {
         max_size 6MB
     }
@@ -16,6 +29,9 @@
     }
 
     reverse_proxy api:8088 {
+        # Preserve the app-generated correlation ID; Spring generates one if
+        # the mobile client/proxy did not supply a safe value.
+        header_up X-Request-ID {http.request.header.X-Request-ID}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up Host {host}

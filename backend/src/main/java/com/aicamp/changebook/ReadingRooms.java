@@ -476,7 +476,9 @@ class RoomService {
   }
   private String normalizeCode(String value) {
     if (value == null) return null;
-    String compact = value.trim().replaceAll("[\\s-]+", "").toUpperCase(java.util.Locale.ROOT);
+    String compact = value.trim()
+        .replaceAll("[\\s\\u00A0\\u2000-\\u200B\\u202F\\u205F\\u3000-]+", "")
+        .toUpperCase(java.util.Locale.ROOT);
     if (!compact.matches("[A-Z0-9]{8}")) return null;
     return compact.substring(0, 4) + "-" + compact.substring(4);
   }
