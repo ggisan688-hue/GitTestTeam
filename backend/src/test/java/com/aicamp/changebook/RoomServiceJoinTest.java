@@ -38,8 +38,7 @@ class RoomServiceJoinTest {
     AtomicBoolean joined = new AtomicBoolean(false);
 
     when(userFeatures.me("joiner")).thenReturn(joiningUser);
-    when(userFeatures.profileFor(owner))
-        .thenReturn(new ProfileResponse(10L, "owner", "방장", null, null, null, null, null));
+    when(userFeatures.profileImageUrlForUserId(10L)).thenReturn(null);
     when(rooms.findByJoinCodeForUpdate("NJV6-3GCD")).thenReturn(Optional.of(room));
     when(members.existsByRoomIdAndUserId(100L, 20L)).thenAnswer(invocation -> joined.get());
     when(members.countByRoomId(100L)).thenReturn(1L);
@@ -52,11 +51,16 @@ class RoomServiceJoinTest {
     });
     when(users.findById(10L)).thenReturn(Optional.of(owner));
 
+    // The repository lookup key is valid even if an old entity projection did
+    // not hydrate AppUser.id. The membership id must remain the response key.
+    owner.id = null;
+
     JoinRoomResponse result = service.join("joiner", "njv6-3gcd", null);
 
     assertFalse(result.alreadyJoined());
     assertEquals(100L, result.room().id());
     assertEquals(10L, result.room().ownerId());
+    assertEquals(10L, result.room().participants().get(0).userId());
   }
 
   private static AppUser user(Long id, String username, String nickname) {

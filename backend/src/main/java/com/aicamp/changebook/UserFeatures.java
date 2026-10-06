@@ -161,6 +161,19 @@ class UserFeatureService {
         user.createdAt, profile == null ? user.updatedAt : profile.updatedAt);
   }
 
+  /**
+   * Room membership is the authoritative source for a participant's user id.
+   * Keep the optional avatar lookup on that persisted key rather than a
+   * partially populated entity projection.
+   */
+  String profileImageUrlForUserId(Long userId) {
+    if (userId == null) {
+      throw new ApiException(HttpStatus.CONFLICT, "ROOM_MEMBER_USER_NOT_FOUND",
+          "A room member has no user reference.");
+    }
+    return profiles.findById(userId).map(profile -> profile.avatarUrl).orElse(null);
+  }
+
   @Transactional
   ProfileResponse updateProfile(String username, ProfileUpdateRequest request) {
     return updateProfile(username, request, null, false);

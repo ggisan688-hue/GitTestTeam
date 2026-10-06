@@ -432,9 +432,14 @@ class RoomService {
   }
 
   private RoomMemberResponse memberResponse(RoomMember member, AppUser user) {
+    if (member.userId == null) {
+      throw new ApiException(HttpStatus.CONFLICT, "ROOM_MEMBER_USER_NOT_FOUND", "A room member has no user reference.");
+    }
     String imageUrl = member.roomProfileImageUrl;
-    if (imageUrl == null || imageUrl.isBlank()) imageUrl = userFeatures.profileFor(user).profileImageUrl();
-    return new RoomMemberResponse(user.id,
+    if (imageUrl == null || imageUrl.isBlank()) {
+      imageUrl = userFeatures.profileImageUrlForUserId(member.userId);
+    }
+    return new RoomMemberResponse(member.userId,
         member.roomNickname == null || member.roomNickname.isBlank() ? user.nickname : member.roomNickname,
         member.role, member.joinedAt, imageUrl);
   }
