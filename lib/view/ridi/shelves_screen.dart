@@ -575,35 +575,6 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
     }
   }
 
-  Future<void> _deleteLegacy() async {
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('책장을 삭제할까요?'),
-            content: const Text('책장만 삭제되며, 원본 도서와 읽기 기록은 유지됩니다.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('취소'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('삭제'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!ok || !mounted) return;
-    try {
-      await widget.repository.delete(widget.shelfId);
-      if (mounted) Navigator.pop(context, widget.shelfId);
-    } on ApiException catch (error) {
-      if (mounted) _showError(context, error);
-    }
-  }
-
   Future<void> _delete() async {
     final deleted =
         await showDialog<bool>(
