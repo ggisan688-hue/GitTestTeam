@@ -1,261 +1,625 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../../core/api_client.dart';
-import '../../model/server_friend.dart';
-import '../../repository/friend_repository.dart';
-import 'ridi_store.dart';
+import 'ridi_theme.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
+
   @override
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  late final FriendRepository _repository;
-  late Future<List<ServerFriend>> _friends;
+  final List<_AiFriend> _friends = const [
+    _AiFriend(
+      name: 'A',
+      age: 18,
+      gender: '여자',
+      relationship: '온라인에서 만난 편한 친구',
+      personality: '반응이 빠르고 장난기가 많아요.',
+      speech: '또래 친구처럼 편하고 자연스럽게 말해요.',
+      feature: '사람 관계에 쉽게 과몰입하고 인터넷 문화에 익숙해요.',
+      isDefault: true,
+    ),
+    _AiFriend(
+      name: 'B',
+      age: 22,
+      gender: '여자',
+      relationship: '편하게 이야기할 수 있는 친구',
+      personality: '차분하고 다정한 성격이에요.',
+      speech: '상대방의 이야기를 잘 들어주며 부드럽게 말해요.',
+      feature: '작은 감정의 변화도 잘 알아차리는 편이에요.',
+      isDefault: true,
+    ),
+    _AiFriend(
+      name: 'C',
+      age: 24,
+      gender: '남자',
+      relationship: '솔직하게 이야기하는 친구',
+      personality: '현실적이고 솔직한 성격이에요.',
+      speech: '돌려 말하기보다는 생각을 편하게 이야기해요.',
+      feature: '상황을 객관적으로 보는 편이에요.',
+      isDefault: true,
+    ),
+  ];
+
+  int _selectedIndex = 0;
+  bool _isCreating = false;
+
+  final _nameController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _relationshipController = TextEditingController();
+  final _personalityController = TextEditingController();
+  final _speechController = TextEditingController();
+  final _featureController = TextEditingController();
+
+  String _gender = '여자';
+
   @override
-  void initState() {
-    super.initState();
-    _repository = FriendRepository(
-      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
-    );
-    _friends = _repository.serverFriends();
+  void dispose() {
+    _nameController.dispose();
+    _ageController.dispose();
+    _relationshipController.dispose();
+    _personalityController.dispose();
+    _speechController.dispose();
+    _featureController.dispose();
+    super.dispose();
   }
 
-  void _reload() => setState(() => _friends = _repository.serverFriends());
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Friends'),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.person_add_alt_1),
-          onPressed: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => FriendRequestsScreen(repository: _repository),
-              ),
-            );
-            _reload();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () async {
-            await showSearch(
-              context: context,
-              delegate: _FriendSearch(_repository),
-            );
-            _reload();
-          },
-        ),
-      ],
-    ),
-    body: FutureBuilder<List<ServerFriend>>(
-      future: _friends,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done)
-          return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError)
-          return Center(
-            child: OutlinedButton(
-              onPressed: _reload,
-              child: const Text('Retry'),
-            ),
-          );
-        final friends = snapshot.data ?? const [];
-        if (friends.isEmpty)
-          return Center(
-            child: FilledButton.icon(
-              onPressed: () async {
-                await showSearch(
-                  context: context,
-                  delegate: _FriendSearch(_repository),
-                );
-                _reload();
-              },
-              icon: const Icon(Icons.search),
-              label: const Text('Find friends'),
-            ),
-          );
-        return RefreshIndicator(
-          onRefresh: () async => _reload(),
-          child: ListView.separated(
-            itemCount: friends.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final friend = friends[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(friend.nickname.substring(0, 1)),
-                ),
-                title: Text(friend.nickname),
-                subtitle: Text('@${friend.username}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.person_remove_outlined),
-                  tooltip: 'Remove friend',
-                  onPressed: () async {
-                    try {
-                      await _repository.removeServerFriend(friend.id);
-                      _reload();
-                    } on ApiException catch (error) {
-                      if (mounted)
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(error.message)));
-                    }
-                  },
-                ),
-              );
-            },
-          ),
-        );
-      },
-    ),
-  );
-}
-
-class FriendRequestsScreen extends StatefulWidget {
-  const FriendRequestsScreen({super.key, required this.repository});
-  final FriendRepository repository;
-  @override
-  State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
-}
-
-class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
-  late Future<List<ServerFriend>> _requests;
-  @override
-  void initState() {
-    super.initState();
-    _requests = widget.repository.incomingServerRequests();
+  void _selectFriend(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _isCreating = false;
+    });
   }
 
-  void _reload() =>
-      setState(() => _requests = widget.repository.incomingServerRequests());
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Friend requests')),
-    body: FutureBuilder<List<ServerFriend>>(
-      future: _requests,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
-        final requests = snapshot.data!;
-        if (requests.isEmpty)
-          return const Center(child: Text('No pending requests.'));
-        return ListView(
-          children: [
-            for (final request in requests)
-              ListTile(
-                title: Text(request.nickname),
-                subtitle: Text('@${request.username}'),
-                trailing: Wrap(
-                  children: [
-                    TextButton(
-                      onPressed: () async {
-                        await widget.repository.respondServerRequest(
-                          request.id,
-                          false,
-                        );
-                        _reload();
-                      },
-                      child: const Text('Decline'),
-                    ),
-                    FilledButton(
-                      onPressed: () async {
-                        await widget.repository.respondServerRequest(
-                          request.id,
-                          true,
-                        );
-                        _reload();
-                      },
-                      child: const Text('Accept'),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-class _FriendSearch extends SearchDelegate<void> {
-  _FriendSearch(this.repository);
-  final FriendRepository repository;
-  Timer? _debounce;
-  Future<List<ServerFriend>>? _results;
-  void _search() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () {
-      if (query.trim().isNotEmpty)
-        _results = repository.searchServerFriends(query.trim());
+  void _startCreating() {
+    setState(() {
+      _isCreating = true;
     });
   }
 
   @override
-  List<Widget>? buildActions(BuildContext context) => [
-    IconButton(
-      onPressed: () {
-        query = '';
-        _results = null;
-      },
-      icon: const Icon(Icons.clear),
-    ),
-  ];
-  @override
-  Widget? buildLeading(BuildContext context) => IconButton(
-    onPressed: () => close(context, null),
-    icon: const Icon(Icons.arrow_back),
-  );
-  @override
-  Widget buildResults(BuildContext context) => _body(context);
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    _search();
-    return _body(context);
-  }
-
-  Widget _body(BuildContext context) {
-    if (query.trim().isEmpty)
-      return const Center(child: Text('Search by username or nickname'));
-    final result = _results;
-    if (result == null) return const Center(child: CircularProgressIndicator());
-    return FutureBuilder<List<ServerFriend>>(
-      future: result,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
-        return ListView(
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI 친구'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(44, 24, 44, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final friend in snapshot.data!)
-              ListTile(
-                title: Text(friend.nickname),
-                subtitle: Text('@${friend.username}'),
-                trailing: friend.status == 'NONE'
-                    ? FilledButton(
-                        onPressed: () async {
-                          try {
-                            await repository.sendServerRequest(friend.username);
-                            close(context, null);
-                          } on ApiException catch (error) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(error.message)),
-                            );
-                          }
-                        },
-                        child: const Text('Add'),
-                      )
-                    : Text(friend.status),
+            const Text(
+              '함께 책을 읽을 AI 친구를 만나보세요.',
+              style: RidiText.sub,
+            ),
+
+            const SizedBox(height: 22),
+
+            SizedBox(
+              height: 150,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _friends.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 16),
+                itemBuilder: (context, index) {
+                  if (index == _friends.length) {
+                    return _CreateFriendCard(
+                      selected: _isCreating,
+                      onTap: _startCreating,
+                    );
+                  }
+
+                  final friend = _friends[index];
+
+                  return _FriendCard(
+                    friend: friend,
+                    selected: !_isCreating && _selectedIndex == index,
+                    onTap: () => _selectFriend(index),
+                  );
+                },
               ),
+            ),
+
+            const SizedBox(height: 24),
+
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: _isCreating
+                  ? _buildCreatePanel()
+                  : _buildFriendDetail(_friends[_selectedIndex]),
+            ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
+
+  Widget _buildFriendDetail(_AiFriend friend) {
+    return Container(
+      key: ValueKey('detail-${friend.name}'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 42,
+        vertical: 30,
+      ),
+      decoration: BoxDecoration(
+        color: RidiColors.bg,
+        border: Border.all(color: RidiColors.grayLight),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 54,
+            backgroundColor: RidiColors.panel,
+            child: Text(
+              friend.name,
+              style: const TextStyle(
+                fontFamily: RidiText.f,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                color: RidiColors.ink,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 42),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      friend.name,
+                      style: const TextStyle(
+                        fontFamily: RidiText.f,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: RidiColors.ink,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // 기본 A/B/C는 수정 불가.
+                    // 이후 사용자가 만든 친구만 수정 버튼 표시.
+                    if (!friend.isDefault)
+                      OutlinedButton(
+                        onPressed: () {},
+                        child: const Text('수정'),
+                      ),
+                  ],
+                ),
+
+                const SizedBox(height: 6),
+
+                Text(
+                  '${friend.age}살 · ${friend.gender}',
+                  style: RidiText.sub,
+                ),
+
+                const SizedBox(height: 26),
+
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _DetailRow(
+                        label: '나와의 관계',
+                        value: friend.relationship,
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                    Expanded(
+                      child: _DetailRow(
+                        label: '성격',
+                        value: friend.personality,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _DetailRow(
+                        label: '특징',
+                        value: friend.feature,
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                    Expanded(
+                      child: _DetailRow(
+                        label: '말투',
+                        value: friend.speech,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreatePanel() {
+    return Container(
+      key: const ValueKey('create'),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: RidiColors.bg,
+        border: Border.all(color: RidiColors.grayLight),
+        borderRadius: BorderRadius.circular(16),
+      ),
+
+      // 상단 친구 카드는 그대로 두고
+      // 생성 폼 안쪽만 세로 스크롤
+      padding: const EdgeInsets.fromLTRB(34, 26, 34, 30),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '새로운 AI 친구 만들기',
+              style: RidiText.heading,
+            ),
+
+            const SizedBox(height: 24),
+
+            // 이름 / 나이 / 성별
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _InputField(
+                    label: '이름',
+                    controller: _nameController,
+                    hint: '예) hihi',
+                  ),
+                ),
+
+                const SizedBox(width: 18),
+
+                SizedBox(
+                  width: 150,
+                  child: _InputField(
+                    label: '나이',
+                    controller: _ageController,
+                    hint: '예) 20',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+
+                const SizedBox(width: 18),
+
+                SizedBox(
+                  width: 180,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '성별',
+                        style: RidiText.bodyBold,
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: _gender,
+                        decoration: _inputDecoration(),
+                        items: const [
+                          DropdownMenuItem(
+                            value: '여자',
+                            child: Text('여자'),
+                          ),
+                          DropdownMenuItem(
+                            value: '남자',
+                            child: Text('남자'),
+                          ),
+                          DropdownMenuItem(
+                            value: '없음',
+                            child: Text('없음'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _gender = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 26),
+
+            // 나와의 관계
+            _InputField(
+              label: '나와의 관계',
+              controller: _relationshipController,
+              hint: '예) 아는 동생! 친하다',
+              minLines: 3,
+              maxLines: 6,
+            ),
+
+            const SizedBox(height: 24),
+
+            // 성격
+            _InputField(
+              label: '성격',
+              controller: _personalityController,
+              hint: '예) 유쾌발랄상쾌. 항상 밝아서 보기 좋다.',
+              minLines: 3,
+              maxLines: 6,
+            ),
+
+            const SizedBox(height: 24),
+
+            // 말투
+            _InputField(
+              label: '말투',
+              controller: _speechController,
+              hint: '예) 나를 언니라고 부름. 또래 여학생 말투다.',
+              minLines: 3,
+              maxLines: 6,
+            ),
+
+            const SizedBox(height: 24),
+
+            // 특징
+            _InputField(
+              label: '특징',
+              controller: _featureController,
+              hint: '예) 사소한 거에도 감동 받고, 기뻐하는 타입',
+              minLines: 3,
+              maxLines: 6,
+            ),
+
+            const SizedBox(height: 28),
+
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '지금은 화면 확인 단계예요. 저장 기능은 다음 단계에서 연결할게요.',
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('AI 친구 만들기'),
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+}
+
+class _FriendCard extends StatelessWidget {
+  const _FriendCard({
+    required this.friend,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _AiFriend friend;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 170,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected
+              ? RidiColors.blue.withValues(alpha: 0.06)
+              : RidiColors.bg,
+          border: Border.all(
+            color: selected ? RidiColors.blue : RidiColors.grayLight,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 25,
+              backgroundColor: RidiColors.panel,
+              child: Text(
+                friend.name,
+                style: RidiText.heading,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              friend.name,
+              style: RidiText.bodyBold,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CreateFriendCard extends StatelessWidget {
+  const _CreateFriendCard({
+    required this.selected,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 170,
+        decoration: BoxDecoration(
+          color: selected
+              ? RidiColors.blue.withValues(alpha: 0.06)
+              : RidiColors.bg,
+          border: Border.all(
+            color: selected ? RidiColors.blue : RidiColors.grayLight,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.add,
+              size: 34,
+              color: RidiColors.blue,
+            ),
+            SizedBox(height: 10),
+            Text(
+              'AI 친구 만들기',
+              style: RidiText.bodyBold,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: RidiText.bodyBold,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: RidiText.body,
+        ),
+      ],
+    );
+  }
+}
+
+class _InputField extends StatelessWidget {
+  const _InputField({
+    required this.label,
+    required this.controller,
+    required this.hint,
+    this.keyboardType,
+    this.minLines,
+    this.maxLines = 1,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String hint;
+  final TextInputType? keyboardType;
+  final int? minLines;
+  final int? maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: RidiText.bodyBold,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          minLines: minLines,
+          maxLines: maxLines,
+          textAlignVertical: TextAlignVertical.top,
+          decoration: _inputDecoration(hint: hint),
+        ),
+      ],
+    );
+  }
+}
+
+InputDecoration _inputDecoration({String? hint}) {
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: RidiText.sub,
+    filled: true,
+    fillColor: RidiColors.bg,
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: 14,
+      vertical: 13,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(
+        color: RidiColors.grayLight,
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(
+        color: RidiColors.blue,
+        width: 1.5,
+      ),
+    ),
+  );
+}
+
+class _AiFriend {
+  const _AiFriend({
+    required this.name,
+    required this.age,
+    required this.gender,
+    required this.relationship,
+    required this.personality,
+    required this.speech,
+    required this.feature,
+    required this.isDefault,
+  });
+
+  final String name;
+  final int age;
+  final String gender;
+  final String relationship;
+  final String personality;
+  final String speech;
+  final String feature;
+  final bool isDefault;
 }
