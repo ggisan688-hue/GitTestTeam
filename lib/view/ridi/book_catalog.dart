@@ -56,14 +56,25 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
       );
     }
     // 표지가 주인공인 세로 카드 (리디처럼): 표지 → 제목 → 저자
-    return SizedBox(
-      height: _CatalogCard.coverH + 62,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: vm.books.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 20),
-        itemBuilder: (_, index) => _CatalogCard(book: vm.books[index]),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 750
+            ? 5
+            : (constraints.maxWidth / 148).floor().clamp(2, 4).toInt();
+        return GridView.builder(
+          shrinkWrap: true,
+          primary: false,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: vm.books.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 22,
+            crossAxisSpacing: 16,
+            childAspectRatio: .49,
+          ),
+          itemBuilder: (_, index) => _CatalogCard(book: vm.books[index]),
+        );
+      },
     );
   }
 }

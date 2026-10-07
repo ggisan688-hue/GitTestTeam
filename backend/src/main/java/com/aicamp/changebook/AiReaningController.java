@@ -108,6 +108,27 @@ List<AiReadingNoteResponse> getNotes(
             .toList();
 }
 
+/**
+ * Generate notes only after the caller has been authorised for the selected
+ * friend.  The client intentionally calls this only when the preceding GET
+ * returned an empty list; an empty list itself remains a normal 200 response.
+ */
+@PostMapping("/books/{bookId}/ai-reading-friends/{friendId}/generate")
+@org.springframework.transaction.annotation.Transactional
+List<AiReadingNoteResponse> generateNotes(
+        @PathVariable Long bookId,
+        @PathVariable Long friendId,
+        org.springframework.security.core.Authentication authentication
+) {
+    requireAccessibleFriend(friendId, authentication);
+    aiReadingService.generateNotes(bookId, friendId);
+    return noteRepository
+            .findByFriendIdAndBookIdOrderByParagraphOrderAsc(friendId, bookId)
+            .stream()
+            .map(AiReadingNoteResponse::from)
+            .toList();
+}
+
 
     // =========================================================
     // AI 친구 응답

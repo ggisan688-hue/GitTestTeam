@@ -1190,11 +1190,51 @@ class _ShelfTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE3E6EE)),
             ),
-            child: const Icon(
-              Icons.collections_bookmark_outlined,
-              size: 44,
-              color: Color(0xFF8A94A8),
-            ),
+            child: shelf.coverImageUrl == null || shelf.coverImageUrl!.isEmpty
+                ? const Icon(
+                    Icons.collections_bookmark_outlined,
+                    size: 44,
+                    color: Color(0xFF8A94A8),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final previews = shelf.previewCoverImageUrls
+                          .where((url) => url != shelf.coverImageUrl)
+                          .take(2)
+                          .toList();
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          for (var index = previews.length - 1; index >= 0; index--)
+                            Positioned(
+                              left: 10.0 + index * 13,
+                              top: 12.0 + index * 7,
+                              child: Opacity(
+                                opacity: .55,
+                                child: BookCover(
+                                  url: previews[index],
+                                  width: constraints.maxWidth * .68,
+                                  height: constraints.maxHeight * .78,
+                                ),
+                              ),
+                            ),
+                          Positioned.fill(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                left: previews.isEmpty ? 0 : 26,
+                                top: previews.isEmpty ? 0 : 8,
+                              ),
+                              child: BookCover(
+                                url: shelf.coverImageUrl,
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
           ),
         ),
         const SizedBox(height: 10),
