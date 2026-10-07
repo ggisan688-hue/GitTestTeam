@@ -9,6 +9,7 @@ import '../../model/book.dart';
 import '../../model/shared_room_note.dart';
 import '../../viewmodel/book_viewmodel.dart';
 import '../../repository/reading_room_repository.dart';
+import '../../repository/ai_reading_repository.dart';
 import 'reading_rooms_screen.dart' show showSharedNoteComments;
 import 'ridi_store.dart';
 
@@ -49,6 +50,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _twoColumns = false;
   bool _savingHighlight = false;
   List<ReadingNote> _sharedHighlights = const [];
+  List<AiReadingFriend> _aiFriends = const [];
+  final Set<int> _selectedAiFriendIds = <int>{};
+
+  final Map<int, List<AiReadingNote>> _aiNotesByFriend =
+  <int, List<AiReadingNote>>{};
   String? _layoutKey;
   Timer? _timer;
 
@@ -120,6 +126,17 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     highlightColor: note.highlightColor,
     preview: '',
     createdAt: note.createdAt,
+  );
+  ReadingNote _asAiReaderHighlight(AiReadingNote note) => ReadingNote(
+    id: -1000000000 - note.id,
+    type: ReaderNoteType.highlight,
+    paragraphOrder: note.paragraphOrder,
+    selectedText: note.selectedText,
+    startOffset: note.startOffset,
+    endOffset: note.endOffset,
+    highlightColor: 'BLUE',
+    preview: note.content,
+    createdAt: null,
   );
   Future<void> _save() async {
     _timer?.cancel();
@@ -199,10 +216,21 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                             settings: vm.readerSettings,
                             twoColumns: _twoColumns,
                             highlights: [
+                              // 내가 직접 만든 형광펜
                               ...vm.readingNotes.where(
-                                (n) => n.type == ReaderNoteType.highlight,
+                                    (n) => n.type == ReaderNoteType.highlight,
                               ),
+
+                              // 교환독서 상대방 형광펜
                               ..._sharedHighlights,
+
+                              // 선택한 AI 친구가 만든 형광펜
+                              ..._selectedAiFriendIds
+                                  .expand(
+                                    (friendId) =>
+                                _aiNotesByFriend[friendId] ?? const <AiReadingNote>[],
+                              )
+                                  .map(_asAiReaderHighlight),
                             ],
                             onHighlight: _saveHighlight,
                             memos: vm.readingNotes
@@ -614,23 +642,143 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       order: _order,
       onGo: _go,
       roomId: widget.readerContext.roomId,
+      aiFriends: _aiFriends,
+      aiNotesByFriend: _aiNotesByFriend,
     ),
   );
-  void _viewSettings() => _open(
-    place: _SheetPlace.corner,
-    _ViewSettings(
-      onChange: (s) async {
-        try {
-          await context.read<BookViewModel>().saveSettings(s);
-          _layoutKey = null;
-        } on ApiException catch (e) {
-          if (mounted)
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(e.message)));
-        }
-      },
-    ),
-  );
+
+  Future<void> _viewSettings() async {
+    final store = context.read<RidiStore>();
+
+    final repository = AiReadingRepository(
+      ApiClient(
+        tokenProvider: () => store.accessToken,
+      ),
+    );
+
+    try {
+      // 보기 설정을 열 때 서버에서 현재 사용 가능한 AI 친구 목록을 가져온다.
+      final friends = await repository.getDefaultFriends();
+
+      if (!mounted) return;
+
+      _aiFriends = friends;
+
+      await _open(
+        place: _SheetPlace.corner,
+        _ViewSettings(
+          onChange: (s) async {
+            try {
+              await context.read<BookViewModel>().saveSettings(s);
+              _layoutKey = null;
+            } on ApiException catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(
+                  SnackBar(content: Text(e.message)),
+                );
+              }
+            }
+          },
+
+          aiFriends: _aiFriends,
+
+          selectedAiFriendIds: _selectedAiFriendIds,
+
+          onAiFriendDone: (selectedIds) async {
+            final loadedNotes =
+            <int, List<AiReadingNote>>{};
+
+            try {
+              // 선택된 친구들만 처리한다.
+              for (final friendId in selectedIds) {
+                // 먼저 DB에 기존 메모가 있는지 확인
+                var notes = await repository.getNotes(
+                  bookId: widget.bookId,
+                  friendId: friendId,
+                );
+
+                // 기존 메모가 없을 때만 Gemini 생성
+                if (notes.isEmpty) {
+                  notes = await repository.generateNotes(
+                    bookId: widget.bookId,
+                    friendId: friendId,
+                  );
+                }
+
+                loadedNotes[friendId] = notes;
+              }
+
+              if (!mounted) return;
+
+              setState(() {
+                // 완료를 눌렀을 때만 실제 선택 상태 변경
+                _selectedAiFriendIds
+                  ..clear()
+                  ..addAll(selectedIds);
+
+                // 화면에서 사용할 AI 메모 갱신
+                _aiNotesByFriend
+                  ..clear()
+                  ..addAll(loadedNotes);
+              });
+
+              // 모든 작업이 성공한 뒤 보기 설정 팝업 닫기
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
+            } on ApiException catch (e) {
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'AI 메모를 불러오지 못했습니다: ${e.message}',
+                  ),
+                ),
+              );
+
+              // 실패하면 팝업은 그대로 둔다.
+              rethrow;
+            } catch (e) {
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'AI 메모를 불러오는 중 오류가 발생했습니다.',
+                  ),
+                ),
+              );
+
+              rethrow;
+            }
+          },
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'AI 친구 목록을 불러오지 못했습니다: ${e.message}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'AI 친구 목록을 불러오는 중 오류가 발생했습니다.',
+          ),
+        ),
+      );
+    }
+  }
   void _viewerSettings() => _open(
     place: _SheetPlace.corner,
     _ViewerSettings(
@@ -1275,14 +1423,18 @@ class _Notes extends StatefulWidget {
     required this.bookId,
     required this.order,
     required this.onGo,
+    required this.aiFriends,
+    required this.aiNotesByFriend,
     this.roomId,
   });
 
-  /// 방에서 읽는 중이면 방 id — 메모 탭이 방 멤버 메모(사람별)를 보여 준다
   final int? roomId;
   final int bookId;
   final int order;
   final ValueChanged<int> onGo;
+
+  final List<AiReadingFriend> aiFriends;
+  final Map<int, List<AiReadingNote>> aiNotesByFriend;
 
   @override
   State<_Notes> createState() => _NotesState();
@@ -1377,6 +1529,10 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                         .toList(),
                     chapters: vm.readerChapters,
                     myNickname: context.read<RidiStore>().nickname,
+
+                    aiFriends: widget.aiFriends,
+                    aiNotesByFriend: widget.aiNotesByFriend,
+
                     onGo: (order) {
                       Navigator.of(context).pop();
                       widget.onGo(order);
@@ -1785,26 +1941,77 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
 /// 바탕색 동그라미 · 글자 크기 [−][+] · 행간 [−][+] · AI 친구 설정 › · 스포일러 켜기/끄기.
 /// (밝기·글꼴·문단 간격·문단 너비·문단 정렬·형광펜 색상은 뺌)
 /// ※ AI 친구 설정·스포일러는 아직 동작을 정하지 않아 모양만 있다 (수정2 질문 4).
-class _ViewSettings extends StatelessWidget {
-  const _ViewSettings({required this.onChange});
+class _ViewSettings extends StatefulWidget {
+  const _ViewSettings({
+    required this.onChange,
+    required this.aiFriends,
+    required this.selectedAiFriendIds,
+    required this.onAiFriendDone,
+  });
+
   final ValueChanged<ReaderSettings> onChange;
+
+  // 서버에서 받아온 AI 친구 목록
+  final List<AiReadingFriend> aiFriends;
+
+  // 현재 실제로 적용되어 있는 AI 친구들
+  final Set<int> selectedAiFriendIds;
+
+  // AI 친구 화면에서 "완료"를 눌렀을 때 호출
+  final Future<void> Function(Set<int> selectedIds) onAiFriendDone;
+
+  @override
+  State<_ViewSettings> createState() => _ViewSettingsState();
+}
+
+class _ViewSettingsState extends State<_ViewSettings> {
   static const _themes = [
     (ReaderPaperTheme.light, Color(0xFFFFFFFF), '기본'),
     (ReaderPaperTheme.sepia, Color(0xFFF4ECD8), '세피아'),
     (ReaderPaperTheme.dark, Color(0xFF2B2B2B), '어둡게'),
   ];
+
   static const _lineLabels = ['좁게', '보통', '넓게'];
+
   static final _spoiler = ValueNotifier<bool>(false);
+
+  bool _showAiFriends = false;
+  bool _savingAiFriends = false;
+
+  late Set<int> _draftSelectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 아직 완료를 누르지 않은 임시 선택 상태
+    _draftSelectedIds = <int>{
+      ...widget.selectedAiFriendIds,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_showAiFriends) {
+      return _buildAiFriendSettings(context);
+    }
+
+    return _buildViewSettings(context);
+  }
+
+  Widget _buildViewSettings(BuildContext context) {
     final s = context.watch<BookViewModel>().readerSettings;
-    final fontLevel = ((s.fontScale - .8) / .1).round() + 1; // 1 ~ 7
+
+    final fontLevel =
+        ((s.fontScale - .8) / .1).round() + 1;
+
     const divider = Divider(
       height: 1,
       indent: 20,
       endIndent: 20,
       color: Color(0xFFEDEDED),
     );
+
     return _Sheet(
       title: '보기 설정',
       child: SingleChildScrollView(
@@ -1813,7 +2020,8 @@ class _ViewSettings extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding:
+              const EdgeInsets.fromLTRB(20, 16, 20, 16),
               child: Row(
                 children: [
                   const Icon(
@@ -1822,6 +2030,7 @@ class _ViewSettings extends StatelessWidget {
                     color: Color(0xFFB0B0B0),
                   ),
                   const SizedBox(width: 14),
+
                   for (final t in _themes) ...[
                     Tooltip(
                       message: t.$3,
@@ -1829,7 +2038,9 @@ class _ViewSettings extends StatelessWidget {
                         customBorder: const CircleBorder(),
                         onTap: s.theme == t.$1
                             ? null
-                            : () => onChange(s.copyWith(theme: t.$1)),
+                            : () => widget.onChange(
+                          s.copyWith(theme: t.$1),
+                        ),
                         child: Container(
                           width: 34,
                           height: 34,
@@ -1840,7 +2051,8 @@ class _ViewSettings extends StatelessWidget {
                               color: s.theme == t.$1
                                   ? const Color(0xFF1E88E5)
                                   : const Color(0xFFD0D0D0),
-                              width: s.theme == t.$1 ? 2.5 : 1,
+                              width:
+                              s.theme == t.$1 ? 2.5 : 1,
                             ),
                           ),
                         ),
@@ -1851,49 +2063,76 @@ class _ViewSettings extends StatelessWidget {
                 ],
               ),
             ),
+
             divider,
+
             _StepRow(
               icon: Icons.format_size,
               label: '글자 크기',
               value: '$fontLevel',
               onMinus: s.fontScale <= .8 + 1e-6
                   ? null
-                  : () => onChange(
-                      s.copyWith(
-                        fontScale: ((s.fontScale - .1) * 10).round() / 10,
-                      ),
-                    ),
+                  : () => widget.onChange(
+                s.copyWith(
+                  fontScale:
+                  ((s.fontScale - .1) * 10)
+                      .round() /
+                      10,
+                ),
+              ),
               onPlus: s.fontScale >= 1.4 - 1e-6
                   ? null
-                  : () => onChange(
-                      s.copyWith(
-                        fontScale: ((s.fontScale + .1) * 10).round() / 10,
-                      ),
-                    ),
+                  : () => widget.onChange(
+                s.copyWith(
+                  fontScale:
+                  ((s.fontScale + .1) * 10)
+                      .round() /
+                      10,
+                ),
+              ),
             ),
+
             divider,
+
             _StepRow(
               icon: Icons.format_line_spacing,
               label: '행간',
-              value: _lineLabels[s.lineHeightStep.clamp(0, 2)],
+              value: _lineLabels[
+              s.lineHeightStep.clamp(0, 2)],
               onMinus: s.lineHeightStep <= 0
                   ? null
-                  : () => onChange(
-                      s.copyWith(lineHeightStep: s.lineHeightStep - 1),
-                    ),
+                  : () => widget.onChange(
+                s.copyWith(
+                  lineHeightStep:
+                  s.lineHeightStep - 1,
+                ),
+              ),
               onPlus: s.lineHeightStep >= 2
                   ? null
-                  : () => onChange(
-                      s.copyWith(lineHeightStep: s.lineHeightStep + 1),
-                    ),
-            ),
-            divider,
-            InkWell(
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('AI 친구 설정은 동작을 정한 뒤 연결합니다.')),
+                  : () => widget.onChange(
+                s.copyWith(
+                  lineHeightStep:
+                  s.lineHeightStep + 1,
+                ),
               ),
+            ),
+
+            divider,
+
+            // AI 친구 설정
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _draftSelectedIds = <int>{
+                    ...widget.selectedAiFriendIds,
+                  };
+
+                  _showAiFriends = true;
+                });
+              },
               child: const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 16, 14),
+                padding:
+                EdgeInsets.fromLTRB(20, 14, 16, 14),
                 child: Row(
                   children: [
                     Icon(
@@ -1902,18 +2141,27 @@ class _ViewSettings extends StatelessWidget {
                       color: Color(0xFF9E9E9E),
                     ),
                     SizedBox(width: 10),
-                    Text('AI 친구 설정', style: TextStyle(fontSize: 15)),
+                    Text(
+                      'AI 친구 설정',
+                      style: TextStyle(fontSize: 15),
+                    ),
                     Spacer(),
-                    Icon(Icons.chevron_right, color: Color(0xFFB0B0B0)),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFB0B0B0),
+                    ),
                   ],
                 ),
               ),
             ),
+
             divider,
+
             ValueListenableBuilder<bool>(
               valueListenable: _spoiler,
               builder: (_, on, _) => Padding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
+                padding:
+                const EdgeInsets.fromLTRB(20, 6, 12, 6),
                 child: Row(
                   children: [
                     const Icon(
@@ -1922,9 +2170,16 @@ class _ViewSettings extends StatelessWidget {
                       color: Color(0xFF9E9E9E),
                     ),
                     const SizedBox(width: 10),
-                    const Text('스포일러', style: TextStyle(fontSize: 15)),
+                    const Text(
+                      '스포일러',
+                      style: TextStyle(fontSize: 15),
+                    ),
                     const Spacer(),
-                    Switch(value: on, onChanged: (v) => _spoiler.value = v),
+                    Switch(
+                      value: on,
+                      onChanged: (v) =>
+                      _spoiler.value = v,
+                    ),
                   ],
                 ),
               ),
@@ -1934,26 +2189,239 @@ class _ViewSettings extends StatelessWidget {
       ),
     );
   }
-}
 
+  Widget _buildAiFriendSettings(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 24,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 상단
+          SizedBox(
+            height: 56,
+            child: Row(
+              children: [
+                // 뒤로가기
+                SizedBox(
+                  width: 64,
+                  child: IconButton(
+                    tooltip: '뒤로',
+                    onPressed: _savingAiFriends
+                        ? null
+                        : () {
+                      setState(() {
+                        _showAiFriends = false;
+                      });
+                    },
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      size: 28,
+                      color: Color(0xFF555555),
+                    ),
+                  ),
+                ),
+
+                // 가운데 제목
+                const Expanded(
+                  child: Center(
+                    child: Text(
+                      'AI 친구 설정',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 완료
+                SizedBox(
+                  width: 64,
+                  child: TextButton(
+                    onPressed:
+                    _savingAiFriends ? null : _completeAiFriends,
+                    child: _savingAiFriends
+                        ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                        : const Text(
+                      '완료',
+                      style: TextStyle(
+                        color: Color(0xFF1E88E5),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          if (widget.aiFriends.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: 32,
+                horizontal: 20,
+              ),
+              child: Center(
+                child: Text(
+                  '사용할 수 있는 AI 친구가 없습니다.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF8A8A8A),
+                  ),
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: widget.aiFriends.length,
+                separatorBuilder: (_, _) =>
+                const Divider(
+                  height: 1,
+                  indent: 20,
+                  endIndent: 20,
+                  color: Color(0xFFEDEDED),
+                ),
+                itemBuilder: (_, index) {
+                  final friend =
+                  widget.aiFriends[index];
+
+                  final selected =
+                  _draftSelectedIds
+                      .contains(friend.id);
+
+                  return InkWell(
+                    onTap: _savingAiFriends
+                        ? null
+                        : () {
+                      setState(() {
+                        if (selected) {
+                          _draftSelectedIds
+                              .remove(friend.id);
+                        } else {
+                          _draftSelectedIds
+                              .add(friend.id);
+                        }
+                      });
+                    },
+                    child: Padding(
+                      padding:
+                      const EdgeInsets.fromLTRB(
+                        20,
+                        14,
+                        18,
+                        14,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration:
+                            const BoxDecoration(
+                              color: Color(0xFFF2F3F7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.smart_toy_outlined,
+                              size: 20,
+                              color: Color(0xFF666666),
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: Text(
+                              friend.name,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight:
+                                FontWeight.w500,
+                              ),
+                            ),
+                          ),
+
+                          // 선택된 친구만 체크 표시.
+                          // > 화살표는 없음.
+                          if (selected)
+                            const Icon(
+                              Icons.check,
+                              size: 23,
+                              color:
+                              Color(0xFF1E88E5),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _completeAiFriends() async {
+    setState(() {
+      _savingAiFriends = true;
+    });
+
+    try {
+      // 여기서만 부모에게 최종 선택을 전달한다.
+      // 친구를 누르는 것만으로는 Gemini가 실행되지 않는다.
+      await widget.onAiFriendDone(
+        Set<int>.from(_draftSelectedIds),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingAiFriends = false;
+        });
+      }
+    }
+  }
+}
 /// 보기 설정 한 줄: 아이콘 · 이름 · 값 · [−] [+]
 class _StepRow extends StatelessWidget {
-  const _StepRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.onMinus,
-    this.onPlus,
-  });
-  final IconData icon;
-  final String label;
-  final String value;
-  final VoidCallback? onMinus;
-  final VoidCallback? onPlus;
+const _StepRow({
+required this.icon,
+required this.label,
+required this.value,
+this.onMinus,
+this.onPlus,
+});
+final IconData icon;
+final String label;
+final String value;
+final VoidCallback? onMinus;
+final VoidCallback? onPlus;
 
-  Widget _btn(IconData i, VoidCallback? f) => InkWell(
-    onTap: f,
-    borderRadius: BorderRadius.circular(20),
+Widget _btn(IconData i, VoidCallback? f) => InkWell(
+onTap: f,
+borderRadius: BorderRadius.circular(20),
     child: Container(
       width: 46,
       height: 32,
@@ -2088,14 +2556,21 @@ class _MemoTab extends StatefulWidget {
     required this.myMemos,
     required this.chapters,
     required this.myNickname,
+    required this.aiFriends,
+    required this.aiNotesByFriend,
     required this.onGo,
     required this.onEdit,
     required this.onDelete,
   });
+
   final int? roomId;
   final List<ReadingNote> myMemos;
   final List<ReaderChapter> chapters;
   final String myNickname;
+
+  final List<AiReadingFriend> aiFriends;
+  final Map<int, List<AiReadingNote>> aiNotesByFriend;
+
   final ValueChanged<int> onGo;
   final Future<void> Function(ReadingNote) onEdit;
   final Future<void> Function(ReadingNote) onDelete;
@@ -2148,9 +2623,12 @@ class _MemoTabState extends State<_MemoTab> {
   }
 
   List<_MemoItem> _items(List<SharedRoomNote>? shared) {
+    final items = <_MemoItem>[];
+
+    // 혼자 읽는 경우: 내 메모
     if (shared == null) {
-      return [
-        for (final n in widget.myMemos)
+      for (final n in widget.myMemos) {
+        items.add(
           _MemoItem(
             author: widget.myNickname,
             mine: true,
@@ -2161,23 +2639,51 @@ class _MemoTabState extends State<_MemoTab> {
             at: n.createdAt,
             own: n,
           ),
-      ];
+        );
+      }
+    } else {
+      // 교환독서 방: 공유된 사람 메모
+      for (final n in shared.where((n) => n.type == 'MEMO')) {
+        items.add(
+          _MemoItem(
+            author: n.nickname,
+            mine: n.nickname == widget.myNickname,
+            order: n.paragraphOrder,
+            quote: n.selectedText,
+            memo: n.content,
+            color: n.highlightColor,
+            at: n.createdAt,
+            comments: n.commentCount,
+            shared: n,
+            locked: n.isSpoilerLocked,
+          ),
+        );
+      }
     }
-    return [
-      for (final n in shared.where((n) => n.type == 'MEMO'))
-        _MemoItem(
-          author: n.nickname,
-          mine: n.nickname == widget.myNickname,
-          order: n.paragraphOrder,
-          quote: n.selectedText,
-          memo: n.content,
-          color: n.highlightColor,
-          at: n.createdAt,
-          comments: n.commentCount,
-          shared: n,
-          locked: n.isSpoilerLocked,
-        ),
-    ];
+
+    // 선택된 AI 친구들의 메모
+    for (final friend in widget.aiFriends) {
+      final notes = widget.aiNotesByFriend[friend.id];
+
+      if (notes == null || notes.isEmpty) {
+        continue;
+      }
+
+      for (final note in notes) {
+        items.add(
+          _MemoItem(
+            author: friend.name,
+            mine: false,
+            order: note.paragraphOrder,
+            quote: note.selectedText,
+            memo: note.content,
+            color: '#8FA8FF',
+          ),
+        );
+      }
+    }
+
+    return items;
   }
 
   String _chapterOf(int order) {

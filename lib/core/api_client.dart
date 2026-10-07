@@ -37,7 +37,7 @@ class ApiClient {
 
   final http.Client _client;
   final String _baseUrl;
-  static const _requestTimeout = Duration(seconds: 20);
+  static const _requestTimeout = Duration(seconds: 5);
   static final Random _requestIdRandom = Random.secure();
 
   /// The app installs this once to clear authenticated UI state when a token

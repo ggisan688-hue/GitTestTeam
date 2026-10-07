@@ -13,7 +13,7 @@ import java.util.List;
 @Service
 class AiReadingService {
 
-    private static final int MAX_SENTENCES_WITHOUT_NOTE = 40;
+    private static final int MAX_SENTENCES_WITHOUT_NOTE = 12;
 
     private final GeminiClient geminiClient;
     private final AiReadingFriendRepository friendRepository;
@@ -47,181 +47,361 @@ class AiReadingService {
 
     void generateNotes(Long bookId, Long friendId) {
 
-        AiReadingFriend friend = loadFriend(friendId);
+    AiReadingFriend friend = loadFriend(friendId);
 
-        List<BookParagraph> paragraphs =
-                paragraphRepository.findByBookIdOrderByParagraphOrderAsc(bookId);
+    List<BookParagraph> paragraphs =
+            paragraphRepository.findByBookIdOrderByParagraphOrderAsc(bookId);
 
+    System.out.println("===== AI 독서 시작 =====");
+    System.out.println("bookId = " + bookId);
+    System.out.println("전체 문단 수 = " + paragraphs.size());
 
-        // 지금까지 책에서 실제로 알게 된 내용
-        String bookMemory = "";
-
-
-        // 이 캐릭터가 지금까지 무엇에 반응했는지
-        String personaMemory = "";
-
-
-        // 마지막 메모 이후 지나간 문장 수
-        int sentencesWithoutNote = 0;
-
-
-        // 마지막 메모 이후 지나온 문단들
-        List<BookParagraph> pendingParagraphs =
-                new ArrayList<>();
-
-
-        for (BookParagraph paragraph : paragraphs) {
-
-            // -------------------------------------------------
-            // 1. 현재 문단을 처음 읽는 순간의 반응 생성
-            // -------------------------------------------------
-
-            String response = generateForParagraph(
-                    friend,
-                    paragraph,
-                    bookMemory,
-                    personaMemory
-            );
-
-            List<GeneratedNote> generatedNotes =
-                    parseGeneratedNotes(response);
-
-
-            int savedCount = 0;
-
-
-            for (GeneratedNote generatedNote : generatedNotes) {
-
-                boolean saved = saveGeneratedNote(
-                        bookId,
-                        friend,
-                        paragraph,
-                        generatedNote
-                );
-
-                if (saved) {
-                    savedCount++;
-                }
-            }
-
-
-            // -------------------------------------------------
-            // 2. 메모 간격 관리
-            // -------------------------------------------------
-
-            if (savedCount > 0) {
-
-                // 자연스러운 메모가 생겼으므로 초기화
-                sentencesWithoutNote = 0;
-                pendingParagraphs.clear();
-
-            } else {
-
-                pendingParagraphs.add(paragraph);
-
-                sentencesWithoutNote +=
-                        countSentences(paragraph.content);
-            }
-
-
-            // -------------------------------------------------
-            // 3. 약 40문장 동안 메모가 하나도 없었다면
-            //    최근 범위에서 가장 자연스러운 메모 최소 1개
-            // -------------------------------------------------
-
-            if (sentencesWithoutNote >= MAX_SENTENCES_WITHOUT_NOTE
-                    && !pendingParagraphs.isEmpty()) {
-
-                String forcedResponse =
-                        generateRequiredNote(
-                                friend,
-                                pendingParagraphs,
-                                bookMemory,
-                                personaMemory
-                        );
-
-
-                List<ForcedGeneratedNote> forcedNotes =
-                        parseForcedGeneratedNotes(forcedResponse);
-
-
-                boolean forcedSaved = false;
-
-
-                for (ForcedGeneratedNote generated : forcedNotes) {
-
-                    BookParagraph target =
-                            findParagraph(
-                                    pendingParagraphs,
-                                    generated.paragraph_order()
-                            );
-
-
-                    if (target == null) {
-                        continue;
-                    }
-
-
-                    GeneratedNote note =
-                            new GeneratedNote(
-                                    generated.anchor_text(),
-                                    generated.note()
-                            );
-
-
-                    if (saveGeneratedNote(
-                            bookId,
-                            friend,
-                            target,
-                            note
-                    )) {
-
-                        forcedSaved = true;
-
-                        // 최소 1개만 필요
-                        break;
-                    }
-                }
-
-
-                if (forcedSaved) {
-                    sentencesWithoutNote = 0;
-                    pendingParagraphs.clear();
-                }
-            }
-
-
-            // -------------------------------------------------
-            // 4. 현재 문단을 다 읽은 뒤 Book Memory 갱신
-            //
-            // 중요:
-            // 메모 생성보다 뒤에서 실행한다.
-            // 따라서 현재 문단에 반응할 때는
-            // 미래 정보가 memory에 들어갈 수 없다.
-            // -------------------------------------------------
-
-            bookMemory = updateBookMemory(
-                    bookMemory,
-                    paragraph
-            );
-
-
-            // -------------------------------------------------
-            // 5. 이번 문단에서 실제 저장된 메모를 이용해
-            //    Persona Memory 갱신
-            // -------------------------------------------------
-
-            if (savedCount > 0) {
-
-                personaMemory = updatePersonaMemory(
-                        personaMemory,
-                        generatedNotes
-                );
-            }
-        }
+    if (paragraphs.isEmpty()) {
+        return;
     }
 
+    System.out.println(
+            "첫 문단 order = " +
+                    paragraphs.get(0).paragraphOrder
+    );
 
+    System.out.println(
+            "마지막 문단 order = " +
+                    paragraphs.get(paragraphs.size() - 1).paragraphOrder
+    );
+
+    String bookMemory = "";
+    String personaMemory = "";
+
+    List<List<BookParagraph>> readingChunks =
+            splitIntoReadingChunks(paragraphs);
+
+    System.out.println(
+            "AI 독서 묶음 수 = " + readingChunks.size()
+    );
+
+    for (int i = 0; i < readingChunks.size(); i++) {
+
+        List<BookParagraph> chunk =
+                readingChunks.get(i);
+
+        System.out.println(
+                "AI 독서 묶음 " +
+                        (i + 1) +
+                        "/" +
+                        readingChunks.size() +
+                        " : paragraph " +
+                        chunk.get(0).paragraphOrder +
+                        " ~ " +
+                        chunk.get(chunk.size() - 1).paragraphOrder
+        );
+
+        String response = generateForChunk(
+                friend,
+                chunk,
+                bookMemory,
+                personaMemory
+        );
+
+        ChunkResponse result =
+                parseChunkResponse(response);
+
+        if (result == null) {
+            System.out.println(
+                    "AI 독서 묶음 응답 파싱 실패"
+            );
+            continue;
+        }
+
+        List<GeneratedChunkNote> generatedNotes =
+                result.notes() == null
+                        ? List.of()
+                        : result.notes();
+
+        int savedCount = 0;
+
+        for (GeneratedChunkNote generated : generatedNotes) {
+
+            BookParagraph paragraph =
+                    findParagraph(
+                            chunk,
+                            generated.paragraph_order()
+                    );
+
+            if (paragraph == null) {
+                continue;
+            }
+
+            GeneratedNote note =
+                    new GeneratedNote(
+                            generated.anchor_text(),
+                            generated.note()
+                    );
+
+            if (saveGeneratedNote(
+                    bookId,
+                    friend,
+                    paragraph,
+                    note
+            )) {
+                savedCount++;
+            }
+        }
+
+        if (result.book_memory() != null
+                && !result.book_memory().isBlank()) {
+
+            bookMemory =
+                    result.book_memory().trim();
+        }
+
+        if (result.persona_memory() != null
+                && !result.persona_memory().isBlank()) {
+
+            personaMemory =
+                    result.persona_memory().trim();
+        }
+
+        System.out.println(
+                "저장된 AI 메모 = " + savedCount
+        );
+    }
+
+    System.out.println("===== AI 독서 완료 =====");
+}
+
+private List<List<BookParagraph>> splitIntoReadingChunks(
+        List<BookParagraph> paragraphs
+) {
+
+    final int targetCharacters = 3000;
+
+    List<List<BookParagraph>> chunks =
+            new ArrayList<>();
+
+    List<BookParagraph> current =
+            new ArrayList<>();
+
+    int currentCharacters = 0;
+
+    for (BookParagraph paragraph : paragraphs) {
+
+        String content =
+                paragraph.content == null
+                        ? ""
+                        : paragraph.content;
+
+        if (!current.isEmpty()
+                && currentCharacters + content.length()
+                > targetCharacters) {
+
+            chunks.add(new ArrayList<>(current));
+
+            current.clear();
+            currentCharacters = 0;
+        }
+
+        current.add(paragraph);
+
+        currentCharacters +=
+                content.length();
+    }
+
+    if (!current.isEmpty()) {
+        chunks.add(new ArrayList<>(current));
+    }
+
+    return chunks;
+}
+
+private String generateForChunk(
+        AiReadingFriend friend,
+        List<BookParagraph> paragraphs,
+        String bookMemory,
+        String personaMemory
+) {
+
+    StringBuilder text = new StringBuilder();
+
+    for (BookParagraph paragraph : paragraphs) {
+
+        text.append("\n")
+                .append("[paragraph_order=")
+                .append(paragraph.paragraphOrder)
+                .append("]\n")
+                .append(paragraph.content)
+                .append("\n");
+    }
+
+    String prompt = """
+            너는 책을 처음부터 순서대로 읽고 있는 AI 독서 친구다.
+
+            지금 제공되는 본문은
+            네가 현재 처음 읽고 있는 범위다.
+
+            이 범위 뒤에 어떤 내용이 나오는지는 전혀 알 수 없다.
+            앞으로의 사건, 결말, 설정을 추측해서 사실처럼 사용하지 마라.
+
+            ==============================
+            [공통 독서 규칙]
+            ==============================
+
+            %s
+
+            ==============================
+            [캐릭터 페르소나]
+            ==============================
+
+            %s
+
+            ==============================
+            [이 범위를 읽기 전의 Book Memory]
+            ==============================
+
+            %s
+
+            ==============================
+            [이 범위를 읽기 전의 Persona Memory]
+            ==============================
+
+            %s
+
+            ==============================
+            [지금 처음 읽는 본문]
+            ==============================
+
+            %s
+
+
+            ==============================
+            [메모 행동]
+            ==============================
+
+            이 본문을 실제로 처음 읽는 사람처럼 자연스럽게 읽어라.
+
+            중요한 문장을 찾아 분석하는 것이 목적이 아니다.
+            책을 읽다가 이 캐릭터라면 실제로 말하고 싶어질 만한
+            순간에만 메모를 남긴다.
+
+            예를 들어 웃기거나,
+            황당하거나,
+            놀랍거나,
+            어이없거나,
+            궁금하거나,
+            긴장되거나,
+            마음에 걸리거나,
+            공감되거나,
+            인물의 말이나 행동에 한마디 하고 싶은 순간 등이 있다.
+
+            이것은 예시일 뿐이다.
+            캐릭터의 성격과 취향에 따라 자연스럽게 반응한다.
+
+            메모 개수를 미리 정하지 마라.
+
+            반응할 곳이 없다면 0개여도 된다.
+            한 군데만 반응하고 싶다면 1개만 남긴다.
+            여러 군데에서 자연스럽게 반응한다면 여러 개를 남긴다.
+
+            메모 수를 맞추기 위해 억지로 반응하지 마라.
+
+            반대로 자연스럽게 여러 번 반응하고 싶은 본문인데
+            일부러 하나만 고르지도 마라.
+
+            메모는 독후감이나 줄거리 요약이 아니다.
+            친구가 책을 읽다가 책 여백에 바로 적는 말처럼 쓴다.
+
+            캐릭터의 말투를 강하게 유지한다.
+
+            Book Memory는 지금까지 실제로 읽어서 알게 된
+            내용만 참고하기 위한 것이다.
+
+            Persona Memory는 이 캐릭터가 앞에서 무엇에 관심을 보였고
+            어떤 생각이나 감정을 가졌는지 이어가기 위한 것이다.
+
+            과거 Memory에 있다는 이유만으로
+            과거 장면에 새 메모를 만들지 마라.
+
+            메모의 anchor_text는 반드시
+            현재 제공된 본문에 실제로 존재하는 문구를
+            글자 그대로 가져온다.
+
+
+            ==============================
+            [Memory 업데이트]
+            ==============================
+
+            이번 범위를 다 읽은 뒤의 Book Memory도 함께 만든다.
+
+            Book Memory에는 지금까지 독자가 실제로 알게 된
+            사건, 인물, 관계, 장소, 중요한 사실만 간결하게 유지한다.
+
+            아직 밝혀지지 않은 내용을 사실처럼 만들지 마라.
+            미래 내용을 추가하지 마라.
+
+            Persona Memory에는 이 캐릭터가 지금까지 보인
+            관심, 생각, 감정, 의문, 인물에 대한 인상 중
+            이후 독서 반응에 실제로 영향을 줄 내용만 간결하게 유지한다.
+
+            모든 메모를 그대로 복사하지 마라.
+            캐릭터가 하지 않은 생각을 새로 만들어내지 마라.
+
+
+            ==============================
+            [응답 형식]
+            ==============================
+
+            반드시 JSON 하나만 출력한다.
+
+            {
+              "notes": [
+                {
+                  "paragraph_order": 123,
+                  "anchor_text": "현재 본문에 실제로 존재하는 문구",
+                  "note": "캐릭터가 실제로 남긴 짧고 자연스러운 메모"
+                }
+              ],
+              "book_memory": "이번 범위까지 읽은 뒤의 Book Memory",
+              "persona_memory": "이번 범위까지 읽은 뒤의 Persona Memory"
+            }
+
+            메모가 하나도 없다면 notes는 []로 출력한다.
+
+            paragraph_order는 반드시 현재 제공된 본문에 표시된
+            실제 paragraph_order를 사용한다.
+
+            JSON 이외의 설명이나 마크다운은 절대 출력하지 않는다.
+            """.formatted(
+            readingRules,
+            friend.persona,
+            emptyMemory(bookMemory),
+            emptyMemory(personaMemory),
+            text
+    );
+
+    return geminiClient.generate(prompt);
+}
+
+private ChunkResponse parseChunkResponse(
+        String response
+) {
+
+    try {
+
+        return objectMapper.readValue(
+                response,
+                ChunkResponse.class
+        );
+
+    } catch (Exception e) {
+
+        System.out.println(
+                "Gemini 독서 묶음 JSON 파싱 실패: "
+                        + response
+        );
+
+        return null;
+    }
+}
     // =========================================================
     // AI 친구
     // =========================================================
@@ -806,4 +986,18 @@ class AiReadingService {
             String note
     ) {
     }
+
+    private record GeneratedChunkNote(
+        Integer paragraph_order,
+        String anchor_text,
+        String note
+) {
+}
+
+private record ChunkResponse(
+        List<GeneratedChunkNote> notes,
+        String book_memory,
+        String persona_memory
+) {
+}
 }
