@@ -642,65 +642,169 @@ class ReadingStatsScreen extends StatefulWidget {
 class _ReadingStatsScreenState extends State<ReadingStatsScreen> {
   String _period = 'week';
   late Future<ReadingStats> _future;
+  Future<_MonthlyStats>? _monthlyFuture; // 월별 탭을 처음 열 때 불러옴
   @override
   void initState() {
     super.initState();
     _future = widget.repository.readingStats();
   }
 
+  /// 월별(올해 1~12월) — 서버에 period=year 를 먼저 묻고, 아직 없으면 이번 달 기록만으로 채운다.
+  // ※ 서버 연결 메모(백엔드 팀이 이어서): GET /api/reading-stats?period=year
+  //   → startDate=1/1, endDate=12/31, dailyReading = 올해 날짜별 읽은 문단 수 (지금 응답 모양 그대로).
+  //   생기면 이 화면은 그대로 12달 막대를 다 채운다.
+  Future<_MonthlyStats> _loadMonthly() async {
+    try {
+      final year = await widget.repository.readingStats(period: 'year');
+      return _MonthlyStats.from(year, onlyThisMonth: false);
+    } catch (_) {
+      final month = await widget.repository.readingStats(period: 'month');
+      return _MonthlyStats.from(month, onlyThisMonth: true);
+    }
+  }
+
   void _load(String p) => setState(() {
     _period = p;
-    _future = widget.repository.readingStats(period: p);
+    if (p == 'week') {
+      _future = widget.repository.readingStats();
+    } else {
+      _monthlyFuture = _loadMonthly();
+    }
   });
+
+  Widget _summary(ReadingStats x) => Row(
+    children: [
+      _Stat(value: '${x.currentStreakDays}일', label: '연속 읽기'),
+      _Stat(value: '${x.completedBooksCount}권', label: '다 읽은 책'),
+      _Stat(value: '${x.memoCount}개', label: '전체 메모'),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('독서 통계')),
-    body: FutureBuilder<ReadingStats>(
-      future: _future,
-      builder: (context, s) {
-        if (!s.hasData) return const Center(child: CircularProgressIndicator());
-        final x = s.data!;
-        return ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'week', label: Text('이번 주')),
-                ButtonSegment(value: 'month', label: Text('이번 달')),
-              ],
-              selected: {_period},
-              onSelectionChanged: (v) => _load(v.first),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',
-              style: RidiText.sub,
-            ),
-            const SizedBox(height: 12),
-            _WeekBars(days: x.dailyReading, month: _period == 'month'),
-            const Divider(height: 32),
-            Row(
-              children: [
-                _Stat(value: '${x.currentStreakDays}일', label: '연속 읽기'),
-                _Stat(value: '${x.completedBooksCount}권', label: '다 읽은 책'),
-                _Stat(value: '${x.memoCount}개', label: '전체 메모'),
-              ],
-            ),
+    body: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'week', label: Text('이번 주')),
+            ButtonSegment(value: 'year', label: Text('월별')),
           ],
-        );
-      },
+          selected: {_period},
+          onSelectionChanged: (v) => _load(v.first),
+        ),
+        const SizedBox(height: 20),
+        if (_period == 'week')
+          FutureBuilder<ReadingStats>(
+            future: _future,
+            builder: (context, s) {
+              if (!s.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final x = s.data!;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${x.startDate.month}/${x.startDate.day} ~ ${x.endDate.month}/${x.endDate.day}',
+                    style: RidiText.sub,
+                  ),
+                  const SizedBox(height: 12),
+                  _WeekBars(days: x.dailyReading),
+                  const Divider(height: 32),
+                  _summary(x),
+                ],
+              );
+            },
+          )
+        else
+          FutureBuilder<_MonthlyStats>(
+            future: _monthlyFuture ??= _loadMonthly(),
+            builder: (context, s) {
+              if (!s.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final m = s.data!;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('${m.year}년 · 1월 ~ 12월', style: RidiText.sub),
+                      const Spacer(),
+                      Text(
+                        '올해 ${m.total}문단',
+                        style: RidiText.sub.copyWith(
+                          color: RidiColors.ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _MonthBars(perMonth: m.perMonth, current: m.currentMonth),
+                  if (m.onlyThisMonth) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '지금은 이번 달 기록만 보여요. 지난 달 기록은 서버 기능이 생기면 함께 표시돼요.',
+                      style: RidiText.sub.copyWith(fontSize: 12),
+                    ),
+                  ],
+                  const Divider(height: 32),
+                  _summary(m.stats),
+                ],
+              );
+            },
+          ),
+      ],
     ),
   );
 }
 
+/// 월별 막대에 쓰는 값 — 날짜별 기록을 달마다 더한다
+class _MonthlyStats {
+  _MonthlyStats({
+    required this.year,
+    required this.perMonth,
+    required this.currentMonth,
+    required this.onlyThisMonth,
+    required this.stats,
+  });
+  final int year;
+  final List<int> perMonth; // 12칸, [0] = 1월
+  final int currentMonth;
+  final bool onlyThisMonth;
+  final ReadingStats stats;
+  int get total => perMonth.fold(0, (a, b) => a + b);
+
+  factory _MonthlyStats.from(ReadingStats x, {required bool onlyThisMonth}) {
+    final now = DateTime.now();
+    final per = List<int>.filled(12, 0);
+    for (final d in x.dailyReading) {
+      if (d.date.year == now.year) per[d.date.month - 1] += d.paragraphsRead;
+    }
+    return _MonthlyStats(
+      year: now.year,
+      perMonth: per,
+      currentMonth: now.month,
+      onlyThisMonth: onlyThisMonth,
+      stats: x,
+    );
+  }
+}
+
 /// 독서 통계 — 이번 주: 요일별 세로 막대 (막대 위 = 읽은 문단 수, 아래 = 요일)
 class _WeekBars extends StatelessWidget {
-  const _WeekBars({required this.days, this.month = false});
+  const _WeekBars({required this.days});
 
   final List<DailyReading> days;
-
-  /// 이번 달: 날짜별 막대 31개 — 막대를 가늘게, 아래 글자는 날짜(일), 막대 위 숫자는 읽은 날만
-  final bool month;
 
   @override
   Widget build(BuildContext context) {
@@ -720,12 +824,10 @@ class _WeekBars extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(
-                    month
-                        ? (d.paragraphsRead > 0 ? '${d.paragraphsRead}' : '')
-                        : '${d.paragraphsRead}문단',
+                    '${d.paragraphsRead}문단',
                     maxLines: 1,
                     style: RidiText.sub.copyWith(
-                      fontSize: month ? 10 : 12,
+                      fontSize: 12,
                       color: d.paragraphsRead > 0
                           ? RidiColors.ink
                           : RidiColors.gray,
@@ -733,7 +835,7 @@ class _WeekBars extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    width: month ? 12 : 36,
+                    width: 36,
                     height: maxV == 0 || d.paragraphsRead == 0
                         ? 4
                         : (barMax * d.paragraphsRead / maxV).clamp(4.0, barMax),
@@ -745,9 +847,65 @@ class _WeekBars extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  Text(d.dayLabel, style: RidiText.sub),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 독서 통계 — 월별: 1월~12월 세로 막대 (막대 위 = 그 달 읽은 문단 수, 이번 달 글자는 굵게)
+class _MonthBars extends StatelessWidget {
+  const _MonthBars({required this.perMonth, required this.current});
+
+  final List<int> perMonth;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxV = perMonth.fold<int>(0, (m, v) => v > m ? v : m);
+    const barMax = 220.0;
+    return SizedBox(
+      height: barMax + 64,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < 12; i++)
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
                   Text(
-                    month ? '${d.date.day}' : d.dayLabel,
-                    style: RidiText.sub.copyWith(fontSize: month ? 10 : null),
+                    perMonth[i] > 0 ? '${perMonth[i]}' : '',
+                    maxLines: 1,
+                    style: RidiText.sub.copyWith(
+                      fontSize: 12,
+                      color: RidiColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 28,
+                    height: maxV == 0 || perMonth[i] == 0
+                        ? 4
+                        : (barMax * perMonth[i] / maxV).clamp(4.0, barMax),
+                    decoration: BoxDecoration(
+                      color: perMonth[i] > 0
+                          ? RidiColors.blue
+                          : RidiColors.grayLight,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${i + 1}월',
+                    style: RidiText.sub.copyWith(
+                      color: i + 1 == current ? RidiColors.ink : null,
+                      fontWeight: i + 1 == current ? FontWeight.w700 : null,
+                    ),
                   ),
                 ],
               ),
