@@ -132,6 +132,11 @@ record RoomRequest(@NotBlank(message = "방 이름을 입력해주세요.") @Siz
 record JoinRoomCodeRequest(@NotBlank @Size(max = 16) String inviteCode,
                            @Size(max = 40) String roomNickname,
                            @Size(max = 72) String password) {}
+/** Safe preflight data for the two-step invite flow; no membership mutation. */
+record InviteCodeValidationRequest(@NotBlank @Size(max = 16) String inviteCode) {}
+record InviteCodeValidationResponse(boolean valid, Long roomId, String roomName,
+                                    boolean passwordRequired, int capacity,
+                                    int currentMemberCount, boolean alreadyJoined) {}
 record RoomMemberResponse(Long userId, String nickname, String role, Instant joinedAt,
                           String roomProfileImageUrl) {}
 record RoomBookResponse(Long id, String title, String author, String coverImageUrl) {
@@ -331,11 +336,24 @@ class RoomService {
       log.info("reading-room join-by-code already-member roomId={} userId={}", room.id, current.id);
       return new JoinRoomResponse(response(room, current), true);
     }
-    if (room.passwordHash != null && (password == null || !passwords.matches(password, room.passwordHash)))
-      throw new ApiException(HttpStatus.FORBIDDEN, "ROOM_JOIN_DENIED", "초대 코드 또는 비밀번호를 확인해주세요.");
+    if (room.passwordHash != null && (password == null || password.isBlank()))
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_PASSWORD_REQUIRED", "방 비밀번호를 입력해 주세요.");
+    if (room.passwordHash != null && !passwords.matches(password, room.passwordHash))
+      throw new ApiException(HttpStatus.FORBIDDEN, "ROOM_PASSWORD_INCORRECT", "방 비밀번호가 올바르지 않습니다.");
     addMember(room, current, roomNickname);
     log.info("reading-room join-by-code joined roomId={} userId={}", room.id, current.id);
     return new JoinRoomResponse(response(room, current), false);
+  }
+
+  @org.springframework.transaction.annotation.Transactional(readOnly = true)
+  InviteCodeValidationResponse validateInviteCode(String username, String code) {
+    AppUser current = userFeatures.me(username);
+    String normalizedCode = normalizeCode(code);
+    if (normalizedCode == null) throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_CODE", "유효하지 않거나 만료된 초대 코드입니다.");
+    ReadingRoom room = rooms.findByJoinCodeIgnoreCase(normalizedCode)
+        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "유효하지 않거나 만료된 초대 코드입니다."));
+    return new InviteCodeValidationResponse(true, room.id, room.name, room.passwordHash != null,
+        room.maxMembers, (int) members.countByRoomId(room.id), isMember(room, current));
   }
 
   @org.springframework.transaction.annotation.Transactional
@@ -634,6 +652,7 @@ class RoomController {
   @PostMapping @ResponseStatus(HttpStatus.CREATED) RoomResponse create(@Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.create(authentication.getName(), request); }
   @PatchMapping("/{roomId}") RoomResponse update(@PathVariable Long roomId, @Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.update(authentication.getName(), roomId, request); }
   @PostMapping("/join") JoinRoomResponse join(@RequestParam String code, @RequestParam(required=false) String password, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), code, null, password); }
+  @PostMapping("/invite-codes/validate") InviteCodeValidationResponse validateInviteCode(@Valid @RequestBody InviteCodeValidationRequest request, org.springframework.security.core.Authentication authentication) { return service.validateInviteCode(authentication.getName(), request.inviteCode()); }
   @PostMapping("/join-by-code") JoinRoomResponse joinByCode(@Valid @RequestBody JoinRoomCodeRequest request, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), request.inviteCode(), request.roomNickname(), request.password()); }
   @PostMapping("/{roomId}/members") RoomResponse joinPublic(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.joinPublic(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/join-code") RoomResponse reissueCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }

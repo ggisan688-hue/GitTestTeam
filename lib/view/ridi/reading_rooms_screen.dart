@@ -1041,6 +1041,7 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
   final TextEditingController _password = TextEditingController();
   bool _joining = false;
   String? _error;
+  InviteCodeValidation? _validated;
 
   @override
   void dispose() {
@@ -1060,6 +1061,21 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
       _error = null;
     });
     try {
+      final validation =
+          _validated ?? await widget.repository.validateInviteCode(code);
+      if (!mounted) return;
+      if (validation.alreadyJoined) {
+        setState(() => _error = '이미 참여 중인 방입니다.');
+        return;
+      }
+      if (validation.currentMemberCount >= validation.capacity) {
+        setState(() => _error = '방 정원이 가득 찼습니다.');
+        return;
+      }
+      if (validation.passwordRequired && _password.text.isEmpty) {
+        setState(() => _validated = validation);
+        return;
+      }
       final result = await widget.repository.join(
         code,
         password: _password.text,
@@ -1083,6 +1099,8 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
         _joining = false;
         _error = '방 입장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       });
+    } finally {
+      if (mounted && _joining) setState(() => _joining = false);
     }
   }
 
@@ -1106,6 +1124,18 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
             onSubmitted: (_) => _joining ? null : _submit(),
             decoration: const InputDecoration(hintText: '입장 코드 입력'),
           ),
+          if (_validated?.passwordRequired == true) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              autofocus: true,
+              enabled: !_joining,
+              obscureText: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _joining ? null : _submit(),
+              decoration: const InputDecoration(hintText: '방 비밀번호 입력'),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -1151,6 +1181,9 @@ String _roomJoinErrorMessage(ApiException error) {
     case 'ROOM_CAPACITY_REACHED':
     case 'ROOM_FULL':
       return '독서방 정원이 가득 찼습니다.';
+    case 'ROOM_PASSWORD_REQUIRED':
+    case 'ROOM_PASSWORD_INCORRECT':
+      return '방 비밀번호가 올바르지 않습니다.';
   }
   if (error.statusCode == 401) return '로그인이 만료되었습니다. 다시 로그인해주세요.';
   if (error.statusCode == 403) return '이 독서방에 입장할 권한이 없습니다.';
@@ -2480,6 +2513,27 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
 
   void _reload() =>
       setState(() => _notes = widget.repository.sharedNotes(widget.roomId));
+
+  Future<void> _reveal(SharedRoomNote locked) async {
+    try {
+      final revealed = await widget.repository.revealSharedNote(
+        widget.roomId,
+        locked.id,
+      );
+      if (!mounted) return;
+      setState(
+        () => _notes = _notes.then(
+          (items) => [
+            for (final item in items)
+              if (item.id == revealed.id) revealed else item,
+          ],
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -2525,7 +2579,11 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.lock_outline),
-                    title: const Text('스포일러 방지'),
+                    title: const Text('스포일러 잠김'),
+                    trailing: TextButton(
+                      onPressed: () => _reveal(note),
+                      child: const Text('내용 보기'),
+                    ),
                     subtitle: const Text(
                       '이 메모는 현재 읽은 위치 이후에 있어요.\n더 읽으면 확인할 수 있어요.',
                     ),

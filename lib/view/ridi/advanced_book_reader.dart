@@ -95,7 +95,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     try {
       final notes = await ReadingRoomRepository(
         ApiClient(tokenProvider: () => token),
-      ).sharedNotes(roomId);
+      ).sharedNotes(roomId, bookId: widget.bookId);
       if (!mounted) return;
       setState(() {
         _sharedHighlights = notes
@@ -879,6 +879,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
     );
     await roomRepository.createSharedNote(roomId, {
+      'bookId': widget.bookId,
       'type': type,
       'paragraphOrder': selection.paragraphOrder,
       'startOffset': selection.start,
