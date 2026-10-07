@@ -49,8 +49,9 @@ class RoomViewModel extends ChangeNotifier {
       rooms = await _store.list(memberId);
       catalog = await _books.books();
       personas = await _friends.personas();
-      if (current != null)
+      if (current != null) {
         current = rooms.where((r) => r.id == current!.id).firstOrNull;
+      }
     } on ApiException catch (e) {
       errorMessage = e.message;
     } finally {
@@ -127,7 +128,7 @@ class RoomViewModel extends ChangeNotifier {
 
   Future<void> setPersona(Room room, Persona? persona) async {
     final members = room.members.where((m) => !m.ai).toList();
-    if (persona != null)
+    if (persona != null) {
       members.add(
         RoomMember(
           memberId: persona.memberId,
@@ -135,6 +136,7 @@ class RoomViewModel extends ChangeNotifier {
           ai: true,
         ),
       );
+    }
     await _update(
       room.copyWith(
         members: members,

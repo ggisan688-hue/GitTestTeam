@@ -21,11 +21,13 @@ class ReaderChapter {
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) Long id;
   @Column(name="book_id", nullable=false) Long bookId;
   @Column(name="chapter_number", nullable=false) int chapterNumber;
-  @Column(name="chapter_title", nullable=false) String chapterTitle;
-  @Column(name="start_paragraph_order", nullable=false) int startParagraphOrder;
+ @Column(name="chapter_title", nullable=false) String chapterTitle;
+ @Column(name="start_paragraph_order", nullable=false) int startParagraphOrder;
+ @Column(nullable=false) boolean verified;
+ @Column(name="source_reference") String sourceReference;
 }
 interface ReaderChapterRepository extends JpaRepository<ReaderChapter, Long> {
-  List<ReaderChapter> findByBookIdOrderByChapterNumberAsc(Long bookId);
+  List<ReaderChapter> findByBookIdAndVerifiedTrueOrderByChapterNumberAsc(Long bookId);
 }
 record ChapterResponse(Long id, int chapterNumber, String title, int startParagraphOrder) {
   static ChapterResponse from(ReaderChapter c) { return new ChapterResponse(c.id, c.chapterNumber, c.chapterTitle, c.startParagraphOrder); }
@@ -100,7 +102,7 @@ record ReaderSettingsResponse(double fontScale,int lineHeightStep,String theme,b
  ReaderFeatureService(UserRepository u, BookRepository b, BookParagraphRepository p, ReaderChapterRepository c, ReadingNoteRepository n, ReaderSettingsRepository s){users=u;books=b;paragraphs=p;chapters=c;notes=n;settings=s;}
  private AppUser user(String username){return users.findByUsername(username).orElseThrow(()->new ApiException(HttpStatus.UNAUTHORIZED,"UNAUTHORIZED","인증이 필요합니다."));}
  private void book(Long id){if(!books.existsById(id))throw new ApiException(HttpStatus.NOT_FOUND,"BOOK_NOT_FOUND","책을 찾을 수 없습니다.");}
- List<ChapterResponse> chapters(Long id){book(id); return chapters.findByBookIdOrderByChapterNumberAsc(id).stream().map(ChapterResponse::from).toList();}
+ List<ChapterResponse> chapters(Long id){book(id); return chapters.findByBookIdAndVerifiedTrueOrderByChapterNumberAsc(id).stream().map(ChapterResponse::from).toList();}
  List<ReadingNoteResponse> notes(String username,Long bookId,ReadingNoteType type){AppUser u=user(username);book(bookId); List<ReadingNote> all=type==null?notes.findByUserIdAndBookIdOrderByCreatedAtDesc(u.id,bookId):notes.findByUserIdAndBookIdAndNoteTypeOrderByCreatedAtDesc(u.id,bookId,type);return all.stream().map(n->ReadingNoteResponse.from(n,preview(bookId,n.paragraphOrder))).toList();}
  @Transactional ReadingNoteResponse create(String username,Long bookId,ReadingNoteRequest r){
   AppUser u=user(username); book(bookId);

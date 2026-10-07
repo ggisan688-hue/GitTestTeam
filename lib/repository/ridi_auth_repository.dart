@@ -57,15 +57,37 @@ class RidiAuthRepository {
     required String username,
     required String password,
     required String nickname,
+    String? email,
   }) async {
     final json = await _request(
       'POST',
       '/api/auth/signup',
-      body: {'username': username, 'password': password, 'nickname': nickname},
+      body: {
+        'username': username,
+        'password': password,
+        'nickname': nickname,
+        if (email != null) 'email': email,
+      },
     );
     if (json['success'] != true) {
       throw RidiAuthException(json['message'] as String? ?? '회원가입에 실패했습니다.');
     }
+  }
+
+  Future<void> requestPasswordReset(String email) async {
+    await _request(
+      'POST',
+      '/api/auth/password-reset/request',
+      body: {'email': email},
+    );
+  }
+
+  Future<void> confirmPasswordReset(String token, String password) async {
+    await _request(
+      'POST',
+      '/api/auth/password-reset/confirm',
+      body: {'token': token, 'password': password},
+    );
   }
 
   Future<RidiAuthSession> login({
