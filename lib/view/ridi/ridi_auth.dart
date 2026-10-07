@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../repository/ridi_auth_repository.dart';
 import 'ridi_store.dart';
 import 'ridi_theme.dart';
 import 'ridi_widgets.dart';
@@ -69,6 +70,120 @@ class _LoginDialog extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    ),
+  );
+}
+
+class PasswordResetConfirmScreen extends StatefulWidget {
+  const PasswordResetConfirmScreen({super.key, this.token});
+  final String? token;
+  @override
+  State<PasswordResetConfirmScreen> createState() =>
+      _PasswordResetConfirmScreenState();
+}
+
+class _PasswordResetConfirmScreenState
+    extends State<PasswordResetConfirmScreen> {
+  final _password = TextEditingController();
+  final _confirmation = TextEditingController();
+  String? _error;
+  bool _busy = false;
+  bool _complete = false;
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (widget.token == null || widget.token!.isEmpty) {
+      setState(() => _error = '재설정 링크가 올바르지 않습니다.');
+      return;
+    }
+    if (_password.text.length < 8) {
+      setState(() => _error = '비밀번호는 8자 이상이어야 합니다.');
+      return;
+    }
+    if (_password.text != _confirmation.text) {
+      setState(() => _error = '비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await context.read<RidiStore>().confirmPasswordReset(
+        widget.token!,
+        _password.text,
+      );
+      if (mounted) setState(() => _complete = true);
+    } on RidiAuthException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: ridiAppBar(context, '비밀번호 재설정'),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _complete
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check_circle_outline, size: 56),
+                    const SizedBox(height: 16),
+                    const Text('비밀번호가 변경되었습니다.'),
+                    const SizedBox(height: 20),
+                    RidiButton(
+                      '로그인으로 돌아가기',
+                      expand: true,
+                      onTap: () =>
+                          Navigator.of(context).popUntil((r) => r.isFirst),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    RidiInput(
+                      controller: _password,
+                      hint: '새 비밀번호 (8자 이상)',
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 12),
+                    RidiInput(
+                      controller: _confirmation,
+                      hint: '새 비밀번호 확인',
+                      obscure: true,
+                      onSubmitted: (_) => _submit(),
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          _error!,
+                          style: RidiText.sub.copyWith(color: RidiColors.red),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    RidiButton(
+                      _busy ? '변경 중…' : '비밀번호 변경',
+                      expand: true,
+                      onTap: _busy ? null : _submit,
+                    ),
+                  ],
+                ),
         ),
       ),
     ),
@@ -351,6 +466,7 @@ class _SignupScreenState extends State<SignupScreen> {
       username: username,
       password: _pw.text,
       nickname: nickname,
+      email: _email.text.trim(),
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -471,6 +587,7 @@ class PasswordResetScreen extends StatefulWidget {
 class _PasswordResetScreenState extends State<PasswordResetScreen> {
   final _email = TextEditingController();
   bool _sent = false;
+  bool _busy = false;
   String? _error;
 
   @override
@@ -480,17 +597,28 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
   }
 
   /// 이메일에 @ 가 있으면 "보냈어요" 상태로 바꾼다. 가입 여부는 알려주지 않는다(서버도 항상 같은 응답)
-  void _send() {
+  Future<void> _send() async {
     final e = _email.text.trim();
     if (!e.contains('@') || e.startsWith('@') || e.endsWith('@')) {
       setState(() => _error = '이메일 형식을 확인해주세요');
       return;
     }
+    if (_busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _error = null;
-      _sent = true;
+      _busy = true;
     });
+    try {
+      await context.read<RidiStore>().requestPasswordReset(e);
+      if (!mounted) return;
+      setState(() => _sent = true);
+    } on RidiAuthException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -587,7 +715,11 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                           ),
                         ],
                         const SizedBox(height: 24),
-                        RidiButton('재설정 메일 보내기', expand: true, onTap: _send),
+                        RidiButton(
+                          _busy ? '보내는 중…' : '재설정 메일 보내기',
+                          expand: true,
+                          onTap: _busy ? null : _send,
+                        ),
                       ],
                     ),
             ),

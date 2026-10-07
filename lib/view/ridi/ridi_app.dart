@@ -80,6 +80,18 @@ class _RidiAppState extends State<RidiApp> {
         title: RidiBrand.appName,
         debugShowCheckedModeBanner: false,
         theme: ridiTheme(),
+        onGenerateRoute: (settings) {
+          final uri = Uri.tryParse(settings.name ?? '');
+          if (uri?.path == '/reset-password') {
+            return MaterialPageRoute(
+              settings: settings,
+              builder: (_) => PasswordResetConfirmScreen(
+                token: uri?.queryParameters['token'],
+              ),
+            );
+          }
+          return null;
+        },
         home: const RidiGate(), // 스플래시 없이 바로 시작
       ),
     );

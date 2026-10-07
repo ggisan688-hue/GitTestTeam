@@ -50,7 +50,11 @@ class ReadingRoomRepository {
     return response.data!;
   }
 
-  Future<ReadingRoomJoinResult> join(String code) async {
+  Future<ReadingRoomJoinResult> join(
+    String code, {
+    String? password,
+    String? roomNickname,
+  }) async {
     final inviteCode = normalizeInviteCode(code);
 
     print('[ReadingRoom Join] 입력 코드: $code');
@@ -59,7 +63,12 @@ class ReadingRoomRepository {
     try {
       final response = await _api.post<ReadingRoomJoinResult>(
         '/api/reading-rooms/join-by-code',
-        body: {'inviteCode': inviteCode},
+        body: {
+          'inviteCode': inviteCode,
+          if (password?.isNotEmpty == true) 'password': password,
+          if (roomNickname?.trim().isNotEmpty == true)
+            'roomNickname': roomNickname!.trim(),
+        },
         parse: (json) {
           print('[ReadingRoom Join] 서버 원본 응답: $json');
 
@@ -240,4 +249,35 @@ class ReadingRoomRepository {
 
   Future<void> deleteMyRoomProfileImage(int roomId) =>
       _api.delete('/api/reading-rooms/$roomId/members/me/profile-image');
+
+  Future<ReadingRoomMember> updateMyRoomNickname(
+    int roomId,
+    String roomNickname,
+  ) async => (await _api.patch<ReadingRoomMember>(
+    '/api/reading-rooms/$roomId/members/me',
+    body: {'roomNickname': roomNickname.trim()},
+    parse: (json) => ReadingRoomMember.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
+  Future<ReadingRoom> addBook(int roomId, int bookId) async =>
+      (await _api.post<ReadingRoom>(
+        '/api/reading-rooms/$roomId/books?bookId=$bookId',
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
+  Future<ReadingRoom> removeBook(int roomId, int bookId) async =>
+      (await _api.delete<ReadingRoom>(
+        '/api/reading-rooms/$roomId/books/$bookId',
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
+  Future<ReadingRoom> setCurrentBook(int roomId, int bookId) async =>
+      (await _api.put<ReadingRoom>(
+        '/api/reading-rooms/$roomId/current-book/$bookId',
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
+  Future<ReadingRoom> setPassword(int roomId, String? password) async =>
+      (await _api.put<ReadingRoom>(
+        '/api/reading-rooms/$roomId/password',
+        body: {'password': password},
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
 }

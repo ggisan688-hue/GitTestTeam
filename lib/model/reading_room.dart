@@ -76,6 +76,9 @@ class ReadingRoom {
     this.book,
     this.myRole,
     this.participants = const [],
+    this.passwordRequired = false,
+    this.currentBookId,
+    this.books = const [],
   });
 
   final int id;
@@ -99,6 +102,9 @@ class ReadingRoom {
   final ReadingRoomBook? book;
   final String? myRole;
   final List<ReadingRoomMember> participants;
+  final bool passwordRequired;
+  final int? currentBookId;
+  final List<ReadingRoomBookItem> books;
 
   factory ReadingRoom.fromJson(Map<String, dynamic> json) => ReadingRoom(
     id: _jsonInt(json['id']),
@@ -132,7 +138,37 @@ class ReadingRoom {
                   ReadingRoomMember.fromJson(Map<String, dynamic>.from(item)),
             )
             .toList(),
+    passwordRequired: _jsonBool(json['passwordRequired']),
+    currentBookId: json['currentBookId'] == null
+        ? null
+        : _jsonInt(json['currentBookId']),
+    books: (json['books'] is List ? json['books'] as List : const [])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              ReadingRoomBookItem.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList(),
   );
+}
+
+class ReadingRoomBookItem {
+  const ReadingRoomBookItem({
+    required this.book,
+    required this.order,
+    required this.current,
+  });
+  final ReadingRoomBook book;
+  final int order;
+  final bool current;
+  factory ReadingRoomBookItem.fromJson(Map<String, dynamic> json) =>
+      ReadingRoomBookItem(
+        book: ReadingRoomBook.fromJson(
+          Map<String, dynamic>.from(json['book'] as Map? ?? const {}),
+        ),
+        order: _jsonInt(json['order']),
+        current: _jsonBool(json['current']),
+      );
 }
 
 /// Invite-code joins have idempotency metadata that does not belong to a room

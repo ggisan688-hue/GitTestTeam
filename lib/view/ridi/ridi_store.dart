@@ -829,18 +829,26 @@ class RidiStore extends ChangeNotifier {
     required String username,
     required String password,
     required String nickname,
+    String? email,
   }) async {
     try {
       await _authRepository.signup(
         username: username.trim(),
         password: password,
         nickname: nickname.trim(),
+        email: email?.trim(),
       );
       return null;
     } on RidiAuthException catch (e) {
       return e.message;
     }
   }
+
+  Future<void> requestPasswordReset(String email) =>
+      _authRepository.requestPasswordReset(email);
+
+  Future<void> confirmPasswordReset(String token, String password) =>
+      _authRepository.confirmPasswordReset(token, password);
 
   Future<void> restoreSession() async {
     try {

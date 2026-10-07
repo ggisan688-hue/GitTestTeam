@@ -27,6 +27,13 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+  password-reset:
+    token-ttl-minutes: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:20}
+    max-requests-per-email: ${PASSWORD_RESET_MAX_REQUESTS_PER_EMAIL:3}
+    max-requests-per-ip: ${PASSWORD_RESET_MAX_REQUESTS_PER_IP:10}
+    rate-limit-window-minutes: ${PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES:60}
+    url: ${PASSWORD_RESET_URL:}
+    mail-enabled: ${PASSWORD_RESET_MAIL_ENABLED:false}
 management:
   endpoint:
     health:

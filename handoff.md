@@ -1,86 +1,92 @@
-# 작업 인수인계
+# ChangeBook 작업 인수인계
 
-작성일: 2026-10-02
+작성일: 2026-10-07
 
-## 현재 반영된 작업
+## 반영 완료
 
-### 교환독서
+### 인증·비밀번호 재설정
 
-- 방 만들기 대표 도서 목록은 서버 `GET /api/books`를 사용한다. 더미 도서 fallback은 사용하지 않는다.
-- 방 만들기는 별도 `CreateReadingRoomScreen` route가 입력 controller를 소유한다. 성공 시 생성 방 DTO만 `pop`으로 반환하고, 부모가 목록 갱신 뒤 상세로 이동한다.
-- `GET /api/reading-rooms/my`는 현재 JWT 사용자 기준으로 member 테이블을 조회한다. `OWNER`, 기존 `HOST`, `MEMBER`를 참여자로 처리한다.
-- 초대코드 가입은 멱등 처리한다. 이미 가입한 사용자는 member row를 추가하지 않고 `200 OK`와 `alreadyJoined: true`가 포함된 방 DTO를 받는다.
-- 방 생성 시 생성자는 같은 트랜잭션에서 `OWNER` member row로 저장된다.
-- 방장에게만 상세의 초대코드와 재발급/방 삭제 UI가 보인다. 내 독서방 카드에서도 방장은 삭제를 실행할 수 있다.
-- 초대코드는 서버에서 혼동하기 쉬운 문자를 제외한 `XXXX-XXXX` 형식으로 생성한다.
-- `V18__backfill_reading_room_invite_codes.sql`은 기존 null/blank 초대코드를 보완한다. 서버 재시작 시 Flyway가 적용되어야 한다.
+- 새 migration: `V21__add_password_reset_security.sql`
+- 이메일(선택값), `auth_version`, reset token/request-history 테이블을 추가했다. 기존 사용자·인증 데이터는 보존한다.
+- `POST /api/auth/password-reset/request`, `POST /api/auth/password-reset/confirm`을 구현했다.
+- 32바이트 난수 토큰의 SHA-256 해시만 저장하며, 만료·단일 사용·이전 토큰 폐기·이메일/IP 해시 rate limit을 적용한다.
+- BCrypt로 비밀번호를 갱신하고 `auth_version`을 증가시켜 기존 JWT를 무효화한다.
+- SMTP/reset URL/from은 환경 변수만 사용하며 토큰·비밀번호·SMTP 비밀을 로그에 남기지 않는다.
+- Flutter 회원가입 이메일 전달, reset request 화면, `/reset-password?token=...` 새 비밀번호 화면을 추가했다.
 
-### 리더 데이터 분리
+### 도서 검색·목차
 
-- `AdvancedBookReaderScreen`에 `ReaderContext`를 추가했다.
-  - 일반 진입은 `ReaderContext.personal()`이며 개인 노트 API만 사용한다.
-  - 독서방 진입은 `ReaderContext.readingRoom(roomId)`이며 해당 방의 공유 노트 API에 직접 저장한다.
-  - 방 리더에서 개인 저장 후 공유 여부를 묻는 신규 흐름은 사용하지 않는다.
-- 독서방 상세의 리더 진입은 `ReaderContext.readingRoom(room.id)`를 전달한다.
-- 서버의 공유 노트 API는 멤버 여부 및 spoiler lock을 서버에서 검증한다.
+- 실제 로그의 PostgreSQL `lower(bytea)` 오류를 수정했다. 검색은 title/author/category PostgreSQL `ILIKE` 부분 일치로 동작한다.
+- 기존 `GET /api/books/search`는 유지하고, `GET /api/books/search/page`가 `items/page/size/total/hasNext`를 반환한다.
+- 검색 로그에는 검색어 원문이 아닌 hash·길이·결과 수·지연시간만 기록한다.
+- 새 migration: `V22__mark_legacy_chapters_unverified.sql`.
+- V5의 근거 없는 단일 챕터는 삭제하지 않고 `verified=false`로 보존한다. 챕터 API는 검증된 챕터만 반환한다.
 
-### 게스트 시작
+### 독서방
 
-- `RidiGate`는 인증 준비 후 로그인 화면을 강제하지 않고 `RidiShell`로 진입한다.
-- 홈에서 비로그인 상태에는 `로그인하세요` 진입 버튼과 게스트 안내를 표시한다.
-- 비로그인 홈에서는 최근 읽은 책 및 통계 섹션을 숨긴다.
+- 새 migration: `V23__add_room_books_password_and_shared_progress.sql`.
+- 기존 대표 도서를 `change_book_reading_room_books`에 안전하게 backfill하고, `current_book_id`, BCrypt `password_hash`, 방별 진행률 테이블을 추가했다.
+- 방 생성은 서버와 Flutter 모두 정확히 한 권만 받는다.
+- owner 전용: 도서 추가/삭제/순서/현재 도서 변경, 비밀번호 설정·해제.
+- 마지막 도서 삭제·중복 도서·방 외 도서·소유권 위반은 서버에서 거부한다.
+- 초대 코드 가입은 비밀번호를 member row 생성 전에 검증한다. `(room_id,user_id)` PK와 잠금으로 재시도·재가입을 안전하게 처리한다.
+- 방별 nickname/profile image와 전역 프로필은 분리된다. 방별 진행률은 `(room_id,user_id,book_id)`로 개인 진행률과 분리된다.
 
-### 방 전용 프로필 기반
+### 공유 메모·실시간·스포일러
 
-- 신규 migration: `backend/src/main/resources/db/migration/V19__add_reading_room_member_profile_image.sql`
-  - `change_book_reading_room_members.room_profile_image_url` nullable 컬럼 추가.
-- `RoomMember` 및 참여자 DTO에 `roomProfileImageUrl`을 추가했다.
-- 공유 노트 응답은 방 멤버 이미지가 있으면 전역 프로필 이미지보다 우선 사용한다.
+- 기존 metadata-only WebSocket(`/ws/reading-room-sync`)과 REST sync fallback을 유지했다. event에는 메모/댓글 원문이 없다.
+- commit 뒤에만 event를 publish하며 Flutter `RoomSyncClient`는 event ID dedupe·재연결·REST fallback을 제공한다.
+- 새 migration: `V24__add_shared_note_versions.sql`.
+- shared note/comment에 version 및 room/book/position index를 추가했다.
+- spoiler 판정은 viewer 자신의 `(room,user,book)` progress만 쓴다. 개인 progress·다른 회원 progress는 사용하지 않는다.
+- 잠긴 note에서는 selected text/content/highlight color/comment count를 반환하지 않고, 댓글 API도 서버에서 차단한다.
+- moderation 정책이 없으므로 방장도 타인의 공유 원본을 삭제할 수 없고 작성자만 삭제할 수 있다.
 
-### 후속 정리 (2026-10-06)
+## 주요 파일
 
-- 방 생성 화면의 갤러리 이미지 선택/미리보기/취소·재시도와 서버 도서 선택 UI를 완료했다.
-- 내 서재는 `내 책장 / 교환독서` 상단 탭으로 전환한다.
-- 게스트가 내 서재(교환독서 포함) 또는 마이 탭을 열면 로그인 유도 대화상자를 표시한다. 홈의 도서 탐색은 게스트로 유지한다. 로그아웃 또는 임의 API의 401은 동일한 로그아웃 처리로 책/즐겨찾기 캐시를 비운다.
-- 리더는 `ReaderContext`만 사용한다. 도달 불가능했던 개인 노트 후 독서방 선택 코드와 `_ShareRoomPicker`를 제거했다.
-- 초대코드 가입 API(`POST /api/reading-rooms/join`, `join-by-code`)는 `{ room, alreadyJoined }` envelope를 반환한다. `alreadyJoined`는 더 이상 일반 방 DTO의 필드가 아니다.
-- 생성·입장 성공 응답의 방 DTO는 독서방 목록에 즉시 immutable 반영하고, 삭제 성공 시 즉시 제거한다. 재조회는 revision으로 보호해 오래된 목록 응답이 최신 변경을 덮지 않는다.
-- 초대 코드는 클라이언트/서버 모두 공백·하이픈을 제거해 대문자 `XXXX-XXXX`로 정규화한다. `V20__normalize_reading_room_invite_codes.sql`은 DB의 대소문자 무시 unique index와 형식 제약을 추가한다. 코드 입장과 공개 방 입장은 방 행 비관적 잠금 안에서 정원/중복을 확인한다.
-
-## 아직 완료해야 할 작업
-
-1. 실제 PostgreSQL/Flyway와 Android Emulator에서 로그인·로그아웃/401 후 사용자별 Room·책장 캐시 초기화를 검증한다.
-2. 계정 A/B로 초대코드 가입·재가입을 수행해 `{ room, alreadyJoined }` 응답, member row 중복 방지, 목록 즉시 반영을 검증한다.
-3. 방 삭제 cascade/개인 데이터 보존 및 방 전용 프로필 이미지 업로드·fallback을 실기기에서 검증한다.
-
-## 수정 파일
-
-- `lib/view/ridi/advanced_book_reader.dart`
-- `lib/view/ridi/reading_rooms_screen.dart`
-- `lib/view/ridi/ridi_app.dart`
-- `lib/view/ridi/ridi_home.dart`
-- `lib/view/ridi/shelves_screen.dart`
+- `backend/src/main/java/com/aicamp/changebook/AuthApplication.java`
+- `backend/src/main/java/com/aicamp/changebook/PasswordReset.java`
+- `backend/src/main/java/com/aicamp/changebook/BookCatalog.java`
+- `backend/src/main/java/com/aicamp/changebook/ReaderFeatures.java`
 - `backend/src/main/java/com/aicamp/changebook/ReadingRooms.java`
 - `backend/src/main/java/com/aicamp/changebook/ReadingRoomNotes.java`
-- `backend/src/main/resources/db/migration/V18__backfill_reading_room_invite_codes.sql`
-- `backend/src/main/resources/db/migration/V19__add_reading_room_member_profile_image.sql`
+- `backend/src/main/resources/db/migration/V21__add_password_reset_security.sql`
+- `backend/src/main/resources/db/migration/V22__mark_legacy_chapters_unverified.sql`
+- `backend/src/main/resources/db/migration/V23__add_room_books_password_and_shared_progress.sql`
+- `backend/src/main/resources/db/migration/V24__add_shared_note_versions.sql`
+- `backend/src/main/resources/db/migration/V25__complete_password_reset_schema.sql`
+- `backend/src/main/resources/db/migration/V26__normalize_password_reset_hash_column_types.sql`
+- `lib/repository/book_repository.dart`
+- `lib/repository/ridi_auth_repository.dart`
+- `lib/repository/reading_room_repository.dart`
+- `lib/model/reading_room.dart`
+- `lib/view/ridi/ridi_auth.dart`
+- `lib/view/ridi/ridi_app.dart`
+- `lib/view/ridi/reading_rooms_screen.dart`
 
-## 검증 결과 및 제한
+## 환경 변수
 
-- `backend\\gradlew.bat test`: 성공. 테스트 소스는 없어 `test NO-SOURCE`였다.
-- `flutter test`: 성공, 5개 테스트 통과(초대 가입 envelope 파싱 테스트 포함).
-- 대상 Flutter 파일 `flutter analyze`: error 없음. 기존 style/deprecation info와 `shelves_screen.dart`의 기존 unused warning은 남아 있고, 리더의 과거 공유 선택 dead code는 제거했다.
-- PostgreSQL 접속 정보, JWT 환경값, Android Emulator/adb가 이 환경에 없어 아래 실제 검증은 아직 하지 못했다.
-  - Flyway V18/V19 적용 및 새 초대 가입 envelope 실서버 응답
-  - 계정 A/B 초대코드 가입/재가입 및 member row 중복 여부
-  - `/api/reading-rooms/my` 실제 응답
-  - 방 삭제 cascade 및 원본 개인 데이터 보존
-  - 게스트/로그인/로그아웃/401 화면 흐름
-  - 방 전용 프로필 이미지 업로드 및 fallback 표시
+`PASSWORD_RESET_TOKEN_TTL_MINUTES`, `PASSWORD_RESET_MAX_REQUESTS_PER_EMAIL`, `PASSWORD_RESET_MAX_REQUESTS_PER_IP`, `PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES`, `PASSWORD_RESET_URL`, `PASSWORD_RESET_MAIL_ENABLED`, `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, `MAIL_FROM` 및 기존 `API_BASE_URL`, `JWT_SECRET`, DB/profile-upload 설정.
 
-## 다음 실행 순서
+## 검증
 
-1. 백엔드 재시작 후 Flyway V18, V19 적용 로그를 확인한다.
-2. PostgreSQL에서 생성자 OWNER row와 참여자 MEMBER row를 확인한다.
-3. Android Emulator에서 초대코드 가입, 재가입, 목록 즉시 반영, 방 삭제를 확인한다.
-4. 계정 A/B 초대코드 재가입과 로그인 상태 전환을 실행하고 API/DB 결과를 기록한다.
+- `backend\gradlew.bat test --no-daemon`: 성공.
+- 개발 DB에서 Flyway V21 checksum repair 후 V23~V26 migration 적용, Hibernate schema validation 및 `/actuator/health` 응답을 확인했다.
+- 변경 Dart 파일은 formatter로 구문 검증했다.
+- `flutter analyze`는 이 PC의 Dart analysis server child process가 Windows 권한 거부(`CreateFile failed 5`)로 실패했다. SDK 경로는 `C:\flutter\bin\flutter.bat`이다.
+
+## 외부 환경이 필요한 검증
+
+1. PostgreSQL 백업 후 Flyway V21~V24 upgrade와 기존 row count/샘플 ID 보존 확인.
+2. 계정 A/B의 방 비밀번호 실패·성공·재가입, 다중 도서, 방별 nickname/image/progress 확인.
+3. A/B의 상이한 room progress에서 shared note/comment raw API redaction 확인.
+4. WebSocket disconnect/reconnect, REST snapshot 보충, event dedupe 확인.
+5. SMTP, Android emulator/배포 `API_BASE_URL`, profile upload provider 확인.
+6. Windows 권한을 해결한 뒤 `flutter analyze`, `flutter test`, APK build 실행.
+
+## 주의
+
+- 기존 Flyway migration은 수정하지 않았다.
+- `backend/bin/main`은 Gradle resource 출력물이며 소스 변경 검토 대상은 `backend/src/main/resources`다.
+- 챕터 원본 근거 없이 `verified=true`를 만들지 않는다.
+- 기존 사용자의 이메일을 임의 backfill하지 않는다.

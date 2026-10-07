@@ -472,7 +472,9 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
     if (i >= 0) {
       _picked.removeAt(i);
     } else {
-      _picked.add(b);
+      _picked
+        ..clear()
+        ..add(b);
     }
     _error = null;
   });
@@ -514,7 +516,7 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
     if (_submitting) return;
     final err = _name.text.trim().isEmpty
         ? '방 이름을 입력해주세요.'
-        : _picked.isEmpty
+        : _picked.length != 1
         ? '함께 읽을 책을 골라주세요.'
         : _passwordOn && !RegExp(r'^\d{4}$').hasMatch(_password.text)
         ? '비밀번호는 숫자 4자리로 적어주세요.'
@@ -532,7 +534,6 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
         'name': _name.text.trim(),
         'description': _description.text.trim(),
         'bookId': _picked.first.id,
-        'bookIds': [for (final b in _picked) b.id],
         'maxMembers': _maxMembers,
         'isPublic': true,
         'spoilerLockEnabled': false,
@@ -1037,12 +1038,14 @@ class _JoinRoomByCodeDialog extends StatefulWidget {
 
 class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
   final TextEditingController _code = TextEditingController();
+  final TextEditingController _password = TextEditingController();
   bool _joining = false;
   String? _error;
 
   @override
   void dispose() {
     _code.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -1057,7 +1060,10 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
       _error = null;
     });
     try {
-      final result = await widget.repository.join(code);
+      final result = await widget.repository.join(
+        code,
+        password: _password.text,
+      );
       if (!mounted) return;
       if (result.alreadyJoined) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1703,7 +1709,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                             size: 18,
                             color: Color(0xFF666666),
                           ),
-                          onPressed: () => _editRoomNickname(mine.nickname),
+                          onPressed: () =>
+                              _editRoomNickname(room, mine.nickname),
                         ),
                       ],
                     ),
@@ -1721,7 +1728,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     );
   }
 
-  Future<void> _editRoomNickname(String current) async {
+  Future<void> _editRoomNickname(ReadingRoom room, String current) async {
     final name = await showDialog<String>(
       context: context,
       builder: (_) => _RoomNicknameDialog(initial: current),

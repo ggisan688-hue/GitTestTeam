@@ -19,7 +19,10 @@ class RoomServiceJoinTest {
     UserRepository users = mock(UserRepository.class);
     BookRepository books = mock(BookRepository.class);
     UserFeatureService userFeatures = mock(UserFeatureService.class);
-    RoomService service = new RoomService(rooms, members, users, books, userFeatures);
+    RoomBookRepo roomBooks = mock(RoomBookRepo.class);
+    RoomMemberProgressRepo roomProgress = mock(RoomMemberProgressRepo.class);
+    org.springframework.security.crypto.password.PasswordEncoder passwords = mock(org.springframework.security.crypto.password.PasswordEncoder.class);
+    RoomService service = new RoomService(rooms, members, users, books, userFeatures, roomBooks, roomProgress, passwords);
 
     AppUser owner = user(10L, "owner", "방장");
     AppUser joiningUser = user(20L, "joiner", "참가자");
@@ -50,12 +53,13 @@ class RoomServiceJoinTest {
       return invocation.getArgument(0);
     });
     when(users.findById(10L)).thenReturn(Optional.of(owner));
+    when(roomBooks.findByRoomIdOrderByDisplayOrderAsc(100L)).thenReturn(List.of());
 
     // The repository lookup key is valid even if an old entity projection did
     // not hydrate AppUser.id. The membership id must remain the response key.
     owner.id = null;
 
-    JoinRoomResponse result = service.join("joiner", "njv6-3gcd", null);
+    JoinRoomResponse result = service.join("joiner", "njv6-3gcd", null, null);
 
     assertFalse(result.alreadyJoined());
     assertEquals(100L, result.room().id());

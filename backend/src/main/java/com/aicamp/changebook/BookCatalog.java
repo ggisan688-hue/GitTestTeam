@@ -14,6 +14,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.http.HttpStatus;
@@ -48,8 +52,13 @@ class Book {
 
 interface BookRepository extends JpaRepository<Book, Long> {
   List<Book> findAllByOrderByCreatedAtDescIdDesc();
-  @Query("select b from Book b where (:category is null or lower(coalesce(b.category,'')) = lower(:category)) and (lower(b.title) like lower(concat('%',:query,'%')) or lower(b.author) like lower(concat('%',:query,'%'))) order by b.createdAt desc, b.id desc")
-  List<Book> search(String query, String category);
+  // PostgreSQL ILIKE avoids Hibernate binding a nullable category as bytea
+  // (the exact lower(bytea) failure recorded in the production log).
+  @Query(value = "select * from change_book_books b where (cast(:category as text) is null or b.category ilike cast(:category as text)) and (b.title ilike concat('%', cast(:query as text), '%') or b.author ilike concat('%', cast(:query as text), '%') or coalesce(b.category, '') ilike concat('%', cast(:query as text), '%')) order by b.created_at desc, b.id desc", nativeQuery = true)
+  List<Book> searchLegacy(String query, String category);
+  @Query(value = "select * from change_book_books b where (cast(:category as text) is null or b.category ilike cast(:category as text)) and (b.title ilike concat('%', cast(:query as text), '%') or b.author ilike concat('%', cast(:query as text), '%') or coalesce(b.category, '') ilike concat('%', cast(:query as text), '%'))",
+      countQuery = "select count(*) from change_book_books b where (cast(:category as text) is null or b.category ilike cast(:category as text)) and (b.title ilike concat('%', cast(:query as text), '%') or b.author ilike concat('%', cast(:query as text), '%') or coalesce(b.category, '') ilike concat('%', cast(:query as text), '%'))", nativeQuery = true)
+  Page<Book> searchPage(String query, String category, Pageable pageable);
 }
 
 record CreateBookRequest(
@@ -66,6 +75,7 @@ record BookResponse(Long id, String title, String author, String description,
         book.coverImageUrl, book.category, book.createdAt, book.updatedAt);
   }
 }
+record BookSearchResponse(List<BookResponse> items, int page, int size, long total, boolean hasNext) {}
 
 @Service
 class BookService {
@@ -84,8 +94,17 @@ class BookService {
     String q = query == null ? "" : query.trim();
     if (q.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "SEARCH_QUERY_REQUIRED", "검색어를 입력해 주세요.");
     String c = category == null || category.trim().isEmpty() ? null : category.trim();
-    return books.search(q, c).stream().limit(50).map(BookResponse::from).toList();
+    return books.searchLegacy(q, c).stream().limit(50).map(BookResponse::from).toList();
   }
+  BookSearchResponse searchPage(String query, String category, int page, int size, String sort) {
+    String q = normalizedQuery(query); String c = normalizedCategory(category);
+    if (page < 0 || size < 1 || size > 50) throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PAGE", "페이지 정보를 확인해주세요.");
+    Sort order = "title".equals(sort) ? Sort.by("title").ascending().and(Sort.by("id").ascending()) : Sort.by("createdAt").descending().and(Sort.by("id").descending());
+    Page<Book> result = books.searchPage(q, c, PageRequest.of(page, size, order));
+    return new BookSearchResponse(result.getContent().stream().map(BookResponse::from).toList(), page, size, result.getTotalElements(), result.hasNext());
+  }
+  private String normalizedQuery(String query) { String q = query == null ? "" : query.trim(); if (q.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "SEARCH_QUERY_REQUIRED", "검색어를 입력해주세요."); return q; }
+  private String normalizedCategory(String category) { return category == null || category.trim().isEmpty() ? null : category.trim(); }
 
   BookResponse create(CreateBookRequest request) {
     Book book = new Book();
@@ -127,6 +146,22 @@ class BookController {
   @GetMapping("/search")
   List<BookResponse> search(@RequestParam String query, @RequestParam(required = false) String category) {
     return service.search(query, category);
+  }
+
+  @GetMapping("/search/page")
+  BookSearchResponse searchPage(@RequestParam String query, @RequestParam(required = false) String category,
+      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
+      @RequestParam(defaultValue = "createdAt") String sort) {
+    long started = System.nanoTime();
+    try {
+      BookSearchResponse response = service.searchPage(query, category, page, size, sort);
+      log.info("book-search queryHash={} queryLength={} resultCount={} total={} latencyMs={}",
+          PasswordResetService.sha256(query.trim()).substring(0, 12), query.trim().length(), response.items().size(), response.total(), (System.nanoTime() - started) / 1_000_000);
+      return response;
+    } catch (RuntimeException e) {
+      log.warn("book-search failed queryLength={} error={}", query == null ? 0 : query.trim().length(), e.getClass().getSimpleName());
+      throw e;
+    }
   }
 
   @PostMapping

@@ -59,6 +59,15 @@ import java.util.List;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.net.URI;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.beans.factory.ObjectProvider;
 
 @SpringBootApplication
 public class AuthApplication {
@@ -119,6 +128,8 @@ class AppUser {
   @Column(nullable = false, length = 50) String nickname;
   @Column(name = "created_at", nullable = false) Instant createdAt;
   @Column(name = "updated_at", nullable = false) Instant updatedAt;
+  @Column(length = 254) String email;
+  @Column(name = "auth_version", nullable = false) int authVersion;
 
   @PrePersist void onCreate() { createdAt = updatedAt = Instant.now(); }
   @PreUpdate void onUpdate() { updatedAt = Instant.now(); }
@@ -126,6 +137,7 @@ class AppUser {
 
 interface UserRepository extends JpaRepository<AppUser, Long> {
   Optional<AppUser> findByUsername(String username);
+  Optional<AppUser> findByEmailIgnoreCase(String email);
   boolean existsByUsername(String username);
   boolean existsByNicknameIgnoreCase(String nickname);
 }
@@ -133,7 +145,8 @@ interface UserRepository extends JpaRepository<AppUser, Long> {
 record SignupRequest(
     @NotBlank @Pattern(regexp = "^[A-Za-z0-9_]{4,20}$") String username,
     @NotBlank @Size(min = 8, max = 72) String password,
-    @NotBlank @Size(max = 50) String nickname) {}
+    @NotBlank @Size(max = 50) String nickname,
+    @jakarta.validation.constraints.Email @Size(max = 254) String email) {}
 record LoginRequest(@NotBlank String username, @NotBlank String password) {}
 record UserResponse(Long id, String username, String nickname) { static UserResponse from(AppUser u) { return new UserResponse(u.id, u.username, u.nickname); } }
 record LoginResponse(String accessToken, String tokenType, UserResponse user) {}
@@ -180,6 +193,7 @@ class AuthService {
     user.username = request.username();
     user.passwordHash = encoder.encode(request.password());
     user.nickname = request.nickname().trim();
+    user.email = request.email() == null || request.email().isBlank() ? null : request.email().trim().toLowerCase(java.util.Locale.ROOT);
     users.save(user);
   }
 
@@ -223,21 +237,26 @@ class JwtService {
     this.expirationMs = expirationMs;
   }
   String create(AppUser user) {
-    return Jwts.builder().subject(user.username).issuedAt(new Date()).expiration(new Date(System.currentTimeMillis() + expirationMs)).signWith(key).compact();
+    return Jwts.builder().subject(user.username).claim("av", user.authVersion).issuedAt(new Date()).expiration(new Date(System.currentTimeMillis() + expirationMs)).signWith(key).compact();
   }
-  String subject(String token) { return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject(); }
+  Claims claims(String token) { return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload(); }
+  String subject(String token) { return claims(token).getSubject(); }
 }
 
 @Component
 class JwtFilter extends OncePerRequestFilter {
   private final JwtService jwt;
-  JwtFilter(JwtService jwt) { this.jwt = jwt; }
+  private final UserRepository users;
+  JwtFilter(JwtService jwt, UserRepository users) { this.jwt = jwt; this.users = users; }
   @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
     String header = request.getHeader("Authorization");
     if (header != null && header.startsWith("Bearer ")) {
       try {
-        String subject = jwt.subject(header.substring(7));
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(subject, null, java.util.List.of()));
+        Claims claims = jwt.claims(header.substring(7));
+        String subject = claims.getSubject();
+        Number version = claims.get("av", Number.class);
+        if (version == null || users.findByUsername(subject).map(u -> u.authVersion == version.intValue()).orElse(false))
+          SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(subject, null, java.util.List.of()));
       } catch (RuntimeException ignored) { SecurityContextHolder.clearContext(); }
     }
     chain.doFilter(request, response);

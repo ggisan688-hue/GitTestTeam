@@ -42,6 +42,25 @@ class BookRepository {
     return response.data ?? const [];
   }
 
+  Future<BookSearchPage> searchPage(
+    String query, {
+    String? category,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final response = await _api.get<BookSearchPage>(
+      '/api/books/search/page',
+      query: {
+        'query': query,
+        'page': '$page',
+        'size': '$size',
+        if (category?.trim().isNotEmpty == true) 'category': category!.trim(),
+      },
+      parse: (json) => BookSearchPage.fromJson(json as Map<String, dynamic>),
+    );
+    return response.data!;
+  }
+
   Future<List<RecentBook>> recentBooks() async {
     final res = await _api.get<List<RecentBook>>(
       '/api/books/recent',
@@ -305,4 +324,25 @@ class BookRepository {
     body: {'chapter': chapter, 'lineNo': lineNo},
     parse: (j) => Progress.fromJson(j as Map<String, dynamic>),
   )).data!;
+}
+
+class BookSearchPage {
+  const BookSearchPage({
+    required this.items,
+    required this.page,
+    required this.total,
+    required this.hasNext,
+  });
+  final List<Book> items;
+  final int page;
+  final int total;
+  final bool hasNext;
+  factory BookSearchPage.fromJson(Map<String, dynamic> json) => BookSearchPage(
+    items: (json['items'] as List<dynamic>? ?? const [])
+        .map((e) => Book.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    page: (json['page'] as num?)?.toInt() ?? 0,
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    hasNext: json['hasNext'] == true,
+  );
 }
