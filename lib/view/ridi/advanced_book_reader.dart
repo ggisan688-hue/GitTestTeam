@@ -694,7 +694,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
     try {
       // 보기 설정을 열 때 서버에서 현재 사용 가능한 AI 친구 목록을 가져온다.
-      final friends = await repository.getDefaultFriends();
+      final loaded = await Future.wait([
+        repository.getDefaultFriends(),
+        repository.getMyFriends(),
+      ]);
+      final friends = <AiReadingFriend>[...loaded[0], ...loaded[1]];
 
       if (!mounted) return;
 

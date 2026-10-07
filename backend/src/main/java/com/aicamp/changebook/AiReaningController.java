@@ -3,6 +3,10 @@ package com.aicamp.changebook;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api")
@@ -11,15 +15,17 @@ class AiReadingController {
     private final AiReadingService aiReadingService;
     private final AiReadingNoteRepository noteRepository;
     private final AiReadingFriendRepository friendRepository;
+    private final UserRepository userRepository;
 
     AiReadingController(
             AiReadingService aiReadingService,
             AiReadingNoteRepository noteRepository,
-            AiReadingFriendRepository friendRepository
+            AiReadingFriendRepository friendRepository, UserRepository userRepository
     ) {
         this.aiReadingService = aiReadingService;
         this.noteRepository = noteRepository;
         this.friendRepository = friendRepository;
+        this.userRepository = userRepository;
     }
 
 
@@ -37,6 +43,46 @@ class AiReadingController {
                 .toList();
     }
 
+    @GetMapping("/ai-reading-friends")
+    List<AiReadingFriendResponse> myFriends(org.springframework.security.core.Authentication authentication) {
+        var user = currentUser(authentication);
+        return friendRepository.findByUserIdAndIsDefaultFalseOrderByCreatedAtAsc(user.id).stream().map(AiReadingFriendResponse::from).toList();
+    }
+
+    @PostMapping("/ai-reading-friends") @ResponseStatus(HttpStatus.CREATED)
+    @org.springframework.transaction.annotation.Transactional
+    AiReadingFriendResponse createFriend(@Valid @RequestBody CreateAiReadingFriendRequest request, org.springframework.security.core.Authentication authentication) {
+        var user = currentUser(authentication);
+        AiReadingFriend friend = new AiReadingFriend();
+        friend.userId = user.id; friend.name = request.name().trim(); friend.persona = request.persona().trim(); friend.isDefault = false;
+        friend.createdAt = friend.updatedAt = java.time.OffsetDateTime.now();
+        return AiReadingFriendResponse.from(friendRepository.save(friend));
+    }
+
+    @DeleteMapping("/ai-reading-friends/{friendId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    @org.springframework.transaction.annotation.Transactional
+    void deleteFriend(@PathVariable Long friendId, org.springframework.security.core.Authentication authentication) {
+        var user = currentUser(authentication);
+        AiReadingFriend friend = friendRepository.findByIdAndUserIdAndIsDefaultFalse(friendId, user.id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "AI_FRIEND_NOT_FOUND", "AI 친구를 찾을 수 없습니다."));
+        friendRepository.delete(friend);
+    }
+
+    private AppUser currentUser(org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.");
+        return userRepository.findByUsername(authentication.getName()).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다."));
+    }
+
+    private void requireAccessibleFriend(Long friendId, org.springframework.security.core.Authentication authentication) {
+        var current = currentUser(authentication);
+        boolean allowed = friendRepository.findById(friendId)
+                .map(friend -> friend.isDefault || current.id.equals(friend.userId))
+                .orElse(false);
+        if (!allowed) throw new ApiException(HttpStatus.NOT_FOUND, "AI_FRIEND_NOT_FOUND", "AI 친구를 찾을 수 없습니다.");
+    }
+
+    record CreateAiReadingFriendRequest(@NotBlank @Size(max=100) String name, @NotBlank @Size(max=4000) String persona) {}
+
 
     // =========================================================
     // 해당 책의 AI 메모 생성
@@ -49,8 +95,10 @@ class AiReadingController {
     )
     List<AiReadingNoteResponse> generate(
             @PathVariable Long bookId,
-            @PathVariable Long friendId
+            @PathVariable Long friendId,
+            org.springframework.security.core.Authentication authentication
     ) {
+        requireAccessibleFriend(friendId, authentication);
 
         List<AiReadingNote> existingNotes =
                 noteRepository
@@ -89,8 +137,10 @@ class AiReadingController {
     )
     List<AiReadingNoteResponse> getNotes(
             @PathVariable Long bookId,
-            @PathVariable Long friendId
+            @PathVariable Long friendId,
+            org.springframework.security.core.Authentication authentication
     ) {
+        requireAccessibleFriend(friendId, authentication);
 
         return noteRepository
                 .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
@@ -110,7 +160,8 @@ class AiReadingController {
     record AiReadingFriendResponse(
             Long id,
             String name,
-            boolean isDefault
+            boolean isDefault,
+            String persona
     ) {
 
         static AiReadingFriendResponse from(
@@ -120,7 +171,8 @@ class AiReadingController {
             return new AiReadingFriendResponse(
                     friend.id,
                     friend.name,
-                    friend.isDefault
+                    friend.isDefault,
+                    friend.persona
             );
         }
     }

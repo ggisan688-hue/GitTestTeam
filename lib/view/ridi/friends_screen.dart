@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
+import '../../repository/ai_reading_repository.dart';
 import 'ridi_theme.dart';
+import 'ridi_store.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -10,7 +14,7 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  final List<_AiFriend> _friends = const [
+  List<_AiFriend> _friends = const [
     _AiFriend(
       name: 'A',
       age: 18,
@@ -45,6 +49,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   int _selectedIndex = 0;
   bool _isCreating = false;
+  bool _submitting = false;
 
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
@@ -54,6 +59,46 @@ class _FriendsScreenState extends State<FriendsScreen> {
   final _featureController = TextEditingController();
 
   String _gender = '여자';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFriends();
+  }
+
+  Future<void> _loadFriends() async {
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final repository = AiReadingRepository(ApiClient(tokenProvider: () => token));
+      final loaded = await Future.wait([
+        repository.getDefaultFriends(),
+        repository.getMyFriends(),
+      ]);
+      final custom = loaded[1];
+      if (!mounted) return;
+      setState(() {
+        _friends = [
+          ...loaded[0].map(_friendFromApi),
+          ...custom.map((friend) => _AiFriend(id: friend.id, name: friend.name, age: 0, gender: '사용자 설정', relationship: '', personality: friend.persona ?? '', speech: '', feature: '', isDefault: false)),
+        ];
+        _selectedIndex = _selectedIndex.clamp(0, _friends.length - 1).toInt();
+      });
+    } catch (_) {
+      // Built-ins remain available while a background refresh fails.
+    }
+  }
+
+  _AiFriend _friendFromApi(AiReadingFriend friend) => _AiFriend(
+        id: friend.id,
+        name: friend.name,
+        age: 0,
+        gender: '',
+        relationship: '',
+        personality: friend.persona ?? '',
+        speech: '',
+        feature: '',
+        isDefault: friend.isDefault,
+      );
 
   @override
   void dispose() {
@@ -79,6 +124,36 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
+  Future<void> _createFriend() async {
+    final name = _nameController.text.trim();
+    final relationship = _relationshipController.text.trim();
+    final personality = _personalityController.text.trim();
+    final speech = _speechController.text.trim();
+    final feature = _featureController.text.trim();
+    if (name.isEmpty || relationship.isEmpty || personality.isEmpty || speech.isEmpty || feature.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('모든 항목을 입력해 주세요.')));
+      return;
+    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final persona = '나이: ${_ageController.text.trim()}\n성별: $_gender\n관계: $relationship\n성격: $personality\n말투: $speech\n특징: $feature';
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final saved = await AiReadingRepository(ApiClient(tokenProvider: () => token)).createFriend(name: name, persona: persona);
+      if (!mounted) return;
+      setState(() {
+        _friends = [..._friends, _AiFriend(id: saved.id, name: saved.name, age: int.tryParse(_ageController.text.trim()) ?? 0, gender: _gender, relationship: relationship, personality: personality, speech: speech, feature: feature, isDefault: false)];
+        _selectedIndex = _friends.length - 1;
+        _isCreating = false;
+      });
+      _nameController.clear(); _ageController.clear(); _relationshipController.clear(); _personalityController.clear(); _speechController.clear(); _featureController.clear();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,7 +177,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _friends.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(width: 16),
+                separatorBuilder: (_, _) => const SizedBox(width: 16),
                 itemBuilder: (context, index) {
                   if (index == _friends.length) {
                     return _CreateFriendCard(
@@ -189,8 +264,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     // 이후 사용자가 만든 친구만 수정 버튼 표시.
                     if (!friend.isDefault)
                       OutlinedButton(
-                        onPressed: () {},
-                        child: const Text('수정'),
+                        onPressed: friend.id == null ? null : () => _deleteFriend(friend),
+                        child: const Text('삭제'),
                       ),
                   ],
                 ),
@@ -249,6 +324,32 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _deleteFriend(_AiFriend friend) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('AI 친구 삭제'),
+        content: Text('${friend.name}을(를) 삭제할까요?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('삭제')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || friend.id == null) return;
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      await AiReadingRepository(ApiClient(tokenProvider: () => token)).deleteFriend(friend.id!);
+      if (!mounted) return;
+      setState(() {
+        _friends = _friends.where((item) => item.id != friend.id).toList();
+        _selectedIndex = _selectedIndex.clamp(0, _friends.length - 1).toInt();
+      });
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Widget _buildCreatePanel() {
@@ -390,15 +491,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        '지금은 화면 확인 단계예요. 저장 기능은 다음 단계에서 연결할게요.',
-                      ),
-                    ),
-                  );
-                },
+                onPressed: _submitting ? null : _createFriend,
                 child: const Text('AI 친구 만들기'),
               ),
             ),
@@ -604,6 +697,7 @@ InputDecoration _inputDecoration({String? hint}) {
 
 class _AiFriend {
   const _AiFriend({
+    this.id,
     required this.name,
     required this.age,
     required this.gender,
@@ -614,6 +708,7 @@ class _AiFriend {
     required this.isDefault,
   });
 
+  final int? id;
   final String name;
   final int age;
   final String gender;
