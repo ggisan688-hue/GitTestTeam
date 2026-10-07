@@ -104,3 +104,12 @@
 - `backend\gradlew.bat test --no-daemon`: 성공 (2026-10-07).
 - `C:\flutter\bin\flutter.bat analyze`는 이 환경에서 출력 없이 제한 시간에 종료되어 결과를 확정하지 못했다. 로컬 PowerShell에서 다시 실행 필요.
 - 새 Flyway migration은 추가하지 않았다. 이번 변경은 기존 room password/room book/note bookId 컬럼과 제약을 이용한다.
+
+## 2026-10-07 기동 장애 수정
+
+- 원인 1: `V21__add_password_reset_security.sql`와 기존 AI migration이 같은 Flyway 버전 21을 사용해 시작 시 중복 version 오류가 났다.
+- 조치: AI migration SQL 내용은 보존하고 아직 적용 이력이 없는 새 `V27__add_ai_reading_friends.sql`로 승격했다. 기존 AI 테이블이 이미 존재하는 DB도 보존하도록 `CREATE TABLE IF NOT EXISTS`와 기본 친구 중복 방지 조건을 적용했다.
+- 실제 DB 로그: Flyway가 28개 migration을 검증했고 `public` 스키마를 v27로 성공 적용했다. 기존 AI 테이블은 경고와 함께 건너뛰었으며 삭제나 초기화는 수행하지 않았다.
+- 원인 2: 개발 환경의 `GEMINI_API_KEY` 부재가 GeminiClient Bean 생성 자체를 실패시켜 전체 서버 기동을 막았다.
+- 조치: `gemini.api-key`의 기본값을 빈 문자열로 두고, 키가 없으면 AI 생성 요청만 `503 AI_SERVICE_NOT_CONFIGURED` 한국어 메시지로 응답하게 했다. 로그인·책 읽기·독서방은 키 없이 기동 가능하다.
+- 검증: `backend\gradlew.bat clean test --no-daemon` 및 이후 `backend\gradlew.bat test --no-daemon` 성공.
