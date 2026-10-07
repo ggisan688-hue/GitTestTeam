@@ -85,72 +85,28 @@ class AiReadingController {
 
 
     // =========================================================
-    // 해당 책의 AI 메모 생성
-    //
-    // 이미 생성된 메모가 있으면 Gemini를 다시 실행하지 않는다.
-    // =========================================================
+// 해당 책의 AI 메모 조회
+// =========================================================
 
-    @PostMapping(
-            "/books/{bookId}/ai-reading-friends/{friendId}/generate"
-    )
-    List<AiReadingNoteResponse> generate(
-            @PathVariable Long bookId,
-            @PathVariable Long friendId,
-            org.springframework.security.core.Authentication authentication
-    ) {
-        requireAccessibleFriend(friendId, authentication);
+@GetMapping(
+        "/books/{bookId}/ai-reading-friends/{friendId}/notes"
+)
+List<AiReadingNoteResponse> getNotes(
+        @PathVariable Long bookId,
+        @PathVariable Long friendId,
+        org.springframework.security.core.Authentication authentication
+) {
+    requireAccessibleFriend(friendId, authentication);
 
-        List<AiReadingNote> existingNotes =
-                noteRepository
-                        .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
-                                friendId,
-                                bookId
-                        );
-
-
-        if (existingNotes.isEmpty()) {
-
-            aiReadingService.generateNotes(
-                    bookId,
-                    friendId
-            );
-        }
-
-
-        return noteRepository
-                .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
-                        friendId,
-                        bookId
-                )
-                .stream()
-                .map(AiReadingNoteResponse::from)
-                .toList();
-    }
-
-
-    // =========================================================
-    // 해당 책의 AI 메모 조회
-    // =========================================================
-
-    @GetMapping(
-            "/books/{bookId}/ai-reading-friends/{friendId}/notes"
-    )
-    List<AiReadingNoteResponse> getNotes(
-            @PathVariable Long bookId,
-            @PathVariable Long friendId,
-            org.springframework.security.core.Authentication authentication
-    ) {
-        requireAccessibleFriend(friendId, authentication);
-
-        return noteRepository
-                .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
-                        friendId,
-                        bookId
-                )
-                .stream()
-                .map(AiReadingNoteResponse::from)
-                .toList();
-    }
+    return noteRepository
+            .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
+                    friendId,
+                    bookId
+            )
+            .stream()
+            .map(AiReadingNoteResponse::from)
+            .toList();
+}
 
 
     // =========================================================
