@@ -150,6 +150,9 @@ record RoomNicknameRequest(@NotBlank @Size(max = 40) String roomNickname) {}
 record RoomBookOrderRequest(@NotNull @Min(0) Integer order) {}
 record RoomProgressRequest(@Min(0) @Max(100) Integer progressPercent, @Min(0) Integer lastReadPosition) {}
 record RoomProgressResponse(Long roomId, Long userId, Long bookId, int progressPercent, int lastReadPosition, Instant updatedAt) {}
+record RoomParticipantProgressResponse(Long userId, String nickname, String profileImageUrl,
+                                       int progressPercent, int lastReadPosition, Instant updatedAt,
+                                       boolean currentUser) {}
 record RoomResponse(Long id, String name, String description, Long bookId,
                     int members, int maxMembers, boolean isPublic,
                     Long ownerId, String ownerNickname, Instant createdAt,
@@ -434,6 +437,14 @@ class RoomService {
   }
   @org.springframework.transaction.annotation.Transactional(readOnly=true)
   RoomProgressResponse myProgress(String username,Long roomId,Long bookId) { AppUser current=userFeatures.me(username); if(!members.existsByRoomIdAndUserId(roomId,current.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다."); return roomProgress.findByRoomIdAndUserIdAndBookId(roomId,current.id,bookId).map(this::progressResponse).orElse(new RoomProgressResponse(roomId,current.id,bookId,0,0,null)); }
+  @org.springframework.transaction.annotation.Transactional(readOnly=true)
+  List<RoomParticipantProgressResponse> participantProgress(String username,Long roomId,Long bookId) {
+    AppUser current=userFeatures.me(username); room(roomId);
+    if(!members.existsByRoomIdAndUserId(roomId,current.id)) throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다.");
+    if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방의 책을 찾을 수 없습니다.");
+    java.util.Map<Long,RoomMemberProgress> byUser=roomProgress.findByRoomIdAndBookIdOrderByUpdatedAtDesc(roomId,bookId).stream().collect(java.util.stream.Collectors.toMap(p->p.userId,p->p,(first,ignored)->first));
+    return members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member->{RoomMemberProgress p=byUser.get(member.userId);return new RoomParticipantProgressResponse(member.userId,member.roomNickname==null||member.roomNickname.isBlank()?"참여자":member.roomNickname,member.roomProfileImageUrl,p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.updatedAt,java.util.Objects.equals(member.userId,current.id));}).toList();
+  }
   private RoomProgressResponse progressResponse(RoomMemberProgress p){return new RoomProgressResponse(p.roomId,p.userId,p.bookId,p.progressPercent,p.lastReadPosition,p.updatedAt);}
   private void normalizeBookOrder(Long roomId){List<RoomBook> list=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId);for(int i=0;i<list.size();i++)list.get(i).displayOrder=i;roomBooks.saveAll(list);}
 
@@ -665,6 +676,7 @@ class RoomController {
   @PutMapping("/{roomId}/current-book/{bookId}") RoomResponse currentBook(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.setCurrentBook(authentication.getName(),roomId,bookId);}
   @PostMapping("/{roomId}/books/{bookId}/progress") RoomProgressResponse saveProgress(@PathVariable Long roomId,@PathVariable Long bookId,@Valid @RequestBody(required=false) RoomProgressRequest request,org.springframework.security.core.Authentication authentication){return service.saveProgress(authentication.getName(),roomId,bookId,request==null?new RoomProgressRequest(null,null):request);}
   @GetMapping("/{roomId}/books/{bookId}/progress/me") RoomProgressResponse myProgress(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.myProgress(authentication.getName(),roomId,bookId);}
+  @GetMapping("/{roomId}/books/{bookId}/progress/participants") List<RoomParticipantProgressResponse> participantProgress(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.participantProgress(authentication.getName(),roomId,bookId);}
   @PutMapping(value = "/{roomId}/members/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   RoomMemberResponse uploadMyProfileImage(@PathVariable Long roomId, @RequestPart("profileImage") MultipartFile profileImage, org.springframework.security.core.Authentication authentication) { return service.updateMyProfileImage(authentication.getName(), roomId, profileImage, images); }
   @DeleteMapping("/{roomId}/members/me/profile-image") @ResponseStatus(HttpStatus.NO_CONTENT)

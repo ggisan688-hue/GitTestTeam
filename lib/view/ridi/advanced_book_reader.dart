@@ -1,11 +1,9 @@
 import 'dart:async';
 
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-
 
 import '../../core/api_client.dart';
 import '../../model/book.dart';
@@ -16,22 +14,19 @@ import '../../repository/ai_reading_repository.dart';
 import 'reading_rooms_screen.dart' show showSharedNoteComments;
 import 'ridi_store.dart';
 
-
 enum ReaderContextKind { personal, readingRoom }
-
 
 /// A reader route explicitly owns either personal or one room's data.
 class ReaderContext {
   const ReaderContext.personal()
-      : kind = ReaderContextKind.personal,
-        roomId = null;
+    : kind = ReaderContextKind.personal,
+      roomId = null;
   const ReaderContext.readingRoom(this.roomId)
-      : kind = ReaderContextKind.readingRoom;
+    : kind = ReaderContextKind.readingRoom;
   final ReaderContextKind kind;
   final int? roomId;
   bool get isReadingRoom => kind == ReaderContextKind.readingRoom;
 }
-
 
 class AdvancedBookReaderScreen extends StatefulWidget {
   const AdvancedBookReaderScreen({
@@ -45,7 +40,6 @@ class AdvancedBookReaderScreen extends StatefulWidget {
   State<AdvancedBookReaderScreen> createState() =>
       _AdvancedBookReaderScreenState();
 }
-
 
 class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   late PageController _controller;
@@ -61,12 +55,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
 
-
   final Map<int, List<AiReadingNote>> _aiNotesByFriend =
-  <int, List<AiReadingNote>>{};
+      <int, List<AiReadingNote>>{};
   String? _layoutKey;
   Timer? _timer;
-
 
   @override
   void initState() {
@@ -83,10 +75,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _order = p
           .reduce(
             (closest, candidate) =>
-        (candidate.order - saved).abs() < (closest.order - saved).abs()
-            ? candidate
-            : closest,
-      )
+                (candidate.order - saved).abs() < (closest.order - saved).abs()
+                ? candidate
+                : closest,
+          )
           .order;
       _ready = true;
       await _wake(vm.readerSettings.keepScreenOn);
@@ -95,10 +87,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     });
   }
 
-
   Future<void> _wake(bool enabled) =>
       enabled ? WakelockPlus.enable() : WakelockPlus.disable();
-
 
   Future<void> _loadSharedHighlights() async {
     final roomId = widget.readerContext.roomId;
@@ -113,18 +103,16 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         _sharedHighlights = notes
             .where(
               (note) =>
-          !note.isSpoilerLocked &&
-              note.type == 'HIGHLIGHT' &&
-              note.startOffset != null &&
-              note.endOffset != null,
-        )
+                  !note.isSpoilerLocked &&
+                  note.type == 'HIGHLIGHT' &&
+                  note.startOffset != null &&
+                  note.endOffset != null,
+            )
             .map(_asReaderHighlight)
             .toList();
         // Keep shared memos separate from private ReadingNote state. The
         // server has already applied room/book membership and spoiler policy.
-        _sharedMemos = notes
-            .where((note) => note.type == 'MEMO')
-            .toList();
+        _sharedMemos = notes.where((note) => note.type == 'MEMO').toList();
       });
     } on ApiException {
       // Shared-note rendering is supplementary. The room note list keeps a
@@ -132,7 +120,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       // the reader or reveal a server message.
     }
   }
-
 
   ReadingNote _asReaderHighlight(SharedRoomNote note) => ReadingNote(
     id: -note.id,
@@ -160,7 +147,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     _timer?.cancel();
     final p =
         context.read<BookViewModel>().content?.paragraphs ??
-            const <BookParagraph>[];
+        const <BookParagraph>[];
     if (p.isNotEmpty)
       await context.read<BookViewModel>().saveReaderProgress(
         widget.bookId,
@@ -169,12 +156,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       );
   }
 
-
   void _debounceSave() {
     _timer?.cancel();
     _timer = Timer(const Duration(seconds: 2), _save);
   }
-
 
   @override
   void dispose() {
@@ -184,13 +169,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     super.dispose();
   }
 
-
   Future<bool> _back() async {
     if (_sheetOpen) return true;
     await _save();
     return true;
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -205,97 +188,102 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             : content == null
             ? Center(child: Text(vm.readerErrorMessage ?? '본문을 불러올 수 없습니다.'))
             : LayoutBuilder(
-          builder: (context, c) {
-            _schedulePagination(
-              content.paragraphs,
-              vm.readerSettings,
-              c,
-              MediaQuery.textScalerOf(context),
-            );
-            if (_pages.isEmpty) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return Stack(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _sheetOpen
-                      ? null
-                      : () => setState(() => _controls = !_controls),
-                  child: PageView.builder(
-                    controller: _controller,
-                    itemCount: _pages.length,
-                    onPageChanged: (i) {
-                      if (_pages.isEmpty) return;
-                      setState(() {
-                        _page = i;
-                        _order = _pages[i].firstOrder;
-                      });
-                      _debounceSave();
-                    },
-                    itemBuilder: (_, i) => _ReaderPage(
-                      page: _pages[i.clamp(0, _pages.length - 1)],
-                      settings: vm.readerSettings,
-                      twoColumns: _twoColumns,
-                      highlights: vm.readerSettings.showHighlights ? [
-                        // 내가 직접 만든 형광펜
-                        ...vm.readingNotes.where(
-                              (n) => n.type == ReaderNoteType.highlight,
+                builder: (context, c) {
+                  _schedulePagination(
+                    content.paragraphs,
+                    vm.readerSettings,
+                    c,
+                    MediaQuery.textScalerOf(context),
+                  );
+                  if (_pages.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return Stack(
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _sheetOpen
+                            ? null
+                            : () => setState(() => _controls = !_controls),
+                        child: PageView.builder(
+                          controller: _controller,
+                          itemCount: _pages.length,
+                          onPageChanged: (i) {
+                            if (_pages.isEmpty) return;
+                            setState(() {
+                              _page = i;
+                              _order = _pages[i].firstOrder;
+                            });
+                            _debounceSave();
+                          },
+                          itemBuilder: (_, i) => _ReaderPage(
+                            page: _pages[i.clamp(0, _pages.length - 1)],
+                            settings: vm.readerSettings,
+                            twoColumns: _twoColumns,
+                            highlights: vm.readerSettings.showHighlights
+                                ? [
+                                    // 내가 직접 만든 형광펜
+                                    ...vm.readingNotes.where(
+                                      (n) => n.type == ReaderNoteType.highlight,
+                                    ),
+
+                                    // 교환독서 상대방 형광펜
+                                    ..._sharedHighlights,
+
+                                    // 선택한 AI 친구가 만든 형광펜
+                                    ..._selectedAiFriendIds
+                                        .expand(
+                                          (friendId) =>
+                                              _aiNotesByFriend[friendId] ??
+                                              const <AiReadingNote>[],
+                                        )
+                                        .map(_asAiReaderHighlight),
+                                  ]
+                                : const <ReadingNote>[],
+                            onHighlight: _saveHighlight,
+                            onHighlightTap: _openHighlightMenu,
+                            memos: vm.readingNotes
+                                .where((n) => n.type == ReaderNoteType.memo)
+                                .toList(),
+                            roomMemoCounts: {
+                              for (final memo in _sharedMemos)
+                                memo.paragraphOrder: _sharedMemos
+                                    .where(
+                                      (item) =>
+                                          item.paragraphOrder ==
+                                          memo.paragraphOrder,
+                                    )
+                                    .length,
+                            },
+                            onMemo: _saveSelectionMemo,
+                            onShowMemos: _showParagraphMemos,
+                          ),
                         ),
-
-
-                        // 교환독서 상대방 형광펜
-                        ..._sharedHighlights,
-
-
-                        // 선택한 AI 친구가 만든 형광펜
-                        ..._selectedAiFriendIds
-                            .expand(
-                              (friendId) =>
-                          _aiNotesByFriend[friendId] ?? const <AiReadingNote>[],
-                        )
-                            .map(_asAiReaderHighlight),
-                      ] : const <ReadingNote>[],
-                      onHighlight: _saveHighlight,
-                      onHighlightTap: _openHighlightMenu,
-                      memos: vm.readingNotes
-                          .where((n) => n.type == ReaderNoteType.memo)
-                          .toList(),
-                      roomMemoCounts: {
-                        for (final memo in _sharedMemos)
-                          memo.paragraphOrder:
-                          _sharedMemos.where((item) => item.paragraphOrder == memo.paragraphOrder).length,
-                      },
-                      onMemo: _saveSelectionMemo,
-                      onShowMemos: _showParagraphMemos,
-                    ),
-                  ),
-                ),
-                if (_controls) _top(vm),
-                if (_controls) _bottom(vm),
-              ],
-            );
-          },
-        ),
+                      ),
+                      if (_controls) _top(vm),
+                      if (_controls) _bottom(vm),
+                    ],
+                  );
+                },
+              ),
       ),
     );
   }
 
-
   (Color, Color) _colors(ReaderSettings s) => switch (s.theme) {
     ReaderPaperTheme.dark => (const Color(0xff1d1d20), const Color(0xfff5f0e7)),
     ReaderPaperTheme.sepia => (
-    const Color(0xfff4e8d0),
-    const Color(0xff493b2d),
+      const Color(0xfff4e8d0),
+      const Color(0xff493b2d),
     ),
     _ => (const Color(0xfffffefa), const Color(0xff262626)),
   };
   void _schedulePagination(
-      List<BookParagraph> p,
-      ReaderSettings s,
-      BoxConstraints c,
-      TextScaler textScaler,
-      ) {
+    List<BookParagraph> p,
+    ReaderSettings s,
+    BoxConstraints c,
+    TextScaler textScaler,
+  ) {
     final two = s.twoColumn && c.maxWidth >= 700;
     final key =
         '${c.maxWidth.toInt()}:${c.maxHeight.toInt()}:${s.fontScale}:${s.lineHeightStep}:$two:${p.length}:$textScaler';
@@ -336,15 +324,14 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     });
   }
 
-
   List<_Page> _paginate(
-      List<BookParagraph> all,
-      ReaderSettings s,
-      double width,
-      double height,
-      bool two,
-      TextScaler textScaler,
-      ) {
+    List<BookParagraph> all,
+    ReaderSettings s,
+    double width,
+    double height,
+    bool two,
+    TextScaler textScaler,
+  ) {
     final style = TextStyle(
       fontFamily: 'NotoSerifKR',
       fontSize: 18 * s.fontScale,
@@ -367,7 +354,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         used = 0;
       }
     }
-
 
     for (final para in all) {
       // Keep the source string and its offsets intact.  The offsets sent to
@@ -408,13 +394,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     return result;
   }
 
-
   double _height(
-      String text,
-      TextStyle style,
-      double width,
-      TextScaler textScaler,
-      ) {
+    String text,
+    TextStyle style,
+    double width,
+    TextScaler textScaler,
+  ) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -423,14 +408,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     return painter.height;
   }
 
-
   int _fit(
-      String text,
-      TextStyle style,
-      double width,
-      double maxHeight,
-      TextScaler textScaler,
-      ) {
+    String text,
+    TextStyle style,
+    double width,
+    double maxHeight,
+    TextScaler textScaler,
+  ) {
     var lo = 1, hi = text.length, best = 0;
     while (lo <= hi) {
       final m = (lo + hi) >> 1;
@@ -446,7 +430,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     return space > best ~/ 2 ? space + 1 : best;
   }
 
-
   Widget _top(BookViewModel vm) {
     final fg = _colors(vm.readerSettings).$2;
     final chapters = vm.readerChapters
@@ -454,7 +437,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         .toList();
     final title = chapters.isEmpty ? vm.content!.title : chapters.last.title;
     final marked = vm.readingNotes.any(
-          (n) => n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
+      (n) => n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
     );
     return SafeArea(
       child: Align(
@@ -493,13 +476,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
   }
 
-
   Future<void> _bookmark(BookViewModel vm) async {
     final hits = vm.readingNotes
         .where(
           (n) =>
-      n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
-    )
+              n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
+        )
         .toList();
     if (hits.isEmpty) {
       await vm.addNote(widget.bookId, ReaderNoteType.bookmark, _order);
@@ -507,7 +489,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       await vm.deleteNote(widget.bookId, hits.first.id);
     }
   }
-
 
   Widget _bottom(BookViewModel vm) {
     final total = _pages.length, fg = _colors(vm.readerSettings).$2;
@@ -555,7 +536,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
   }
 
-
   Widget _menu(IconData icon, String label, VoidCallback action) =>
       TextButton.icon(
         onPressed: action,
@@ -566,12 +546,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         ),
       );
 
-
   /// 창 열기 — 목차·독서노트는 화면 가운데, 보기·뷰어 설정은 오른쪽 아래(메뉴 바로 위)에 뜬다.
   Future<void> _open(
-      Widget sheet, {
-        _SheetPlace place = _SheetPlace.center,
-      }) async {
+    Widget sheet, {
+    _SheetPlace place = _SheetPlace.center,
+  }) async {
     setState(() => _sheetOpen = true);
     final child = _SheetMode(place: place, child: sheet);
     if (place == _SheetPlace.center) {
@@ -610,92 +589,94 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     if (mounted) setState(() => _sheetOpen = false);
   }
 
-
   /// 목차 — "1장, 2장 …" 한 줄씩 (리디 목차처럼). 지금 읽는 장은 굵게.
   void _chaptersFixed() {
     final chapters = context.read<BookViewModel>().readerChapters;
     final current = chapters.lastIndexWhere(
-          (c) => c.startParagraphOrder <= _order,
+      (c) => c.startParagraphOrder <= _order,
     );
     _open(
       _Sheet(
         title: '목차',
         child: chapters.isEmpty
             ? Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('이 책에는 확인된 목차 정보가 없습니다.'),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () async {
-                    await context.read<BookViewModel>().loadReader(widget.bookId);
-                    if (mounted) {
-                      Navigator.pop(context);
-                      _chaptersFixed();
-                    }
-                  },
-                  child: const Text('다시 시도'),
-                ),
-              ],
-            ),
-          ),
-        )
-            : ListView.separated(
-          itemCount: chapters.length,
-          separatorBuilder: (_, _) =>
-          const Divider(height: 1, color: Color(0xFFEDEDED)),
-          itemBuilder: (_, i) {
-            final c = chapters[i];
-            final label = '${c.number}장';
-            final on = i == current;
-            return InkWell(
-              onTap: () {
-                Navigator.pop(context);
-                _go(c.startParagraphOrder);
-              },
-              child: Container(
-                color: on ? const Color(0xFFF5F5F5) : null,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: on ? FontWeight.w800 : FontWeight.w500,
-                      ),
-                    ),
-                    if (c.title.trim().isNotEmpty &&
-                        c.title.trim() != label) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          c.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF8A8A8A),
-                          ),
-                        ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('이 책에는 확인된 목차 정보가 없습니다.'),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () async {
+                          await context.read<BookViewModel>().loadReader(
+                            widget.bookId,
+                          );
+                          if (mounted) {
+                            Navigator.pop(context);
+                            _chaptersFixed();
+                          }
+                        },
+                        child: const Text('다시 시도'),
                       ),
                     ],
-                  ],
+                  ),
                 ),
+              )
+            : ListView.separated(
+                itemCount: chapters.length,
+                separatorBuilder: (_, _) =>
+                    const Divider(height: 1, color: Color(0xFFEDEDED)),
+                itemBuilder: (_, i) {
+                  final c = chapters[i];
+                  final label = '${c.number}장';
+                  final on = i == current;
+                  return InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _go(c.startParagraphOrder);
+                    },
+                    child: Container(
+                      color: on ? const Color(0xFFF5F5F5) : null,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: on
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          if (c.title.trim().isNotEmpty &&
+                              c.title.trim() != label) ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                c.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF8A8A8A),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
       ),
     );
   }
-
 
   /*
  void _chapters()=>_open(_Sheet(title:'목차',child:ListView(children:context.read<BookViewModel>().readerChapters.map((c)=>ListTile(title:Text(c.title),subtitle:Text('문단 ${c.startParagraphOrder}'),onTap:(){Navigator.pop(context);_go(c.startParagraphOrder);}).toList()))));
@@ -712,17 +693,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     ),
   );
 
-
   Future<void> _viewSettings() async {
     final store = context.read<RidiStore>();
 
-
     final repository = AiReadingRepository(
-      ApiClient(
-        tokenProvider: () => store.accessToken,
-      ),
+      ApiClient(tokenProvider: () => store.accessToken),
     );
-
 
     try {
       // 보기 설정을 열 때 서버에서 현재 사용 가능한 AI 친구 목록을 가져온다.
@@ -732,12 +708,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       ]);
       final friends = <AiReadingFriend>[...loaded[0], ...loaded[1]];
 
-
       if (!mounted) return;
 
-
       _aiFriends = friends;
-
 
       await _open(
         place: _SheetPlace.corner,
@@ -748,26 +721,18 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
               _layoutKey = null;
             } on ApiException catch (e) {
               if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(
-                  SnackBar(content: Text(e.message)),
-                );
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(e.message)));
               }
             }
           },
 
-
           aiFriends: _aiFriends,
-
 
           selectedAiFriendIds: _selectedAiFriendIds,
 
-
           onAiFriendDone: (selectedIds) async {
-            final loadedNotes =
-            <int, List<AiReadingNote>>{};
-
+            final loadedNotes = <int, List<AiReadingNote>>{};
 
             try {
               // 선택된 친구들만 처리한다.
@@ -778,7 +743,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                   friendId: friendId,
                 );
 
-
                 // 기존 메모가 없을 때만 Gemini 생성
                 if (notes.isEmpty) {
                   notes = await repository.generateNotes(
@@ -787,13 +751,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                   );
                 }
 
-
                 loadedNotes[friendId] = notes;
               }
 
-
               if (!mounted) return;
-
 
               setState(() {
                 // 완료를 눌렀을 때만 실제 선택 상태 변경
@@ -801,13 +762,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                   ..clear()
                   ..addAll(selectedIds);
 
-
                 // 화면에서 사용할 AI 메모 갱신
                 _aiNotesByFriend
                   ..clear()
                   ..addAll(loadedNotes);
               });
-
 
               // 모든 작업이 성공한 뒤 보기 설정 팝업 닫기
               if (mounted) {
@@ -816,30 +775,18 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             } on ApiException catch (e) {
               if (!mounted) return;
 
-
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'AI 메모를 불러오지 못했습니다: ${e.message}',
-                  ),
-                ),
+                SnackBar(content: Text('AI 메모를 불러오지 못했습니다: ${e.message}')),
               );
-
 
               // 실패하면 팝업은 그대로 둔다.
               rethrow;
             } catch (e) {
               if (!mounted) return;
 
-
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'AI 메모를 불러오는 중 오류가 발생했습니다.',
-                  ),
-                ),
+                const SnackBar(content: Text('AI 메모를 불러오는 중 오류가 발생했습니다.')),
               );
-
 
               rethrow;
             }
@@ -849,28 +796,17 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
 
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'AI 친구 목록을 불러오지 못했습니다: ${e.message}',
-          ),
-        ),
+        SnackBar(content: Text('AI 친구 목록을 불러오지 못했습니다: ${e.message}')),
       );
     } catch (e) {
       if (!mounted) return;
 
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'AI 친구 목록을 불러오는 중 오류가 발생했습니다.',
-          ),
-        ),
+        const SnackBar(content: Text('AI 친구 목록을 불러오는 중 오류가 발생했습니다.')),
       );
     }
   }
-
 
   void _viewerSettings() => _open(
     place: _SheetPlace.corner,
@@ -883,7 +819,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     ),
   );
 
-
   void _go(int order) {
     final i = _pages.indexWhere((e) => e.contains(order));
     if (i >= 0) {
@@ -895,7 +830,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _debounceSave();
     }
   }
-
 
   Future<void> _openHighlightMenu(ReadingNote note) async {
     // Shared and AI highlights are rendered with negative local ids. They are
@@ -928,7 +862,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
     if (!mounted || action == null) return;
 
-
     if (action == _HighlightAction.delete) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -952,14 +885,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         await context.read<BookViewModel>().deleteNote(widget.bookId, note.id);
       } on ApiException catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.message)),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
         }
       }
       return;
     }
-
 
     if (action == _HighlightAction.color) {
       final color = await showModalBottomSheet<String>(
@@ -969,11 +900,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             children: ['#FFF59D', '#A5D6A7', '#90CAF9', '#FFCCBC', '#CE93D8']
                 .map(
                   (value) => ListTile(
-                leading: CircleAvatar(backgroundColor: _highlightColor(value)),
-                title: Text(value),
-                onTap: () => Navigator.pop(sheetContext, value),
-              ),
-            )
+                    leading: CircleAvatar(
+                      backgroundColor: _highlightColor(value),
+                    ),
+                    title: Text(value),
+                    onTap: () => Navigator.pop(sheetContext, value),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -987,22 +920,21 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         );
       } on ApiException catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.message)),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
         }
       }
       return;
     }
 
-
     final start = note.startOffset;
     final end = note.endOffset;
     final text = note.selectedText;
     if (start == null || end == null || text == null || end <= start) return;
-    await _saveSelectionMemo(_TextSelection(note.paragraphOrder, start, end, text));
+    await _saveSelectionMemo(
+      _TextSelection(note.paragraphOrder, start, end, text),
+    );
   }
-
 
   Future<void> _saveHighlight(_TextSelection selection) async {
     if (selection.start < 0 ||
@@ -1042,7 +974,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     }
   }
 
-
   Future<void> _saveSelectionMemo(_TextSelection selection) async {
     if (selection.start < 0 ||
         selection.end <= selection.start ||
@@ -1071,13 +1002,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
   }
 
-
   Future<void> _createRoomNote(
-      _TextSelection selection, {
-        required String type,
-        String? content,
-        String? highlightColor,
-      }) async {
+    _TextSelection selection, {
+    required String type,
+    String? content,
+    String? highlightColor,
+  }) async {
     final roomId = widget.readerContext.roomId;
     if (roomId == null) throw ApiException('독서방 정보를 찾을 수 없습니다.');
     final roomRepository = ReadingRoomRepository(
@@ -1096,7 +1026,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     await _loadSharedHighlights();
   }
 
-
   String _sharedNoteError(ApiException error) => switch (error.errorCode) {
     'ROOM_MEMBER_REQUIRED' => '독서방 참여자만 공유할 수 있습니다.',
     'ROOM_BOOK_REQUIRED' => '이 독서방에는 대표 도서가 설정되어 있지 않습니다.',
@@ -1106,11 +1035,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     _ => '공유 독서노트를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.',
   };
 
-
   Future<void> _showParagraphMemos(
-      int paragraphOrder,
-      BuildContext anchorContext,
-      ) async {
+    int paragraphOrder,
+    BuildContext anchorContext,
+  ) async {
     if (!mounted) return;
     if (widget.readerContext.isReadingRoom) {
       await _showSharedParagraphMemos(paragraphOrder, anchorContext);
@@ -1121,92 +1049,107 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         .readingNotes
         .where(
           (note) =>
-      note.type == ReaderNoteType.memo &&
-          note.paragraphOrder == paragraphOrder,
-    )
+              note.type == ReaderNoteType.memo &&
+              note.paragraphOrder == paragraphOrder,
+        )
         .toList();
     if (notes.isEmpty) return;
-    final anchor = anchorContext.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (anchor == null || overlay == null) return;
-    final topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
-    final position = RelativeRect.fromRect(
-      topLeft & anchor.size,
-      Offset.zero & overlay.size,
-    );
-    final selected = await showMenu<ReadingNote>(
+    final position = _memoPopupPosition(anchorContext);
+    if (position == null) return;
+    // A single memo should be useful with one tap.  Multiple memos retain a
+    // compact list first, then open the selected item at the same anchor.
+    final selected = notes.length == 1
+        ? notes.single
+        : await showMenu<ReadingNote>(
+            context: context,
+            position: position,
+            constraints: const BoxConstraints(maxWidth: 300, maxHeight: 360),
+            items: [
+              for (final note in notes)
+                PopupMenuItem<ReadingNote>(
+                  value: note,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      note.memoContent ?? '메모',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      note.createdAt == null
+                          ? '내 메모'
+                          : '${note.createdAt!.year}.${note.createdAt!.month.toString().padLeft(2, '0')}.${note.createdAt!.day.toString().padLeft(2, '0')}.',
+                    ),
+                  ),
+                ),
+            ],
+          );
+    if (!mounted || selected == null) return;
+    await showMenu<void>(
       context: context,
       position: position,
-      constraints: const BoxConstraints(maxWidth: 300, maxHeight: 360),
+      constraints: const BoxConstraints(maxWidth: 320, maxHeight: 420),
       items: [
-        for (final note in notes)
-          PopupMenuItem<ReadingNote>(
-            value: note,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                note.memoContent ?? '메모',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                note.createdAt == null
-                    ? '내 메모'
-                    : '${note.createdAt!.year}.${note.createdAt!.month.toString().padLeft(2, '0')}.${note.createdAt!.day.toString().padLeft(2, '0')}.',
-              ),
+        PopupMenuItem<void>(
+          enabled: false,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '내 메모',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(selected.memoContent ?? '메모 내용이 없습니다.'),
+              ],
             ),
           ),
+        ),
       ],
     );
-    if (!mounted || selected == null) return;
-    _open(_ParagraphMemos(bookId: widget.bookId, paragraphOrder: paragraphOrder));
   }
 
-
   Future<void> _showSharedParagraphMemos(
-      int paragraphOrder,
-      BuildContext anchorContext,
-      ) async {
+    int paragraphOrder,
+    BuildContext anchorContext,
+  ) async {
     final notes = _sharedMemos
         .where((note) => note.paragraphOrder == paragraphOrder)
         .toList();
     if (!mounted || notes.isEmpty) return;
-    final anchor = anchorContext.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (anchor == null || overlay == null) return;
-    final topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
-    final position = RelativeRect.fromRect(
-      topLeft & anchor.size,
-      Offset.zero & overlay.size,
-    );
-    final selected = await showMenu<SharedRoomNote>(
-      context: context,
-      position: position,
-      constraints: const BoxConstraints(maxWidth: 300, maxHeight: 360),
-      items: [
-        for (final note in notes)
-          PopupMenuItem<SharedRoomNote>(
-            value: note,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(note.nickname),
-              subtitle: Text(
-                note.isSpoilerLocked
-                    ? '내 진행률 이후 내용입니다.'
-                    : (note.content ?? note.selectedText ?? '메모'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: note.createdAt == null
-                  ? null
-                  : Text(
-                '${note.createdAt!.month}/${note.createdAt!.day}',
-                style: const TextStyle(fontSize: 11),
-              ),
-            ),
-          ),
-      ],
-    );
+    final position = _memoPopupPosition(anchorContext);
+    if (position == null) return;
+    final selected = notes.length == 1
+        ? notes.single
+        : await showMenu<SharedRoomNote>(
+            context: context,
+            position: position,
+            constraints: const BoxConstraints(maxWidth: 300, maxHeight: 360),
+            items: [
+              for (final note in notes)
+                PopupMenuItem<SharedRoomNote>(
+                  value: note,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(note.nickname),
+                    subtitle: Text(
+                      note.isSpoilerLocked
+                          ? '내 진행률 이후 내용입니다.'
+                          : (note.content ?? note.selectedText ?? '메모'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: note.createdAt == null
+                        ? null
+                        : Text(
+                            '${note.createdAt!.month}/${note.createdAt!.day}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                  ),
+                ),
+            ],
+          );
     if (!mounted || selected == null) return;
     final detail = selected.isSpoilerLocked
         ? '내 진행률 이후 내용입니다.'
@@ -1222,7 +1165,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(selected.nickname, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  selected.nickname,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 8),
                 Text(detail),
               ],
@@ -1232,8 +1178,19 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       ],
     );
   }
-}
 
+  RelativeRect? _memoPopupPosition(BuildContext anchorContext) {
+    final anchor = anchorContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (anchor == null || overlay == null || !anchor.attached) return null;
+    final topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
+    return RelativeRect.fromRect(
+      topLeft & anchor.size,
+      Offset.zero & overlay.size,
+    );
+  }
+}
 
 class _Slice {
   const _Slice(this.order, this.start, this.text);
@@ -1242,7 +1199,6 @@ class _Slice {
   final String text;
 }
 
-
 class _Page {
   const _Page(this.columns);
   final List<List<_Slice>> columns;
@@ -1250,7 +1206,6 @@ class _Page {
   bool contains(int order) =>
       columns.expand((e) => e).any((s) => s.order == order);
 }
-
 
 Color _highlightColor(String? value) => switch (value ?? 'YELLOW') {
   'PEACH' || '#FFCCBC' => const Color(0x88FFCCBC),
@@ -1261,9 +1216,7 @@ Color _highlightColor(String? value) => switch (value ?? 'YELLOW') {
   _ => const Color(0x88FFF59D),
 };
 
-
 enum _HighlightAction { delete, color, memo }
-
 
 class _ReaderPage extends StatelessWidget {
   const _ReaderPage({
@@ -1287,8 +1240,8 @@ class _ReaderPage extends StatelessWidget {
   final List<ReadingNote> memos;
   final Map<int, int> roomMemoCounts;
   final ValueChanged<_TextSelection> onMemo;
-  final void Function(int paragraphOrder, BuildContext anchorContext) onShowMemos;
-
+  final void Function(int paragraphOrder, BuildContext anchorContext)
+  onShowMemos;
 
   @override
   Widget build(BuildContext context) {
@@ -1309,34 +1262,34 @@ class _ReaderPage extends StatelessWidget {
       children: list
           .map(
             (s) => _SelectableParagraphSlice(
-          slice: s,
-          style: style,
-          highlights: highlights
-              .where((n) => n.paragraphOrder == s.order)
-              .toList(),
-          onHighlight: onHighlight,
-          onHighlightTap: onHighlightTap,
-          memos: memos.where((n) => n.paragraphOrder == s.order).toList(),
-          roomMemoCount: roomMemoCounts[s.order] ?? 0,
-          onMemo: onMemo,
-          onShowMemos: onShowMemos,
-        ),
-      )
+              slice: s,
+              style: style,
+              highlights: highlights
+                  .where((n) => n.paragraphOrder == s.order)
+                  .toList(),
+              onHighlight: onHighlight,
+              onHighlightTap: onHighlightTap,
+              memos: memos.where((n) => n.paragraphOrder == s.order).toList(),
+              roomMemoCount: roomMemoCounts[s.order] ?? 0,
+              onMemo: onMemo,
+              onShowMemos: onShowMemos,
+            ),
+          )
           .toList(),
     );
     final content = twoColumns
         ? Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: textColumn(page.columns[0])),
-        const SizedBox(width: 28),
-        Expanded(
-          child: page.columns.length > 1
-              ? textColumn(page.columns[1])
-              : const SizedBox(),
-        ),
-      ],
-    )
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: textColumn(page.columns[0])),
+              const SizedBox(width: 28),
+              Expanded(
+                child: page.columns.length > 1
+                    ? textColumn(page.columns[1])
+                    : const SizedBox(),
+              ),
+            ],
+          )
         : textColumn(page.columns.first);
     // The page calculation normally fits this content exactly.  A vertically
     // bounded scroll view is a safety net for font fallback/accessibility line
@@ -1360,20 +1313,18 @@ class _ReaderPage extends StatelessWidget {
   }
 }
 
-
 class _TextSelection {
   const _TextSelection(
-      this.paragraphOrder,
-      this.start,
-      this.end,
-      this.selectedText,
-      );
+    this.paragraphOrder,
+    this.start,
+    this.end,
+    this.selectedText,
+  );
   final int paragraphOrder;
   final int start;
   final int end;
   final String selectedText;
 }
-
 
 class _SelectableParagraphSlice extends StatefulWidget {
   const _SelectableParagraphSlice({
@@ -1395,18 +1346,16 @@ class _SelectableParagraphSlice extends StatefulWidget {
   final List<ReadingNote> memos;
   final int roomMemoCount;
   final ValueChanged<_TextSelection> onMemo;
-  final void Function(int paragraphOrder, BuildContext anchorContext) onShowMemos;
-
+  final void Function(int paragraphOrder, BuildContext anchorContext)
+  onShowMemos;
 
   @override
   State<_SelectableParagraphSlice> createState() =>
       _SelectableParagraphSliceState();
 }
 
-
 class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
   final Map<int, TapGestureRecognizer> _highlightRecognizers = {};
-
 
   TapGestureRecognizer _recognizerFor(ReadingNote note) {
     final recognizer = _highlightRecognizers.putIfAbsent(
@@ -1417,7 +1366,6 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
     return recognizer;
   }
 
-
   @override
   void dispose() {
     for (final recognizer in _highlightRecognizers.values) {
@@ -1425,7 +1373,6 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
     }
     super.dispose();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1456,8 +1403,8 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
       // The server normalizes new writes so they do not overlap.  For legacy
       // overlapping rows, use the newest write too, rather than list order.
       final covered = highlights.where(
-            (n) =>
-        n.startOffset != null &&
+        (n) =>
+            n.startOffset != null &&
             n.endOffset != null &&
             n.startOffset! <= slice.start + from &&
             n.endOffset! >= slice.start + to,
@@ -1490,8 +1437,8 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
           style: highlight == null
               ? style
               : style.copyWith(
-            backgroundColor: _highlightColor(highlight.highlightColor),
-          ),
+                  backgroundColor: _highlightColor(highlight.highlightColor),
+                ),
         ),
       );
     }
@@ -1562,7 +1509,8 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
               top: -2,
               child: _MemoBadge(
                 count: memoCount,
-                onTap: (anchorContext) => onShowMemos(slice.order, anchorContext),
+                onTap: (anchorContext) =>
+                    onShowMemos(slice.order, anchorContext),
               ),
             ),
         ],
@@ -1570,7 +1518,6 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
     );
   }
 }
-
 
 class _MemoBadge extends StatelessWidget {
   const _MemoBadge({required this.count, required this.onTap});
@@ -1623,7 +1570,6 @@ class _MemoBadge extends StatelessWidget {
   );
 }
 
-
 class _ParagraphMemos extends StatelessWidget {
   const _ParagraphMemos({required this.bookId, required this.paragraphOrder});
   final int bookId;
@@ -1635,9 +1581,9 @@ class _ParagraphMemos extends StatelessWidget {
         .readingNotes
         .where(
           (n) =>
-      n.type == ReaderNoteType.memo &&
-          n.paragraphOrder == paragraphOrder,
-    )
+              n.type == ReaderNoteType.memo &&
+              n.paragraphOrder == paragraphOrder,
+        )
         .toList();
     return Container(
       height: MediaQuery.of(context).size.height * .56,
@@ -1660,27 +1606,27 @@ class _ParagraphMemos extends StatelessWidget {
               children: notes
                   .map(
                     (note) => ListTile(
-                  title: Text(note.memoContent ?? '메모'),
-                  subtitle: Text(
-                    note.selectedText?.isNotEmpty == true
-                        ? '“${note.selectedText}”'
-                        : '현재 위치 메모',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _edit(context, note),
+                      title: Text(note.memoContent ?? '메모'),
+                      subtitle: Text(
+                        note.selectedText?.isNotEmpty == true
+                            ? '“${note.selectedText}”'
+                            : '현재 위치 메모',
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _delete(context, note),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () => _edit(context, note),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => _delete(context, note),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              )
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -1688,7 +1634,6 @@ class _ParagraphMemos extends StatelessWidget {
       ),
     );
   }
-
 
   Future<void> _edit(BuildContext context, ReadingNote note) async {
     final vm = context.read<BookViewModel>();
@@ -1701,7 +1646,6 @@ class _ParagraphMemos extends StatelessWidget {
       ),
     );
   }
-
 
   Future<void> _delete(BuildContext context, ReadingNote note) async {
     final confirmed = await showDialog<bool>(
@@ -1726,21 +1670,18 @@ class _ParagraphMemos extends StatelessWidget {
   }
 }
 
-
 /// 창이 뜨는 자리: 가운데(목차·독서노트) / 오른쪽 아래(보기·뷰어 설정)
 enum _SheetPlace { center, corner }
-
 
 class _SheetMode extends InheritedWidget {
   const _SheetMode({required this.place, required super.child});
   final _SheetPlace place;
   static _SheetPlace of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<_SheetMode>()?.place ??
-          _SheetPlace.center;
+      _SheetPlace.center;
   @override
   bool updateShouldNotify(_SheetMode old) => old.place != place;
 }
-
 
 /// 창 틀 — 머리(가운데 제목 + 오른쪽 "닫기") + 내용.
 /// 가운데 창은 높이 고정(목록·탭이 들어감), 오른쪽 아래 창은 내용만큼(최대 화면 60%).
@@ -1816,7 +1757,6 @@ class _Sheet extends StatelessWidget {
   }
 }
 
-
 class _Notes extends StatefulWidget {
   const _Notes({
     required this.bookId,
@@ -1827,26 +1767,21 @@ class _Notes extends StatefulWidget {
     this.roomId,
   });
 
-
   final int? roomId;
   final int bookId;
   final int order;
   final ValueChanged<int> onGo;
 
-
   final List<AiReadingFriend> aiFriends;
   final Map<int, List<AiReadingNote>> aiNotesByFriend;
-
 
   @override
   State<_Notes> createState() => _NotesState();
 }
 
-
 class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 4, vsync: this);
   final Set<int> _deletingIds = <int>{};
-
 
   @override
   void initState() {
@@ -1856,13 +1791,11 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
     });
   }
 
-
   @override
   void dispose() {
     _tabs.dispose();
     super.dispose();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1936,10 +1869,8 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     chapters: vm.readerChapters,
                     myNickname: context.read<RidiStore>().nickname,
 
-
                     aiFriends: widget.aiFriends,
                     aiNotesByFriend: widget.aiNotesByFriend,
-
 
                     onGo: (order) {
                       Navigator.of(context).pop();
@@ -1950,16 +1881,16 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                   );
                 }
                 final notes =
-                (filters[index] == null
-                    ? vm.readingNotes
-                    : vm.readingNotes
-                    .where((note) => note.type == filters[index])
-                    .toList())
-                  ..sort(
+                    (filters[index] == null
+                          ? vm.readingNotes
+                          : vm.readingNotes
+                                .where((note) => note.type == filters[index])
+                                .toList())
+                      ..sort(
                         (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-                      a.createdAt ?? DateTime(0),
-                    ),
-                  );
+                          a.createdAt ?? DateTime(0),
+                        ),
+                      );
                 if (notes.isEmpty)
                   return Center(
                     child: Text(
@@ -1974,7 +1905,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                 return ListView.separated(
                   itemCount: notes.length,
                   separatorBuilder: (_, _) =>
-                  const Divider(height: 1, color: Color(0xFFEDEDED)),
+                      const Divider(height: 1, color: Color(0xFFEDEDED)),
                   itemBuilder: (_, i) {
                     final note = notes[i];
                     final busy = _deletingIds.contains(note.id);
@@ -1989,11 +1920,11 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     };
                     final head = note.selectedText?.isNotEmpty == true
                         ? (note.type == ReaderNoteType.memo
-                        ? '“${note.selectedText}”'
-                        : note.selectedText!)
+                              ? '“${note.selectedText}”'
+                              : note.selectedText!)
                         : (note.type == ReaderNoteType.memo
-                        ? '현재 위치 메모'
-                        : note.preview);
+                              ? '현재 위치 메모'
+                              : note.preview);
                     return InkWell(
                       onTap: () {
                         Navigator.of(context).pop();
@@ -2053,17 +1984,17 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                               onPressed: busy ? null : () => _delete(note),
                               icon: busy
                                   ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
                                   : const Icon(
-                                Icons.delete_outline,
-                                size: 20,
-                                color: Color(0xFF8A8A8A),
-                              ),
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: Color(0xFF8A8A8A),
+                                    ),
                             ),
                           ],
                         ),
@@ -2079,7 +2010,6 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
       ),
     );
   }
-
 
   Future<void> _delete(ReadingNote note) async {
     final confirmed = await showDialog<bool>(
@@ -2114,7 +2044,6 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
     }
   }
 
-
   Future<void> _edit(ReadingNote note) async {
     final viewModel = context.read<BookViewModel>();
     await showDialog<bool>(
@@ -2129,7 +2058,6 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
   }
 }
 
-
 class _MemoEditorDialog extends StatefulWidget {
   const _MemoEditorDialog({
     required this.onSave,
@@ -2140,17 +2068,14 @@ class _MemoEditorDialog extends StatefulWidget {
   final String? selectedText;
   final String initialMemo;
 
-
   @override
   State<_MemoEditorDialog> createState() => _MemoEditorDialogState();
 }
-
 
 class _MemoEditorDialogState extends State<_MemoEditorDialog> {
   late final TextEditingController _controller;
   bool _saving = false;
   String? _error;
-
 
   @override
   void initState() {
@@ -2158,13 +2083,11 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
     _controller = TextEditingController(text: widget.initialMemo);
   }
 
-
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-
 
   Future<void> _save() async {
     final memo = _controller.text.trim();
@@ -2195,7 +2118,6 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
         });
     }
   }
-
 
   /// 리디 메모 창처럼: 머리 = 닫기 · 메모(글자 수/1500) · 저장, 고른 문장, 넓은 입력 칸, 아래 날짜
   @override
@@ -2255,20 +2177,20 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
                     right: 8,
                     child: _saving
                         ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
                         : TextButton(
-                      onPressed: _save,
-                      child: const Text(
-                        '저장',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
+                            onPressed: _save,
+                            child: const Text(
+                              '저장',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -2354,7 +2276,6 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
   }
 }
 
-
 /// 보기 설정 (사용자 첨부 이미지 = 리디 보기 설정에서 고른 것만):
 /// 바탕색 동그라미 · 글자 크기 [−][+] · 행간 [−][+] · AI 친구 설정 › · 스포일러 켜기/끄기.
 /// (밝기·글꼴·문단 간격·문단 너비·문단 정렬·형광펜 색상은 뺌)
@@ -2367,34 +2288,26 @@ class _ViewSettings extends StatefulWidget {
     required this.onAiFriendDone,
   });
 
-
   final ValueChanged<ReaderSettings> onChange;
-
 
   // 서버에서 받아온 AI 친구 목록
   final List<AiReadingFriend> aiFriends;
 
-
   // 현재 실제로 적용되어 있는 AI 친구들
   final Set<int> selectedAiFriendIds;
 
-
   // AI 친구 화면에서 "완료"를 눌렀을 때 호출
   final Future<void> Function(Set<int> selectedIds) onAiFriendDone;
-
 
   @override
   State<_ViewSettings> createState() => _ViewSettingsState();
 }
 
-
 class _ViewSettingsState extends State<_ViewSettings> {
   final _viewSettingsKey = GlobalKey();
   Size? _viewSettingsSize;
 
-
   final _aiScrollController = ScrollController();
-
 
   static const _themes = [
     (ReaderPaperTheme.light, Color(0xFFFFFFFF), '기본'),
@@ -2402,31 +2315,22 @@ class _ViewSettingsState extends State<_ViewSettings> {
     (ReaderPaperTheme.dark, Color(0xFF2B2B2B), '어둡게'),
   ];
 
-
   static const _lineLabels = ['좁게', '보통', '넓게'];
 
-
   static final _spoiler = ValueNotifier<bool>(false);
-
 
   bool _showAiFriends = false;
   bool _savingAiFriends = false;
 
-
   late Set<int> _draftSelectedIds;
-
 
   @override
   void initState() {
     super.initState();
 
-
     // 아직 완료를 누르지 않은 임시 선택 상태
-    _draftSelectedIds = <int>{
-      ...widget.selectedAiFriendIds,
-    };
+    _draftSelectedIds = <int>{...widget.selectedAiFriendIds};
   }
-
 
   @override
   void dispose() {
@@ -2434,28 +2338,19 @@ class _ViewSettingsState extends State<_ViewSettings> {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     if (_showAiFriends) {
       return _buildAiFriendSettings(context);
     }
 
-
-    return SizedBox(
-      key: _viewSettingsKey,
-      child: _buildViewSettings(context),
-    );
+    return SizedBox(key: _viewSettingsKey, child: _buildViewSettings(context));
   }
-
 
   Widget _buildViewSettings(BuildContext context) {
     final s = context.watch<BookViewModel>().readerSettings;
 
-
-    final fontLevel =
-        ((s.fontScale - .8) / .1).round() + 1;
-
+    final fontLevel = ((s.fontScale - .8) / .1).round() + 1;
 
     const divider = Divider(
       height: 1,
@@ -2463,7 +2358,6 @@ class _ViewSettingsState extends State<_ViewSettings> {
       endIndent: 20,
       color: Color(0xFFEDEDED),
     );
-
 
     return _Sheet(
       title: '보기 설정',
@@ -2473,8 +2367,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding:
-              const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               child: Row(
                 children: [
                   const Icon(
@@ -2484,7 +2377,6 @@ class _ViewSettingsState extends State<_ViewSettings> {
                   ),
                   const SizedBox(width: 14),
 
-
                   for (final t in _themes) ...[
                     Tooltip(
                       message: t.$3,
@@ -2492,9 +2384,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                         customBorder: const CircleBorder(),
                         onTap: s.theme == t.$1
                             ? null
-                            : () => widget.onChange(
-                          s.copyWith(theme: t.$1),
-                        ),
+                            : () => widget.onChange(s.copyWith(theme: t.$1)),
                         child: Container(
                           width: 34,
                           height: 34,
@@ -2505,8 +2395,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                               color: s.theme == t.$1
                                   ? const Color(0xFF1E88E5)
                                   : const Color(0xFFD0D0D0),
-                              width:
-                              s.theme == t.$1 ? 2.5 : 1,
+                              width: s.theme == t.$1 ? 2.5 : 1,
                             ),
                           ),
                         ),
@@ -2518,9 +2407,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
               ),
             ),
 
-
             divider,
-
 
             Semantics(
               label: '형광펜 보기',
@@ -2548,9 +2435,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
               ),
             ),
 
-
             divider,
-
 
             _StepRow(
               icon: Icons.format_size,
@@ -2559,78 +2444,56 @@ class _ViewSettingsState extends State<_ViewSettings> {
               onMinus: s.fontScale <= .8 + 1e-6
                   ? null
                   : () => widget.onChange(
-                s.copyWith(
-                  fontScale:
-                  ((s.fontScale - .1) * 10)
-                      .round() /
-                      10,
-                ),
-              ),
+                      s.copyWith(
+                        fontScale: ((s.fontScale - .1) * 10).round() / 10,
+                      ),
+                    ),
               onPlus: s.fontScale >= 1.4 - 1e-6
                   ? null
                   : () => widget.onChange(
-                s.copyWith(
-                  fontScale:
-                  ((s.fontScale + .1) * 10)
-                      .round() /
-                      10,
-                ),
-              ),
+                      s.copyWith(
+                        fontScale: ((s.fontScale + .1) * 10).round() / 10,
+                      ),
+                    ),
             ),
 
-
             divider,
-
 
             _StepRow(
               icon: Icons.format_line_spacing,
               label: '행간',
-              value: _lineLabels[
-              s.lineHeightStep.clamp(0, 2)],
+              value: _lineLabels[s.lineHeightStep.clamp(0, 2)],
               onMinus: s.lineHeightStep <= 0
                   ? null
                   : () => widget.onChange(
-                s.copyWith(
-                  lineHeightStep:
-                  s.lineHeightStep - 1,
-                ),
-              ),
+                      s.copyWith(lineHeightStep: s.lineHeightStep - 1),
+                    ),
               onPlus: s.lineHeightStep >= 2
                   ? null
                   : () => widget.onChange(
-                s.copyWith(
-                  lineHeightStep:
-                  s.lineHeightStep + 1,
-                ),
-              ),
+                      s.copyWith(lineHeightStep: s.lineHeightStep + 1),
+                    ),
             ),
 
-
             divider,
-
 
             // AI 친구 설정
             InkWell(
               onTap: () {
-                final renderBox = _viewSettingsKey.currentContext!
-                    .findRenderObject() as RenderBox;
-
+                final renderBox =
+                    _viewSettingsKey.currentContext!.findRenderObject()
+                        as RenderBox;
 
                 setState(() {
                   _viewSettingsSize = renderBox.size;
 
-
-                  _draftSelectedIds = <int>{
-                    ...widget.selectedAiFriendIds,
-                  };
-
+                  _draftSelectedIds = <int>{...widget.selectedAiFriendIds};
 
                   _showAiFriends = true;
                 });
               },
               child: const Padding(
-                padding:
-                EdgeInsets.fromLTRB(20, 14, 16, 14),
+                padding: EdgeInsets.fromLTRB(20, 14, 16, 14),
                 child: Row(
                   children: [
                     Icon(
@@ -2639,29 +2502,20 @@ class _ViewSettingsState extends State<_ViewSettings> {
                       color: Color(0xFF9E9E9E),
                     ),
                     SizedBox(width: 10),
-                    Text(
-                      'AI 친구 설정',
-                      style: TextStyle(fontSize: 15),
-                    ),
+                    Text('AI 친구 설정', style: TextStyle(fontSize: 15)),
                     Spacer(),
-                    Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFFB0B0B0),
-                    ),
+                    Icon(Icons.chevron_right, color: Color(0xFFB0B0B0)),
                   ],
                 ),
               ),
             ),
 
-
             divider,
-
 
             ValueListenableBuilder<bool>(
               valueListenable: _spoiler,
               builder: (_, on, _) => Padding(
-                padding:
-                const EdgeInsets.fromLTRB(20, 6, 12, 6),
+                padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
                 child: Row(
                   children: [
                     const Icon(
@@ -2670,16 +2524,9 @@ class _ViewSettingsState extends State<_ViewSettings> {
                       color: Color(0xFF9E9E9E),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      '스포일러',
-                      style: TextStyle(fontSize: 15),
-                    ),
+                    const Text('스포일러', style: TextStyle(fontSize: 15)),
                     const Spacer(),
-                    Switch(
-                      value: on,
-                      onChanged: (v) =>
-                      _spoiler.value = v,
-                    ),
+                    Switch(value: on, onChanged: (v) => _spoiler.value = v),
                   ],
                 ),
               ),
@@ -2689,7 +2536,6 @@ class _ViewSettingsState extends State<_ViewSettings> {
       ),
     );
   }
-
 
   Widget _buildAiFriendSettings(BuildContext context) {
     return Container(
@@ -2722,10 +2568,10 @@ class _ViewSettingsState extends State<_ViewSettings> {
                     onPressed: _savingAiFriends
                         ? null
                         : () {
-                      setState(() {
-                        _showAiFriends = false;
-                      });
-                    },
+                            setState(() {
+                              _showAiFriends = false;
+                            });
+                          },
                     icon: const Icon(
                       Icons.chevron_left,
                       size: 28,
@@ -2733,7 +2579,6 @@ class _ViewSettingsState extends State<_ViewSettings> {
                     ),
                   ),
                 ),
-
 
                 // 가운데 제목
                 const Expanded(
@@ -2748,53 +2593,41 @@ class _ViewSettingsState extends State<_ViewSettings> {
                   ),
                 ),
 
-
                 // 완료
                 SizedBox(
                   width: 64,
                   child: TextButton(
-                    onPressed:
-                    _savingAiFriends ? null : _completeAiFriends,
+                    onPressed: _savingAiFriends ? null : _completeAiFriends,
                     child: _savingAiFriends
                         ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
-                    )
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text(
-                      '완료',
-                      style: TextStyle(
-                        color: Color(0xFF1E88E5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                            '완료',
+                            style: TextStyle(
+                              color: Color(0xFF1E88E5),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ],
             ),
           ),
 
-
           const Divider(height: 1),
-
 
           if (widget.aiFriends.isEmpty)
             const Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    vertical: 32,
-                    horizontal: 20,
-                  ),
+                  padding: EdgeInsets.symmetric(vertical: 32, horizontal: 20),
                   child: Text(
                     '사용할 수 있는 AI 친구가 없습니다.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF8A8A8A),
-                    ),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF8A8A8A)),
                   ),
                 ),
               ),
@@ -2810,52 +2643,37 @@ class _ViewSettingsState extends State<_ViewSettings> {
                   controller: _aiScrollController,
                   padding: EdgeInsets.zero,
                   itemCount: widget.aiFriends.length,
-                  separatorBuilder: (_, _) =>
-                  const Divider(
+                  separatorBuilder: (_, _) => const Divider(
                     height: 1,
                     indent: 20,
                     endIndent: 20,
                     color: Color(0xFFEDEDED),
                   ),
                   itemBuilder: (_, index) {
-                    final friend =
-                    widget.aiFriends[index];
+                    final friend = widget.aiFriends[index];
 
-
-                    final selected =
-                    _draftSelectedIds
-                        .contains(friend.id);
-
+                    final selected = _draftSelectedIds.contains(friend.id);
 
                     return InkWell(
                       onTap: _savingAiFriends
                           ? null
                           : () {
-                        setState(() {
-                          if (selected) {
-                            _draftSelectedIds
-                                .remove(friend.id);
-                          } else {
-                            _draftSelectedIds
-                                .add(friend.id);
-                          }
-                        });
-                      },
+                              setState(() {
+                                if (selected) {
+                                  _draftSelectedIds.remove(friend.id);
+                                } else {
+                                  _draftSelectedIds.add(friend.id);
+                                }
+                              });
+                            },
                       child: Padding(
-                        padding:
-                        const EdgeInsets.fromLTRB(
-                          20,
-                          14,
-                          18,
-                          14,
-                        ),
+                        padding: const EdgeInsets.fromLTRB(20, 14, 18, 14),
                         child: Row(
                           children: [
                             Container(
                               width: 36,
                               height: 36,
-                              decoration:
-                              const BoxDecoration(
+                              decoration: const BoxDecoration(
                                 color: Color(0xFFF2F3F7),
                                 shape: BoxShape.circle,
                               ),
@@ -2866,21 +2684,17 @@ class _ViewSettingsState extends State<_ViewSettings> {
                               ),
                             ),
 
-
                             const SizedBox(width: 12),
-
 
                             Expanded(
                               child: Text(
                                 friend.name,
                                 style: const TextStyle(
                                   fontSize: 15,
-                                  fontWeight:
-                                  FontWeight.w500,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
-
 
                             // 선택된 친구만 체크 표시.
                             // > 화살표는 없음.
@@ -2888,8 +2702,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                               const Icon(
                                 Icons.check,
                                 size: 23,
-                                color:
-                                Color(0xFF1E88E5),
+                                color: Color(0xFF1E88E5),
                               ),
                           ],
                         ),
@@ -2897,26 +2710,22 @@ class _ViewSettingsState extends State<_ViewSettings> {
                     );
                   },
                 ), // ListView.separated 끝
-              ),   // Scrollbar 끝
-            ),     // Expanded 끝
+              ), // Scrollbar 끝
+            ), // Expanded 끝
         ],
       ),
     );
   }
-
 
   Future<void> _completeAiFriends() async {
     setState(() {
       _savingAiFriends = true;
     });
 
-
     try {
       // 여기서만 부모에게 최종 선택을 전달한다.
       // 친구를 누르는 것만으로는 Gemini가 실행되지 않는다.
-      await widget.onAiFriendDone(
-        Set<int>.from(_draftSelectedIds),
-      );
+      await widget.onAiFriendDone(Set<int>.from(_draftSelectedIds));
     } finally {
       if (mounted) {
         setState(() {
@@ -2926,6 +2735,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
     }
   }
 }
+
 /// 보기 설정 한 줄: 아이콘 · 이름 · 값 · [−] [+]
 class _StepRow extends StatelessWidget {
   const _StepRow({
@@ -2940,7 +2750,6 @@ class _StepRow extends StatelessWidget {
   final String value;
   final VoidCallback? onMinus;
   final VoidCallback? onPlus;
-
 
   Widget _btn(IconData i, VoidCallback? f) => InkWell(
     onTap: f,
@@ -2962,7 +2771,6 @@ class _StepRow extends StatelessWidget {
       ),
     ),
   );
-
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -2986,13 +2794,11 @@ class _StepRow extends StatelessWidget {
   );
 }
 
-
 /// 뷰어 설정 — 두 항목만 (사용자 첨부 이미지): 2단으로 보기 · 읽는 동안 화면 켜 두기.
 /// 창은 오른쪽 아래(메뉴 바로 위)에 뜬다.
 class _ViewerSettings extends StatelessWidget {
   const _ViewerSettings({required this.onChange});
   final ValueChanged<ReaderSettings> onChange;
-
 
   @override
   Widget build(BuildContext context) {
@@ -3025,13 +2831,11 @@ class _ViewerSettings extends StatelessWidget {
   }
 }
 
-
 class _Line extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       const Divider(height: 1, indent: 20, color: Color(0xFFEDEDED));
 }
-
 
 /// 뷰어 설정 — 켜기/끄기 줄 (제목 · 아래 작은 회색 설명)
 class _ToggleRow extends StatelessWidget {
@@ -3074,7 +2878,6 @@ class _ToggleRow extends StatelessWidget {
   );
 }
 
-
 // ---------------- 독서노트 › 메모 탭 ----------------
 /// 메모 탭 (첨부 이미지): 위 = 사람별 거르기 칩(전체 · 나 · 멤버…), 장 제목, 메모 카드
 /// (머리글자 · 이름 · 나 · 언제 · 형광펜 색 점 / 고른 문장 / 메모 / 댓글 N · 이 문장으로 ›).
@@ -3092,26 +2895,21 @@ class _MemoTab extends StatefulWidget {
     required this.onDelete,
   });
 
-
   final int? roomId;
   final List<ReadingNote> myMemos;
   final List<ReaderChapter> chapters;
   final String myNickname;
 
-
   final List<AiReadingFriend> aiFriends;
   final Map<int, List<AiReadingNote>> aiNotesByFriend;
-
 
   final ValueChanged<int> onGo;
   final Future<void> Function(ReadingNote) onEdit;
   final Future<void> Function(ReadingNote) onDelete;
 
-
   @override
   State<_MemoTab> createState() => _MemoTabState();
 }
-
 
 class _MemoItem {
   _MemoItem({
@@ -3138,18 +2936,15 @@ class _MemoItem {
   final bool locked;
 }
 
-
 class _MemoTabState extends State<_MemoTab> {
   Future<List<SharedRoomNote>>? _room;
   String _who = '전체';
-
 
   @override
   void initState() {
     super.initState();
     _load();
   }
-
 
   void _load() {
     final roomId = widget.roomId;
@@ -3159,10 +2954,8 @@ class _MemoTabState extends State<_MemoTab> {
         .sharedNotes(roomId);
   }
 
-
   List<_MemoItem> _items(List<SharedRoomNote>? shared) {
     final items = <_MemoItem>[];
-
 
     // 혼자 읽는 경우: 내 메모
     if (shared == null) {
@@ -3200,16 +2993,13 @@ class _MemoTabState extends State<_MemoTab> {
       }
     }
 
-
     // 선택된 AI 친구들의 메모
     for (final friend in widget.aiFriends) {
       final notes = widget.aiNotesByFriend[friend.id];
 
-
       if (notes == null || notes.isEmpty) {
         continue;
       }
-
 
       for (final note in notes) {
         items.add(
@@ -3225,20 +3015,17 @@ class _MemoTabState extends State<_MemoTab> {
       }
     }
 
-
     return items;
   }
 
-
   String _chapterOf(int order) {
     final i = widget.chapters.lastIndexWhere(
-          (c) => c.startParagraphOrder <= order,
+      (c) => c.startParagraphOrder <= order,
     );
     if (i < 0) return '';
     final c = widget.chapters[i];
     return c.title.trim().isEmpty ? '${c.number}장' : c.title;
   }
-
 
   static String _ago(DateTime? t) {
     if (t == null) return '';
@@ -3249,12 +3036,10 @@ class _MemoTabState extends State<_MemoTab> {
     return '${d.inDays}일 전';
   }
 
-
   static Color _dot(String? hex) {
     final v = int.tryParse((hex ?? '').replaceFirst('#', ''), radix: 16);
     return v == null ? const Color(0xFFF2C94C) : Color(0xFF000000 | v);
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -3278,7 +3063,6 @@ class _MemoTabState extends State<_MemoTab> {
     );
   }
 
-
   Widget _body(List<_MemoItem> all) {
     final others = <String>{
       for (final m in all)
@@ -3286,12 +3070,12 @@ class _MemoTabState extends State<_MemoTab> {
     }.toList()..sort();
     final chips = ['전체', '나', ...others];
     final shown =
-    all
-        .where(
-          (m) => _who == '전체' || (_who == '나' ? m.mine : m.author == _who),
-    )
-        .toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
+        all
+            .where(
+              (m) => _who == '전체' || (_who == '나' ? m.mine : m.author == _who),
+            )
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
     final rows = <Widget>[];
     String? lastChapter;
     for (final m in shown) {
@@ -3354,14 +3138,13 @@ class _MemoTabState extends State<_MemoTab> {
           child: shown.isEmpty
               ? Center(child: Text(empty))
               : ListView(
-            padding: const EdgeInsets.only(bottom: 12),
-            children: rows,
-          ),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  children: rows,
+                ),
         ),
       ],
     );
   }
-
 
   Widget _card(_MemoItem m) {
     const gray = Color(0xFF9E9E9E);
@@ -3515,7 +3298,6 @@ class _MemoTabState extends State<_MemoTab> {
     );
   }
 
-
   Future<void> _openComments(SharedRoomNote note) async {
     final token = context.read<RidiStore>().accessToken;
     await showSharedNoteComments(
@@ -3527,4 +3309,3 @@ class _MemoTabState extends State<_MemoTab> {
     if (mounted) setState(_load);
   }
 }
-

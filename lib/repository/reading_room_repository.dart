@@ -4,6 +4,37 @@ import '../core/api_client.dart';
 import '../model/reading_room.dart';
 import '../model/shared_room_note.dart';
 
+class RoomParticipantProgress {
+  const RoomParticipantProgress({
+    required this.userId,
+    required this.nickname,
+    this.profileImageUrl,
+    required this.progressPercent,
+    required this.lastReadPosition,
+    this.updatedAt,
+    required this.currentUser,
+  });
+  final int userId;
+  final String nickname;
+  final String? profileImageUrl;
+  final int progressPercent;
+  final int lastReadPosition;
+  final DateTime? updatedAt;
+  final bool currentUser;
+  factory RoomParticipantProgress.fromJson(Map<String, dynamic> json) =>
+      RoomParticipantProgress(
+        userId: (json['userId'] as num).toInt(),
+        nickname: json['nickname']?.toString() ?? '참여자',
+        profileImageUrl: json['profileImageUrl']?.toString(),
+        progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
+        lastReadPosition: (json['lastReadPosition'] as num?)?.toInt() ?? 0,
+        updatedAt: json['updatedAt'] == null
+            ? null
+            : DateTime.tryParse(json['updatedAt'].toString()),
+        currentUser: json['currentUser'] == true,
+      );
+}
+
 class InviteCodeValidation {
   const InviteCodeValidation({
     required this.roomId,
@@ -238,6 +269,22 @@ class ReadingRoomRepository {
     );
     return response.data!;
   }
+
+  Future<List<RoomParticipantProgress>> participantProgress(
+    int roomId,
+    int bookId,
+  ) async =>
+      (await _api.get<List<RoomParticipantProgress>>(
+        '/api/reading-rooms/$roomId/books/$bookId/progress/participants',
+        parse: (json) => (json as List)
+            .map(
+              (value) => RoomParticipantProgress.fromJson(
+                Map<String, dynamic>.from(value as Map),
+              ),
+            )
+            .toList(),
+      )).data ??
+      const [];
 
   Future<void> kick(int roomId, int memberId) =>
       _api.delete('/api/reading-rooms/$roomId/members/$memberId');

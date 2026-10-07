@@ -1991,22 +1991,33 @@ class _RoomBookCard extends StatefulWidget {
 }
 
 class _RoomBookCardState extends State<_RoomBookCard> {
-  late final Future<ReadingProgress?> _progress;
+  late Future<List<RoomParticipantProgress>> _participants;
 
   @override
   void initState() {
     super.initState();
+    _loadParticipants();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RoomBookCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.room.id != widget.room.id ||
+        oldWidget.room.bookId != widget.room.bookId) {
+      _loadParticipants();
+    }
+  }
+
+  void _loadParticipants() {
     final token = context.read<RidiStore>().accessToken;
-    _progress = BookRepository(ApiClient(tokenProvider: () => token))
-        .readingProgress(widget.room.bookId!)
-        .then<ReadingProgress?>((p) => p)
-        .catchError((Object _) => null);
+    _participants = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+        .participantProgress(widget.room.id, widget.room.bookId!)
+        .catchError((Object _) => <RoomParticipantProgress>[]);
   }
 
   @override
   Widget build(BuildContext context) {
     final b = widget.room.book;
-    final me = context.read<RidiStore>().nickname;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -2019,10 +2030,15 @@ class _RoomBookCardState extends State<_RoomBookCard> {
           BookCover(url: b?.coverImageUrl, width: 84, height: 122),
           const SizedBox(width: 16),
           Expanded(
-            child: FutureBuilder<ReadingProgress?>(
-              future: _progress,
+            child: FutureBuilder<List<RoomParticipantProgress>>(
+              future: _participants,
               builder: (context, snap) {
-                final pct = (snap.data?.progressPercent ?? 0).clamp(0, 100);
+                final participants =
+                    snap.data ?? const <RoomParticipantProgress>[];
+                final mine = participants
+                    .where((item) => item.currentUser)
+                    .firstOrNull;
+                final pct = (mine?.progressPercent ?? 0).clamp(0, 100);
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2072,6 +2088,38 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    if (participants.isEmpty)
+                      const Text(
+                        '아직 읽기 진행이 기록된 참여자가 없어요.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A8A8A),
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          for (final participant in participants)
+                            Chip(
+                              avatar:
+                                  participant.profileImageUrl?.isNotEmpty ==
+                                      true
+                                  ? CircleAvatar(
+                                      backgroundImage: NetworkImage(
+                                        participant.profileImageUrl!,
+                                      ),
+                                    )
+                                  : null,
+                              label: Text(
+                                '${participant.nickname} ${participant.progressPercent}%',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
                     LayoutBuilder(
                       builder: (context, c) {
                         final x = (c.maxWidth - 24) * pct / 100;
@@ -2114,7 +2162,9 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                                         borderRadius: BorderRadius.circular(9),
                                       ),
                                       child: Text(
-                                        me.isEmpty ? '나' : me.characters.first,
+                                        (mine?.nickname.isEmpty ?? true)
+                                            ? '나'
+                                            : mine!.nickname.characters.first,
                                         style: const TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w700,
