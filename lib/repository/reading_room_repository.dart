@@ -218,6 +218,16 @@ class ReadingRoomRepository {
   Future<void> deleteSharedNote(int roomId, int noteId) =>
       _api.delete('/api/reading-rooms/$roomId/shared-notes/$noteId');
 
+  Future<SharedRoomNote> updateSharedNote(
+    int roomId,
+    int noteId,
+    Map<String, dynamic> body,
+  ) async => (await _api.patch<SharedRoomNote>(
+    '/api/reading-rooms/$roomId/shared-notes/$noteId',
+    body: body,
+    parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
   Future<List<SharedRoomNoteComment>> sharedNoteComments(
     int roomId,
     int noteId,
@@ -267,6 +277,15 @@ class ReadingRoomRepository {
     );
     return response.data!;
   }
+
+  /// This intentionally has its own endpoint so the active reader can change
+  /// only the room spoiler policy without resubmitting stale room metadata.
+  Future<ReadingRoom> updateSpoilerLock(int roomId, bool enabled) async =>
+      (await _api.patch<ReadingRoom>(
+        '/api/reading-rooms/$roomId/spoiler-lock',
+        body: {'enabled': enabled},
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
 
   Future<ReadingRoom> reissueCode(int roomId) async {
     final response = await _api.post<ReadingRoom>(

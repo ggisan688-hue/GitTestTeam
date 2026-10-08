@@ -57,6 +57,7 @@ class RoomMember {
   @Column(nullable = false) String role;
   @Column(name = "room_nickname") String roomNickname;
   @Column(name = "room_profile_image_url", length = 500) String roomProfileImageUrl;
+  @Column(name = "spoiler_lock_enabled", nullable = false) boolean spoilerLockEnabled;
   @Column(name = "joined_at") Instant joinedAt;
   @PrePersist void joined() { if (joinedAt == null) joinedAt = Instant.now(); }
 }
@@ -149,6 +150,7 @@ record RoomBookResponse(Long id, String title, String author, String coverImageU
 record RoomBookItemResponse(RoomBookResponse book, int order, boolean current) {}
 record RoomPasswordRequest(@Size(min = 4, max = 72) String password) {}
 record RoomNicknameRequest(@NotBlank @Size(max = 40) String roomNickname) {}
+record RoomSpoilerLockRequest(boolean enabled) {}
 record RoomBookOrderRequest(@NotNull @Min(0) Integer order) {}
 record RoomProgressRequest(@Min(0) @Max(100) Integer progressPercent, @Min(0) Integer lastReadPosition) {}
 record RoomProgressResponse(Long roomId, Long userId, Long bookId, int progressPercent, int lastReadPosition, Instant updatedAt) {}
@@ -284,6 +286,7 @@ class RoomService {
     owner.userId = current.id;
     owner.role = "OWNER";
     owner.roomNickname = java.util.Optional.ofNullable(trimToNull(request.roomNickname())).orElse(current.nickname);
+    owner.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(owner);
     RoomResponse result = response(room, current);
     log.info("reading-room created roomId={} hostUserId={} bookIds={} public={}", room.id, current.id, selectedBookIds, room.isPublic);
@@ -299,6 +302,17 @@ class RoomService {
       throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_REQUIRED", "현재 도서는 방에 추가된 도서여야 합니다.");
     apply(room, request, (int) members.countByRoomId(room.id));
     return response(rooms.save(room), current);
+  }
+
+  @org.springframework.transaction.annotation.Transactional
+  RoomResponse updateSpoilerLock(String username, Long roomId, RoomSpoilerLockRequest request) {
+    AppUser current = userFeatures.me(username);
+    ReadingRoom room = room(roomId);
+    RoomMember member = members.findByRoomIdAndUserId(roomId, current.id)
+        .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "Join this room first."));
+    member.spoilerLockEnabled = request.enabled();
+    members.save(member);
+    return response(room, current);
   }
 
   @org.springframework.transaction.annotation.Transactional
@@ -608,7 +622,11 @@ class RoomService {
     room.bookId = request.bookId();
     room.maxMembers = maximum;
     room.isPublic = !Boolean.FALSE.equals(request.isPublic());
-    room.spoilerLockEnabled = Boolean.TRUE.equals(request.spoilerLockEnabled());
+    // The legacy room-level value is only a default for newly joined members.
+    // Do not overwrite it during partial room edits that omit this field.
+    if (room.id == null || request.spoilerLockEnabled() != null) {
+      room.spoilerLockEnabled = Boolean.TRUE.equals(request.spoilerLockEnabled());
+    }
     room.selectedAiFriendType = trimToNull(request.selectedAiFriendType());
     // Public rooms remain joinable from the directory, but also receive the
     // same private invite-code mechanism for direct invitations.
@@ -643,7 +661,7 @@ class RoomService {
     return new RoomResponse(room.id, room.name, room.description, room.bookId,
         participants.size(), room.maxMembers, room.isPublic, ownerId,
         ownerUser.nickname, room.createdAt, joined, owner,
-        owner ? room.joinCode : null, room.spoilerLockEnabled, room.selectedAiFriendType, participants,
+        owner ? room.joinCode : null, currentMember != null && currentMember.spoilerLockEnabled, room.selectedAiFriendType, participants,
         book, coverBook, ownerUser.nickname, currentMember == null ? null : currentMember.role,
         participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType,
         room.passwordHash != null, room.currentBookId, roomBooks, room.coverImageUrl);
@@ -680,6 +698,7 @@ class RoomService {
     member.userId = user.id;
     member.role = "MEMBER";
     member.roomNickname = trimToNull(roomNickname);
+    member.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(member);
     userFeatures.notify(ownerIdOf(room), "ROOM_JOINED", "새 참여자", user.nickname + "님이 " + room.name + " 방에 참여했습니다.", room.id, user.id);
   }
@@ -736,6 +755,7 @@ class RoomController {
   @GetMapping("/{roomId}") RoomResponse detail(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.detail(authentication.getName(), roomId); }
   @PostMapping @ResponseStatus(HttpStatus.CREATED) RoomResponse create(@Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.create(authentication.getName(), request); }
   @PatchMapping("/{roomId}") RoomResponse update(@PathVariable Long roomId, @Valid @RequestBody RoomRequest request, org.springframework.security.core.Authentication authentication) { return service.update(authentication.getName(), roomId, request); }
+  @PatchMapping("/{roomId}/spoiler-lock") RoomResponse updateSpoilerLock(@PathVariable Long roomId, @RequestBody RoomSpoilerLockRequest request, org.springframework.security.core.Authentication authentication) { return service.updateSpoilerLock(authentication.getName(), roomId, request); }
   @PostMapping("/join") JoinRoomResponse join(@RequestParam String code, @RequestParam(required=false) String password, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), code, null, password); }
   @PostMapping("/invite-codes/validate") InviteCodeValidationResponse validateInviteCode(@Valid @RequestBody InviteCodeValidationRequest request, org.springframework.security.core.Authentication authentication) { return service.validateInviteCode(authentication.getName(), request.inviteCode()); }
   @PostMapping("/join-by-code") JoinRoomResponse joinByCode(@Valid @RequestBody JoinRoomCodeRequest request, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), request.inviteCode(), request.roomNickname(), request.password()); }

@@ -13,6 +13,7 @@ class SharedRoomNote {
     this.highlightColor,
     required this.isSpoilerLocked,
     required this.commentCount,
+    this.mine = false,
     this.createdAt,
   });
   final int id, userId, paragraphOrder, commentCount;
@@ -21,6 +22,7 @@ class SharedRoomNote {
   final int? startOffset, endOffset;
   final String? selectedText, content, highlightColor;
   final bool isSpoilerLocked;
+  final bool mine;
   final DateTime? createdAt;
   factory SharedRoomNote.fromJson(Map<String, dynamic> json) => SharedRoomNote(
     id: (json['id'] as num).toInt(),
@@ -35,6 +37,7 @@ class SharedRoomNote {
     content: json['content'] as String?,
     highlightColor: json['highlightColor'] as String?,
     isSpoilerLocked: json['isSpoilerLocked'] == true,
+    mine: json['mine'] == true,
     commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
     createdAt: json['createdAt'] is String
         ? DateTime.tryParse(json['createdAt'] as String)

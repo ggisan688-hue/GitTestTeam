@@ -2893,6 +2893,22 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
                   ),
                   isThreeLine: true,
                   onTap: note.type == 'MEMO' ? () => _comments(note) : null,
+                  trailing: note.mine
+                      ? PopupMenuButton<_SharedNoteAction>(
+                          onSelected: (action) => _manageNote(note, action),
+                          itemBuilder: (_) => [
+                            if (note.type == 'MEMO')
+                              const PopupMenuItem(
+                                value: _SharedNoteAction.edit,
+                                child: Text('메모 수정'),
+                              ),
+                            const PopupMenuItem(
+                              value: _SharedNoteAction.delete,
+                              child: Text('삭제'),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               );
             },
@@ -2913,7 +2929,59 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
     );
     if (mounted) _reload();
   }
+
+  Future<void> _manageNote(
+    SharedRoomNote note,
+    _SharedNoteAction action,
+  ) async {
+    try {
+      if (action == _SharedNoteAction.delete) {
+        final confirmed = await _confirm(
+          context,
+          '공유 노트 삭제',
+          '이 공유 노트를 삭제할까요?',
+        );
+        if (!confirmed) return;
+        await widget.repository.deleteSharedNote(widget.roomId, note.id);
+      } else {
+        final controller = TextEditingController(text: note.content ?? '');
+        final value = await showDialog<String>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('메모 수정'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 4000,
+              minLines: 2,
+              maxLines: 8,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, controller.text),
+                child: const Text('저장'),
+              ),
+            ],
+          ),
+        );
+        controller.dispose();
+        if (value == null || value.trim().isEmpty) return;
+        await widget.repository.updateSharedNote(widget.roomId, note.id, {
+          'content': value.trim(),
+        });
+      }
+      if (mounted) _reload();
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
 }
+
+enum _SharedNoteAction { edit, delete }
 
 class _SharedNoteComments extends StatefulWidget {
   const _SharedNoteComments({
