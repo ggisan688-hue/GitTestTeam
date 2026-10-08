@@ -110,7 +110,47 @@ class HomeScreen extends StatelessWidget {
                 RecentReadingSection(),
                 SizedBox(height: 24),
               ],
-              const _SectionTitle('전체 도서'),
+              Row(
+                children: [
+                  // 왼쪽: 카테고리 버튼
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final category in ['전체', '한국', '외국', '시'])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: ChoiceChip(
+                                label: Text(category),
+                                selected: category == '전체',
+                                showCheckmark: false,
+                                selectedColor: const Color(0xFF202020),
+                                backgroundColor: const Color(0xFFF2F2F2),
+                                labelStyle: TextStyle(
+                                  color: category == '전체'
+                                      ? Colors.white
+                                      : const Color(0xFF666666),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                side: BorderSide.none,
+                                shape: const StadiumBorder(),
+                                onSelected: (_) {},
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // 오른쪽: 정렬 메뉴
+                  const _SortMenuButton(),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const SizedBox(height: 20),
               catalog,
             ],
           );
@@ -183,7 +223,6 @@ void _addToShelf(BuildContext context, RidiStore store, RidiBook b) {
   store.addToShelf(b.id);
   ridiToast(context, '${b.title} 을 책장에 담았어요');
 }
-
 // ---------------- 읽고 있는 책 ----------------
 /// 가로로 넘기는 카드들 + 끝에 "책 담으러 가기"
 class _ReadingRow extends StatelessWidget {
@@ -1251,6 +1290,118 @@ class _ResultRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SortMenuButton extends StatefulWidget {
+  const _SortMenuButton();
+
+  @override
+  State<_SortMenuButton> createState() => _SortMenuButtonState();
+}
+
+class _SortMenuButtonState extends State<_SortMenuButton> {
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  void _closeMenu() {
+    _overlayEntry?.remove();
+    _overlayEntry?.dispose();
+    _overlayEntry = null;
+  }
+
+  void _toggleMenu() {
+    if (_overlayEntry != null) {
+      _closeMenu();
+      return;
+    }
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _closeMenu,
+            ),
+          ),
+          CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.bottomRight,
+            followerAnchor: Alignment.topRight,
+            offset: const Offset(0, 4),
+            child: Material(
+              color: Colors.white,
+              elevation: 3,
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 80,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _sortItem('최신순'),
+                    _sortItem('이름순'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  Widget _sortItem(String label) {
+    return InkWell(
+      onTap: _closeMenu,
+      child: SizedBox(
+        height: 44,
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _closeMenu();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 20),
+      child: CompositedTransformTarget(
+        link: _layerLink,
+        child: InkWell(
+          onTap: _toggleMenu,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.swap_vert, size: 17),
+                SizedBox(width: 6),
+                Text(
+                  '최신순',
+                  style: TextStyle(fontSize: 14),
+                ),
+                SizedBox(width: 4),
+                Icon(Icons.keyboard_arrow_down, size: 18),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

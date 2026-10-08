@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'ridi_auth.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -26,7 +27,7 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => context.read<BookViewModel>().loadBooks(),
+          (_) => context.read<BookViewModel>().loadBooks(),
     );
   }
 
@@ -60,7 +61,7 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
       );
     }
     if ((vm.state == BookLoadState.networkError ||
-            vm.state == BookLoadState.serverError) &&
+        vm.state == BookLoadState.serverError) &&
         vm.books.isEmpty) {
       return SizedBox(
         height: 170,
@@ -82,29 +83,35 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
             if (notification is ScrollUpdateNotification) _onScroll();
             return false;
           },
-          child: GridView.builder(
+          child: Scrollbar(
             controller: _scrollController,
-            primary: false,
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount:
-                vm.books.length +
-                (vm.isLoadingNextBooks || vm.booksHasNext ? 1 : 0),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: 22,
-              crossAxisSpacing: 16,
-              childAspectRatio: .49,
+            thumbVisibility: true,
+            interactive: true,
+            thickness: 10,
+            radius: const Radius.circular(10),
+            child: GridView.builder(
+              controller: _scrollController,
+              primary: false,
+              padding: const EdgeInsets.only(right: 12, bottom: 24),
+              itemCount: vm.books.length +
+                  (vm.isLoadingNextBooks || vm.booksHasNext ? 1 : 0),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 24,
+                crossAxisSpacing: 16,
+                childAspectRatio: 0.72,
+              ),
+              itemBuilder: (_, index) {
+                if (index >= vm.books.length) {
+                  return vm.isLoadingNextBooks
+                      ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const SizedBox.shrink();
+                }
+                return BookCatalogCard(book: vm.books[index]);
+              },
             ),
-            itemBuilder: (_, index) {
-              if (index >= vm.books.length) {
-                return vm.isLoadingNextBooks
-                    ? const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const SizedBox.shrink();
-              }
-              return BookCatalogCard(book: vm.books[index]);
-            },
           ),
         );
       },
@@ -113,57 +120,86 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
 }
 
 class BookCatalogCard extends StatelessWidget {
-  const BookCatalogCard({super.key, required this.book, this.onAddToShelf});
+  const BookCatalogCard({
+    super.key,
+    required this.book,
+    this.onAddToShelf,
+  });
+
   final Book book;
   final VoidCallback? onAddToShelf;
-  static const coverW = 132.0;
-  static const coverH = 196.0;
+
+  static const coverW = 175.0;
+  static const coverH = 260.0;
+
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => BookDetailScreen(bookId: book.id)),
+      MaterialPageRoute(
+        builder: (_) => BookDetailScreen(bookId: book.id),
+      ),
     ),
     borderRadius: BorderRadius.circular(8),
-    child: SizedBox(
-      width: coverW,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              BookCover(url: book.coverImageUrl, width: coverW, height: coverH),
-              if (onAddToShelf != null)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: Material(
-                    color: Colors.white.withValues(alpha: .9),
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      tooltip: '책장에 추가',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.playlist_add_outlined, size: 18),
-                      onPressed: onAddToShelf,
+    child: Center(
+      child: SizedBox(
+        width: coverW,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                BookCover(
+                  url: book.coverImageUrl,
+                  width: coverW,
+                  height: coverH,
+                ),
+                if (onAddToShelf != null)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Material(
+                      color: Colors.white.withValues(alpha: .9),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: '책장에 추가',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(
+                          Icons.playlist_add_outlined,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          if (!context.read<RidiStore>().loggedIn) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('로그인이 필요합니다.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          onAddToShelf?.call();
+                        },
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            book.title,
-            style: RidiText.bodyBold.copyWith(fontSize: 15),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            book.author ?? '',
-            style: RidiText.sub,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              book.title,
+              style: RidiText.bodyBold.copyWith(fontSize: 15),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              book.author ?? '',
+              style: RidiText.sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -195,29 +231,56 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Future<void> _loadFavorite() async {
+    if (!context.read<RidiStore>().loggedIn) {
+      if (mounted) {
+        setState(() {
+          _favorite = false;
+          _favoriteLoading = false;
+        });
+      }
+      return;
+    }
+
     try {
       final favorite = await _repository.favoriteStatus(widget.bookId);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _favorite = favorite;
           _favoriteLoading = false;
         });
+      }
     } on ApiException catch (error) {
-      if (mounted) setState(() => _favoriteLoading = false);
-      // Book detail itself remains available when the status request fails.
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+      if (!mounted) return;
+
+      setState(() => _favoriteLoading = false);
+
+      if (!error.isUnauthorized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
     }
   }
 
   Future<void> _toggleFavorite() async {
+    // 비로그인 상태에서는 안내 문구만 표시
+    if (!context.read<RidiStore>().loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그인이 필요합니다.'),
+        ),
+      );
+      return;
+    }
+
     if (_favoriteSaving || _favoriteLoading) return;
+
     final before = _favorite;
     setState(() {
       _favorite = !before;
       _favoriteSaving = true;
     });
+
     try {
       await context.read<FavoriteViewModel>().setFavorite(
         widget.bookId,
@@ -226,8 +289,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _favorite = before);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
       }
     } finally {
       if (mounted) setState(() => _favoriteSaving = false);
@@ -235,6 +299,47 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   void _openReader() {
+    if (!context.read<RidiStore>().loggedIn) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: ridiAppBar(context, '읽기 시작'),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '로그인이 필요한 서비스입니다.',
+                    style: TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: RidiColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () => showLoginDialog(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: RidiColors.ink,
+                      side: const BorderSide(color: RidiColors.grayLight),
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: const Text('로그인'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AdvancedBookReaderScreen(bookId: widget.bookId),
@@ -258,16 +363,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 : _toggleFavorite,
             icon: _favoriteSaving
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                // Bookmarks belong to the reader's per-position note feature.
-                // A heart makes this book-level, personal favorite unambiguous.
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+            // Bookmarks belong to the reader's per-position note feature.
+            // A heart makes this book-level, personal favorite unambiguous.
                 : Icon(
-                    _favorite ? Icons.favorite : Icons.favorite_border,
-                    color: _favorite ? RidiColors.red : RidiColors.ink,
-                  ),
+              _favorite ? Icons.favorite : Icons.favorite_border,
+              color: _favorite ? RidiColors.red : RidiColors.ink,
+            ),
           ),
         ],
       ),
@@ -275,59 +380,59 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : book == null
           ? RidiEmpty(
-              icon: Icons.error_outline,
-              text: vm.errorMessage ?? '책 정보를 불러오지 못했습니다.',
-              action: RidiOutlineButton(
-                '다시 시도',
-                onTap: () => vm.loadBook(widget.bookId),
-              ),
-            )
+        icon: Icons.error_outline,
+        text: vm.errorMessage ?? '책 정보를 불러오지 못했습니다.',
+        action: RidiOutlineButton(
+          '다시 시도',
+          onTap: () => vm.loadBook(widget.bookId),
+        ),
+      )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: InkWell(
-                      onTap: _openReader,
-                      borderRadius: BorderRadius.circular(5),
-                      child: BookCover(
-                        url: book.coverImageUrl,
-                        width: 160,
-                        height: 240,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  if (book.category?.isNotEmpty == true)
-                    _Category(label: book.category!),
-                  const SizedBox(height: 10),
-                  Text(
-                    book.title,
-                    style: RidiText.title.copyWith(fontSize: 26),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    book.author ?? '',
-                    style: RidiText.body.copyWith(color: RidiColors.gray),
-                  ),
-                  const SizedBox(height: 28),
-                  Text(
-                    book.description?.isNotEmpty == true
-                        ? book.description!
-                        : '책 소개가 아직 등록되지 않았습니다.',
-                    style: RidiText.body,
-                  ),
-                  const SizedBox(height: 28),
-                  RidiButton(
-                    '읽기 시작',
-                    icon: Icons.menu_book_rounded,
-                    expand: true,
-                    onTap: _openReader,
-                  ),
-                ],
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: InkWell(
+                onTap: _openReader,
+                borderRadius: BorderRadius.circular(5),
+                child: BookCover(
+                  url: book.coverImageUrl,
+                  width: 160,
+                  height: 240,
+                ),
               ),
             ),
+            const SizedBox(height: 28),
+            if (book.category?.isNotEmpty == true)
+              _Category(label: book.category!),
+            const SizedBox(height: 10),
+            Text(
+              book.title,
+              style: RidiText.title.copyWith(fontSize: 26),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              book.author ?? '',
+              style: RidiText.body.copyWith(color: RidiColors.gray),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              book.description?.isNotEmpty == true
+                  ? book.description!
+                  : '책 소개가 아직 등록되지 않았습니다.',
+              style: RidiText.body,
+            ),
+            const SizedBox(height: 28),
+            RidiButton(
+              '읽기 시작',
+              icon: Icons.menu_book_rounded,
+              expand: true,
+              onTap: _openReader,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -392,62 +497,62 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
             ? const Center(child: CircularProgressIndicator())
             : content == null
             ? RidiEmpty(
-                icon: Icons.article_outlined,
-                text: vm.readerErrorMessage ?? '아직 읽을 수 있는 본문이 등록되지 않았습니다.',
-                action: RidiOutlineButton(
-                  '다시 시도',
-                  onTap: () => vm.loadReader(widget.bookId),
-                ),
-              )
+          icon: Icons.article_outlined,
+          text: vm.readerErrorMessage ?? '아직 읽을 수 있는 본문이 등록되지 않았습니다.',
+          action: RidiOutlineButton(
+            '다시 시도',
+            onTap: () => vm.loadReader(widget.bookId),
+          ),
+        )
             : Column(
-                children: [
-                  LinearProgressIndicator(
-                    value: (_position + 1) / content.paragraphs.length,
-                    minHeight: 3,
-                    color: RidiColors.blue,
-                    backgroundColor: RidiColors.grayLight,
-                  ),
-                  Expanded(
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: content.paragraphs.length,
-                      onPageChanged: (index) {
-                        setState(() => _position = index);
-                        context.read<BookViewModel>().saveReaderProgress(
-                          widget.bookId,
-                          index,
-                          content.paragraphs.length,
-                        );
-                      },
-                      itemBuilder: (_, index) => Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 42, 30, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${index + 1} / ${content.paragraphs.length}',
-                              style: RidiText.sub,
+          children: [
+            LinearProgressIndicator(
+              value: (_position + 1) / content.paragraphs.length,
+              minHeight: 3,
+              color: RidiColors.blue,
+              backgroundColor: RidiColors.grayLight,
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: content.paragraphs.length,
+                onPageChanged: (index) {
+                  setState(() => _position = index);
+                  context.read<BookViewModel>().saveReaderProgress(
+                    widget.bookId,
+                    index,
+                    content.paragraphs.length,
+                  );
+                },
+                itemBuilder: (_, index) => Padding(
+                  padding: const EdgeInsets.fromLTRB(30, 42, 30, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${index + 1} / ${content.paragraphs.length}',
+                        style: RidiText.sub,
+                      ),
+                      const SizedBox(height: 28),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Text(
+                            content.paragraphs[index].text,
+                            style: RidiText.body.copyWith(
+                              fontFamily: 'NotoSerifKR',
+                              fontSize: 18,
+                              height: 2.0,
                             ),
-                            const SizedBox(height: 28),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: Text(
-                                  content.paragraphs[index].text,
-                                  style: RidiText.body.copyWith(
-                                    fontFamily: 'NotoSerifKR',
-                                    fontSize: 18,
-                                    height: 2.0,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -464,7 +569,7 @@ class _RecentReadingSectionState extends State<RecentReadingSection> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => context.read<BookViewModel>().loadRecentBooks(),
+          (_) => context.read<BookViewModel>().loadRecentBooks(),
     );
   }
 

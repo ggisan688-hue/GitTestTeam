@@ -184,9 +184,7 @@ class _RidiShellState extends State<RidiShell> {
             index: _index,
             children: [
               for (var i = 0; i < _pages.length; i++)
-                if (!loggedIn && i == 4)
-                  const _GuestMy()
-                else if (!loggedIn && i != 2)
+                if (!loggedIn && i != 2)
                   _GuestTab(title: _tabs[i].$3)
                 else
                   _pages[i] ?? const SizedBox.shrink(),
