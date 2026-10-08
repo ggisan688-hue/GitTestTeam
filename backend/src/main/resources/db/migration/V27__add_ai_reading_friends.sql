@@ -1,4 +1,4 @@
-CREATE TABLE change_book_ai_reading_friends (
+CREATE TABLE IF NOT EXISTS change_book_ai_reading_friends (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
     name VARCHAR(100) NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE change_book_ai_reading_friends (
         ON DELETE CASCADE
 );
 
-CREATE TABLE change_book_ai_reading_notes (
+CREATE TABLE IF NOT EXISTS change_book_ai_reading_notes (
     id BIGSERIAL PRIMARY KEY,
     friend_id BIGINT NOT NULL,
     book_id BIGINT NOT NULL,
@@ -32,8 +32,7 @@ CREATE TABLE change_book_ai_reading_notes (
 
 INSERT INTO change_book_ai_reading_friends
     (user_id, name, persona, is_default)
-VALUES
-    (
+SELECT
         NULL,
         'A',
         $persona$
@@ -135,4 +134,7 @@ VALUES
 재미있는 표현처럼 소비하거나 웃음거리로 삼지 않는다.
 $persona$,
         TRUE
-    );
+WHERE NOT EXISTS (
+    SELECT 1 FROM change_book_ai_reading_friends
+    WHERE name = 'A' AND is_default = TRUE
+);

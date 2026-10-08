@@ -90,3 +90,26 @@
 - `backend/bin/main`은 Gradle resource 출력물이며 소스 변경 검토 대상은 `backend/src/main/resources`다.
 - 챕터 원본 근거 없이 `verified=true`를 만들지 않는다.
 - 기존 사용자의 이메일을 임의 backfill하지 않는다.
+
+## 2026-10-07 후속 버그 수정
+
+### 원인과 수정
+- 초대 코드 가입은 곧바로 `join-by-code`를 호출하여 비밀번호 필요 여부를 알 수 없었다. `POST /api/reading-rooms/invite-codes/validate`를 추가했다. 이 API는 JWT 사용자 기준으로 `passwordRequired`, 정원, 이미 가입 여부만 반환하며 멤버십을 생성하지 않는다.
+- Flutter는 코드 검증 뒤 보호 방일 때만 비밀번호 입력칸을 표시하고, 취소 시 가입 요청을 보내지 않는다. 코드·응답·예외를 출력하던 join debug print도 제거했다.
+- 최종 가입은 기존의 비관적 room lock 및 `(room_id,user_id)` 기본키를 계속 사용한다. 비밀번호 누락은 `ROOM_PASSWORD_REQUIRED`(400), 틀림은 `ROOM_PASSWORD_INCORRECT`(403)으로 구분하며 BCrypt 비교는 서버에서만 수행한다.
+- 공유 노트 목록은 기존에는 roomId만으로 조회했다. 이제 `bookId` query를 받을 수 있고 서버가 `roomId + bookId`로 조회한다. 생성 요청도 `bookId`를 받되 반드시 해당 방의 room_books에 등록된 도서인지 서버가 검증한다. 개인 노트 테이블/경로는 건드리지 않았다.
+- 잠긴 공유 노트는 목록에서 전문·색·댓글 수를 계속 제거한다. `POST /api/reading-rooms/{roomId}/shared-notes/{noteId}/reveal`은 JWT 멤버·방 범위·항목 범위를 다시 확인한 후 해당 한 항목의 전문만 반환한다. reveal 상태는 DB/서버 캐시에 저장하지 않아 새 목록·재접속·재로그인에서는 다시 잠긴 상태다. WebSocket은 기존처럼 메타데이터만 전송한다.
+
+### 검증
+- `backend\gradlew.bat test --no-daemon`: 성공 (2026-10-07).
+- `C:\flutter\bin\flutter.bat analyze`는 이 환경에서 출력 없이 제한 시간에 종료되어 결과를 확정하지 못했다. 로컬 PowerShell에서 다시 실행 필요.
+- 새 Flyway migration은 추가하지 않았다. 이번 변경은 기존 room password/room book/note bookId 컬럼과 제약을 이용한다.
+
+## 2026-10-07 기동 장애 수정
+
+- 원인 1: `V21__add_password_reset_security.sql`와 기존 AI migration이 같은 Flyway 버전 21을 사용해 시작 시 중복 version 오류가 났다.
+- 조치: AI migration SQL 내용은 보존하고 아직 적용 이력이 없는 새 `V27__add_ai_reading_friends.sql`로 승격했다. 기존 AI 테이블이 이미 존재하는 DB도 보존하도록 `CREATE TABLE IF NOT EXISTS`와 기본 친구 중복 방지 조건을 적용했다.
+- 실제 DB 로그: Flyway가 28개 migration을 검증했고 `public` 스키마를 v27로 성공 적용했다. 기존 AI 테이블은 경고와 함께 건너뛰었으며 삭제나 초기화는 수행하지 않았다.
+- 원인 2: 개발 환경의 `GEMINI_API_KEY` 부재가 GeminiClient Bean 생성 자체를 실패시켜 전체 서버 기동을 막았다.
+- 조치: `gemini.api-key`의 기본값을 빈 문자열로 두고, 키가 없으면 AI 생성 요청만 `503 AI_SERVICE_NOT_CONFIGURED` 한국어 메시지로 응답하게 했다. 로그인·책 읽기·독서방은 키 없이 기동 가능하다.
+- 검증: `backend\gradlew.bat clean test --no-daemon` 및 이후 `backend\gradlew.bat test --no-daemon` 성공.

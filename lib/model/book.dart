@@ -112,6 +112,7 @@ class ReadingNote {
     this.startOffset,
     this.endOffset,
     this.highlightColor,
+    this.linkedHighlightId,
     required this.preview,
     this.createdAt,
     this.updatedAt,
@@ -124,6 +125,7 @@ class ReadingNote {
   final int? startOffset;
   final int? endOffset;
   final String? highlightColor;
+  final int? linkedHighlightId;
   final String preview;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -136,6 +138,7 @@ class ReadingNote {
     startOffset: (json['startOffset'] as num?)?.toInt(),
     endOffset: (json['endOffset'] as num?)?.toInt(),
     highlightColor: json['highlightColor'] as String?,
+    linkedHighlightId: (json['linkedHighlightId'] as num?)?.toInt(),
     preview: json['paragraphPreview'] as String? ?? '',
     createdAt: Book._date(json['createdAt']),
     updatedAt: Book._date(json['updatedAt']),
@@ -151,6 +154,7 @@ class ReaderSettings {
     this.theme = ReaderPaperTheme.light,
     this.twoColumn = false,
     this.keepScreenOn = false,
+    this.showHighlights = true,
     this.defaultHighlightColor = '#FFF59D',
   });
   final double fontScale;
@@ -158,6 +162,7 @@ class ReaderSettings {
   final ReaderPaperTheme theme;
   final bool twoColumn;
   final bool keepScreenOn;
+  final bool showHighlights;
   final String defaultHighlightColor;
   // Backward-compatible convenience for existing reader call sites.
   String get highlightColor => defaultHighlightColor;
@@ -169,6 +174,7 @@ class ReaderSettings {
     ),
     twoColumn: json['twoColumn'] == true,
     keepScreenOn: json['keepScreenOn'] == true,
+    showHighlights: json['showHighlights'] != false,
     defaultHighlightColor:
         json['defaultHighlightColor'] as String? ??
         json['highlightColor'] as String? ??
@@ -180,6 +186,7 @@ class ReaderSettings {
     ReaderPaperTheme? theme,
     bool? twoColumn,
     bool? keepScreenOn,
+    bool? showHighlights,
     String? defaultHighlightColor,
   }) => ReaderSettings(
     fontScale: fontScale ?? this.fontScale,
@@ -187,6 +194,7 @@ class ReaderSettings {
     theme: theme ?? this.theme,
     twoColumn: twoColumn ?? this.twoColumn,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+    showHighlights: showHighlights ?? this.showHighlights,
     defaultHighlightColor: defaultHighlightColor ?? this.defaultHighlightColor,
   );
   Map<String, dynamic> toJson() => {
@@ -195,6 +203,7 @@ class ReaderSettings {
     'theme': theme.name.toUpperCase(),
     'twoColumn': twoColumn,
     'keepScreenOn': keepScreenOn,
+    'showHighlights': showHighlights,
     'defaultHighlightColor': defaultHighlightColor,
   };
 }

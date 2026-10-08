@@ -5,17 +5,20 @@ class AiReadingFriend {
     required this.id,
     required this.name,
     required this.isDefault,
+    this.persona,
   });
 
   final int id;
   final String name;
   final bool isDefault;
+  final String? persona;
 
   factory AiReadingFriend.fromJson(Map<String, dynamic> json) {
     return AiReadingFriend(
       id: (json['id'] as num).toInt(),
       name: json['name']?.toString() ?? '',
       isDefault: json['isDefault'] == true,
+      persona: json['persona'] as String?,
     );
   }
 }
@@ -70,15 +73,44 @@ class AiReadingRepository {
         return list
             .map(
               (item) => AiReadingFriend.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
             .toList();
       },
     );
 
     return res.data ?? const <AiReadingFriend>[];
   }
+
+  Future<List<AiReadingFriend>> getMyFriends() async {
+    final res = await _api.get<List<AiReadingFriend>>(
+      '/api/ai-reading-friends',
+      parse: (json) => (json as List)
+          .map(
+            (item) => AiReadingFriend.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(),
+    );
+    return res.data ?? const [];
+  }
+
+  Future<AiReadingFriend> createFriend({
+    required String name,
+    required String persona,
+  }) async {
+    final res = await _api.post<AiReadingFriend>(
+      '/api/ai-reading-friends',
+      body: {'name': name.trim(), 'persona': persona.trim()},
+      parse: (json) => AiReadingFriend.fromJson(json as Map<String, dynamic>),
+    );
+    return res.data!;
+  }
+
+  Future<void> deleteFriend(int friendId) =>
+      _api.delete('/api/ai-reading-friends/$friendId');
 
   /// 해당 책을 AI 친구가 읽고 메모를 생성한다.
   ///
@@ -148,10 +180,9 @@ class AiReadingRepository {
 
     return list
         .map(
-          (item) => AiReadingNote.fromJson(
-        Map<String, dynamic>.from(item as Map),
-      ),
-    )
+          (item) =>
+              AiReadingNote.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 }

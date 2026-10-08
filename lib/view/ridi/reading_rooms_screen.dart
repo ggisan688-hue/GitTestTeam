@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_config.dart';
 import '../../core/room_sync_client.dart';
 import '../../model/book.dart';
 import '../../model/reading_room.dart';
@@ -303,60 +304,125 @@ class _RoomTile extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _RoomCoverImage(room: room),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x33000000), Color(0xCC000000)],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  room.isPublic ? Icons.public : Icons.lock_outline,
-                  size: 22,
-                  color: const Color(0xFF6B7488),
+                Row(
+                  children: [
+                    Icon(
+                      room.isPublic ? Icons.public : Icons.lock_outline,
+                      size: 22,
+                      color: Colors.white,
+                    ),
+                    const Spacer(),
+                    if (onDelete != null)
+                      IconButton(
+                        tooltip: '독서방 전체 삭제',
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        onPressed: onDelete,
+                      ),
+                  ],
                 ),
                 const Spacer(),
-                if (onDelete != null)
-                  IconButton(
-                    tooltip: '독서방 전체 삭제',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    onPressed: onDelete,
+                Text(
+                  room.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  room.description?.isNotEmpty == true
+                      ? room.description!
+                      : '함께 읽는 방',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${room.ownerNickname} · ${room.members}/${room.maxMembers}명${room.bookId == null ? '' : ' · 대표 도서'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFE8E8E8),
+                  ),
+                ),
               ],
             ),
-            const Spacer(),
-            Text(
-              room.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              room.description?.isNotEmpty == true
-                  ? room.description!
-                  : '함께 읽는 방',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF6B6B6B)),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${room.ownerNickname} · ${room.members}/${room.maxMembers}명${room.bookId == null ? '' : ' · 대표 도서'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8A)),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
+}
+
+class _RoomCoverImage extends StatelessWidget {
+  const _RoomCoverImage({required this.room});
+  final ReadingRoom room;
+
+  @override
+  Widget build(BuildContext context) {
+    final book = room.coverBook ?? room.book;
+    final rawUrl = book?.coverImageUrl?.trim();
+    Widget fallback = const ColoredBox(
+      color: Color(0xFFF1F3F8),
+      child: Center(
+        child: Icon(
+          Icons.menu_book_rounded,
+          size: 48,
+          color: Color(0xFF9AA3B5),
+        ),
+      ),
+    );
+    if (rawUrl == null || rawUrl.isEmpty) return fallback;
+    final url = rawUrl.startsWith('http')
+        ? rawUrl
+        : '${AppConfig.baseUrl}${rawUrl.startsWith('/') ? '' : '/'}$rawUrl';
+    return Semantics(
+      image: true,
+      label: '${book?.title ?? room.name} 대표 표지',
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+        loadingBuilder: (context, child, loading) => loading == null
+            ? child
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  fallback,
+                  const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
 }
 
 /// 점선 [+] 칸 — 누르면 방 만들기
@@ -1041,6 +1107,7 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
   final TextEditingController _password = TextEditingController();
   bool _joining = false;
   String? _error;
+  InviteCodeValidation? _validated;
 
   @override
   void dispose() {
@@ -1060,6 +1127,21 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
       _error = null;
     });
     try {
+      final validation =
+          _validated ?? await widget.repository.validateInviteCode(code);
+      if (!mounted) return;
+      if (validation.alreadyJoined) {
+        setState(() => _error = '이미 참여 중인 방입니다.');
+        return;
+      }
+      if (validation.currentMemberCount >= validation.capacity) {
+        setState(() => _error = '방 정원이 가득 찼습니다.');
+        return;
+      }
+      if (validation.passwordRequired && _password.text.isEmpty) {
+        setState(() => _validated = validation);
+        return;
+      }
       final result = await widget.repository.join(
         code,
         password: _password.text,
@@ -1083,6 +1165,8 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
         _joining = false;
         _error = '방 입장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       });
+    } finally {
+      if (mounted && _joining) setState(() => _joining = false);
     }
   }
 
@@ -1106,6 +1190,18 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
             onSubmitted: (_) => _joining ? null : _submit(),
             decoration: const InputDecoration(hintText: '입장 코드 입력'),
           ),
+          if (_validated?.passwordRequired == true) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              autofocus: true,
+              enabled: !_joining,
+              obscureText: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _joining ? null : _submit(),
+              decoration: const InputDecoration(hintText: '방 비밀번호 입력'),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -1151,6 +1247,9 @@ String _roomJoinErrorMessage(ApiException error) {
     case 'ROOM_CAPACITY_REACHED':
     case 'ROOM_FULL':
       return '독서방 정원이 가득 찼습니다.';
+    case 'ROOM_PASSWORD_REQUIRED':
+    case 'ROOM_PASSWORD_INCORRECT':
+      return '방 비밀번호가 올바르지 않습니다.';
   }
   if (error.statusCode == 401) return '로그인이 만료되었습니다. 다시 로그인해주세요.';
   if (error.statusCode == 403) return '이 독서방에 입장할 권한이 없습니다.';
@@ -1786,6 +1885,73 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     );
   }
 
+  Widget _coverHeader(ReadingRoom room) {
+    final book = room.coverBook ?? room.book;
+    return Semantics(
+      label: '${room.name} 대표 도서 ${book?.title ?? '미지정'}',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 220,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _RoomCoverImage(room: room),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x22000000), Color(0xDD000000)],
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .94),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        room.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (book != null)
+                        Text(
+                          '${book.title} · ${book.author}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF555555),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<ReadingRoom>(
     future: _room,
@@ -1885,6 +2051,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                 children: [
+                  _coverHeader(r),
+                  const SizedBox(height: 16),
                   if (wide)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1958,22 +2126,33 @@ class _RoomBookCard extends StatefulWidget {
 }
 
 class _RoomBookCardState extends State<_RoomBookCard> {
-  late final Future<ReadingProgress?> _progress;
+  late Future<List<RoomParticipantProgress>> _participants;
 
   @override
   void initState() {
     super.initState();
+    _loadParticipants();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RoomBookCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.room.id != widget.room.id ||
+        oldWidget.room.bookId != widget.room.bookId) {
+      _loadParticipants();
+    }
+  }
+
+  void _loadParticipants() {
     final token = context.read<RidiStore>().accessToken;
-    _progress = BookRepository(ApiClient(tokenProvider: () => token))
-        .readingProgress(widget.room.bookId!)
-        .then<ReadingProgress?>((p) => p)
-        .catchError((Object _) => null);
+    _participants = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+        .participantProgress(widget.room.id, widget.room.bookId!)
+        .catchError((Object _) => <RoomParticipantProgress>[]);
   }
 
   @override
   Widget build(BuildContext context) {
     final b = widget.room.book;
-    final me = context.read<RidiStore>().nickname;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1986,10 +2165,15 @@ class _RoomBookCardState extends State<_RoomBookCard> {
           BookCover(url: b?.coverImageUrl, width: 84, height: 122),
           const SizedBox(width: 16),
           Expanded(
-            child: FutureBuilder<ReadingProgress?>(
-              future: _progress,
+            child: FutureBuilder<List<RoomParticipantProgress>>(
+              future: _participants,
               builder: (context, snap) {
-                final pct = (snap.data?.progressPercent ?? 0).clamp(0, 100);
+                final participants =
+                    snap.data ?? const <RoomParticipantProgress>[];
+                final mine = participants
+                    .where((item) => item.currentUser)
+                    .firstOrNull;
+                final pct = (mine?.progressPercent ?? 0).clamp(0, 100);
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2039,6 +2223,38 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    if (participants.isEmpty)
+                      const Text(
+                        '아직 읽기 진행이 기록된 참여자가 없어요.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A8A8A),
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          for (final participant in participants)
+                            Chip(
+                              avatar:
+                                  participant.profileImageUrl?.isNotEmpty ==
+                                      true
+                                  ? CircleAvatar(
+                                      backgroundImage: NetworkImage(
+                                        participant.profileImageUrl!,
+                                      ),
+                                    )
+                                  : null,
+                              label: Text(
+                                '${participant.currentUser ? '나' : participant.nickname} ${participant.progressPercent}%',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
                     LayoutBuilder(
                       builder: (context, c) {
                         final x = (c.maxWidth - 24) * pct / 100;
@@ -2081,7 +2297,9 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                                         borderRadius: BorderRadius.circular(9),
                                       ),
                                       child: Text(
-                                        me.isEmpty ? '나' : me.characters.first,
+                                        (mine?.nickname.isEmpty ?? true)
+                                            ? '나'
+                                            : mine!.nickname.characters.first,
                                         style: const TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w700,
@@ -2480,6 +2698,27 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
 
   void _reload() =>
       setState(() => _notes = widget.repository.sharedNotes(widget.roomId));
+
+  Future<void> _reveal(SharedRoomNote locked) async {
+    try {
+      final revealed = await widget.repository.revealSharedNote(
+        widget.roomId,
+        locked.id,
+      );
+      if (!mounted) return;
+      setState(
+        () => _notes = _notes.then(
+          (items) => [
+            for (final item in items)
+              if (item.id == revealed.id) revealed else item,
+          ],
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -2525,7 +2764,11 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.lock_outline),
-                    title: const Text('스포일러 방지'),
+                    title: const Text('스포일러 잠김'),
+                    trailing: TextButton(
+                      onPressed: () => _reveal(note),
+                      child: const Text('내용 보기'),
+                    ),
                     subtitle: const Text(
                       '이 메모는 현재 읽은 위치 이후에 있어요.\n더 읽으면 확인할 수 있어요.',
                     ),

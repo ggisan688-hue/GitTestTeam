@@ -4,6 +4,74 @@ import '../core/api_client.dart';
 import '../model/reading_room.dart';
 import '../model/shared_room_note.dart';
 
+class RoomParticipantProgress {
+  const RoomParticipantProgress({
+    required this.userId,
+    required this.nickname,
+    this.profileImageUrl,
+    required this.progressPercent,
+    required this.lastReadPosition,
+    this.updatedAt,
+    required this.currentUser,
+  });
+  final int userId;
+  final String nickname;
+  final String? profileImageUrl;
+  final int progressPercent;
+  final int lastReadPosition;
+  final DateTime? updatedAt;
+  final bool currentUser;
+  factory RoomParticipantProgress.fromJson(Map<String, dynamic> json) =>
+      RoomParticipantProgress(
+        userId: (json['userId'] as num).toInt(),
+        nickname: json['nickname']?.toString() ?? '참여자',
+        profileImageUrl: json['profileImageUrl']?.toString(),
+        progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
+        lastReadPosition: (json['lastReadPosition'] as num?)?.toInt() ?? 0,
+        updatedAt: json['updatedAt'] == null
+            ? null
+            : DateTime.tryParse(json['updatedAt'].toString()),
+        currentUser: json['currentUser'] == true,
+      );
+}
+
+class RoomReadingProgress {
+  const RoomReadingProgress({
+    required this.progressPercent,
+    required this.lastReadPosition,
+  });
+  final int progressPercent;
+  final int lastReadPosition;
+  factory RoomReadingProgress.fromJson(Map<String, dynamic> json) =>
+      RoomReadingProgress(
+        progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
+        lastReadPosition: (json['lastReadPosition'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class InviteCodeValidation {
+  const InviteCodeValidation({
+    required this.roomId,
+    required this.roomName,
+    required this.passwordRequired,
+    required this.capacity,
+    required this.currentMemberCount,
+    required this.alreadyJoined,
+  });
+  final int roomId, capacity, currentMemberCount;
+  final String roomName;
+  final bool passwordRequired, alreadyJoined;
+  factory InviteCodeValidation.fromJson(Map<String, dynamic> json) =>
+      InviteCodeValidation(
+        roomId: (json['roomId'] as num).toInt(),
+        roomName: json['roomName'] as String? ?? '',
+        passwordRequired: json['passwordRequired'] == true,
+        capacity: (json['capacity'] as num?)?.toInt() ?? 0,
+        currentMemberCount: (json['currentMemberCount'] as num?)?.toInt() ?? 0,
+        alreadyJoined: json['alreadyJoined'] == true,
+      );
+}
+
 class ReadingRoomRepository {
   ReadingRoomRepository(this._api);
 
@@ -57,9 +125,6 @@ class ReadingRoomRepository {
   }) async {
     final inviteCode = normalizeInviteCode(code);
 
-    print('[ReadingRoom Join] 입력 코드: $code');
-    print('[ReadingRoom Join] 정규화 코드: $inviteCode');
-
     try {
       final response = await _api.post<ReadingRoomJoinResult>(
         '/api/reading-rooms/join-by-code',
@@ -69,37 +134,22 @@ class ReadingRoomRepository {
           if (roomNickname?.trim().isNotEmpty == true)
             'roomNickname': roomNickname!.trim(),
         },
-        parse: (json) {
-          print('[ReadingRoom Join] 서버 원본 응답: $json');
-
-          final result = ReadingRoomJoinResult.fromJson(
-            json as Map<String, dynamic>,
-          );
-
-          print(
-            '[ReadingRoom Join] 파싱 성공: '
-            'roomId=${result.room.id}, '
-            'roomName=${result.room.name}, '
-            'alreadyJoined=${result.alreadyJoined}',
-          );
-
-          return result;
-        },
+        parse: (json) =>
+            ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
       );
-
-      print(
-        '[ReadingRoom Join] API 완료: '
-        'message=${response.message}, '
-        'hasData=${response.data != null}',
-      );
-
       return response.data!;
-    } catch (e, stackTrace) {
-      print('[ReadingRoom Join] 실패: $e');
-      print('[ReadingRoom Join] StackTrace:\n$stackTrace');
+    } catch (_) {
       rethrow;
     }
   }
+
+  Future<InviteCodeValidation> validateInviteCode(String code) async =>
+      (await _api.post<InviteCodeValidation>(
+        '/api/reading-rooms/invite-codes/validate',
+        body: {'inviteCode': normalizeInviteCode(code)},
+        parse: (json) =>
+            InviteCodeValidation.fromJson(json as Map<String, dynamic>),
+      )).data!;
 
   /// Codes are displayed as XXXX-XXXX, but accepting copied values without a
   /// hyphen or with whitespace avoids making presentation part of the API
@@ -127,14 +177,21 @@ class ReadingRoomRepository {
       )).data ??
       const [];
 
-  Future<List<SharedRoomNote>> sharedNotes(int roomId) async =>
+  Future<List<SharedRoomNote>> sharedNotes(int roomId, {int? bookId}) async =>
       (await _api.get<List<SharedRoomNote>>(
         '/api/reading-rooms/$roomId/shared-notes',
+        query: {if (bookId != null) 'bookId': '$bookId'},
         parse: (json) => (json as List)
             .map((e) => SharedRoomNote.fromJson(e as Map<String, dynamic>))
             .toList(),
       )).data ??
       const [];
+
+  Future<SharedRoomNote> revealSharedNote(int roomId, int noteId) async =>
+      (await _api.post<SharedRoomNote>(
+        '/api/reading-rooms/$roomId/shared-notes/$noteId/reveal',
+        parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
+      )).data!;
 
   /// Event payloads contain metadata only. A caller must refetch shared notes
   /// after receiving one so the server can apply its per-user spoiler filter.
@@ -225,6 +282,44 @@ class ReadingRoomRepository {
       parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
     );
     return response.data!;
+  }
+
+  Future<List<RoomParticipantProgress>> participantProgress(
+    int roomId,
+    int bookId,
+  ) async =>
+      (await _api.get<List<RoomParticipantProgress>>(
+        '/api/reading-rooms/$roomId/books/$bookId/progress/participants',
+        parse: (json) => (json as List)
+            .map(
+              (value) => RoomParticipantProgress.fromJson(
+                Map<String, dynamic>.from(value as Map),
+              ),
+            )
+            .toList(),
+      )).data ??
+      const [];
+
+  Future<RoomReadingProgress> myProgress(int roomId, int bookId) async =>
+      (await _api.get<RoomReadingProgress>(
+        '/api/reading-rooms/$roomId/books/$bookId/progress/me',
+        parse: (json) =>
+            RoomReadingProgress.fromJson(json as Map<String, dynamic>),
+      )).data!;
+
+  Future<void> saveProgress(
+    int roomId,
+    int bookId, {
+    required int progressPercent,
+    required int lastReadPosition,
+  }) async {
+    await _api.post<Object>(
+      '/api/reading-rooms/$roomId/books/$bookId/progress',
+      body: {
+        'progressPercent': progressPercent.clamp(0, 100),
+        'lastReadPosition': lastReadPosition < 0 ? 0 : lastReadPosition,
+      },
+    );
   }
 
   Future<void> kick(int roomId, int memberId) =>

@@ -655,16 +655,18 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
     if (deleted && mounted) Navigator.of(context).pop(widget.shelfId);
   }
 
-  Future<void> _addBook() async {
-    final selected = await Navigator.of(context)
-        .push<Book>(MaterialPageRoute(builder: (_) => _BookPicker()));
-    if (selected == null || !mounted) return;
-    try {
-      await widget.repository.addBook(widget.shelfId, selected.id);
-      _reload();
-    } on ApiException catch (error) {
-      if (mounted) _showError(context, error);
-    }
+  Future<void> _addBook([ShelfDetail? detail]) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _BookPicker(
+          repository: widget.repository,
+          shelfId: widget.shelfId,
+          existingBookIds:
+              detail?.books.map((book) => book.id).toSet() ?? const {},
+        ),
+      ),
+    );
+    if (mounted) _reload();
   }
 
   @override
@@ -719,7 +721,7 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
             ),
             const Divider(height: 36),
             if (detail.books.isEmpty)
-              _EmptyBooks(onAdd: _addBook)
+              _EmptyBooks(onAdd: () => _addBook(detail))
             else
               // 표지 격자 (필기 수정2-38). 표지 오른쪽 위 [−] = 책장에서 빼기
               GridView.builder(
@@ -970,21 +972,49 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
 }
 
 class _BookPicker extends StatefulWidget {
+  const _BookPicker({
+    required this.repository,
+    required this.shelfId,
+    required this.existingBookIds,
+  });
+  final ShelfRepository repository;
+  final int shelfId;
+  final Set<int> existingBookIds;
   @override
   State<_BookPicker> createState() => _BookPickerState();
 }
 
 class _BookPickerState extends State<_BookPicker> {
-  late final BookRepository _books;
   late Future<List<Book>> _future;
+  final Set<int> _pending = <int>{};
+  final Set<int> _added = <int>{};
+  Object? _error;
 
   @override
   void initState() {
     super.initState();
-    _books = BookRepository(
-      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
-    );
-    _future = _books.books();
+    _future = widget.repository.candidates(widget.shelfId);
+  }
+
+  void _retry() => setState(() {
+    _error = null;
+    _future = widget.repository.candidates(widget.shelfId);
+  });
+
+  Future<void> _add(Book book) async {
+    if (_pending.contains(book.id) || _added.contains(book.id)) return;
+    setState(() {
+      _pending.add(book.id);
+      _error = null;
+    });
+    try {
+      await widget.repository.addBook(widget.shelfId, book.id);
+      if (mounted) setState(() => _added.add(book.id));
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _pending.remove(book.id));
+    }
   }
 
   @override
@@ -993,17 +1023,62 @@ class _BookPickerState extends State<_BookPicker> {
     body: FutureBuilder<List<Book>>(
       future: _future,
       builder: (context, snapshot) {
-        if (!snapshot.hasData)
+        if (snapshot.connectionState != ConnectionState.done)
           return const Center(child: CircularProgressIndicator());
-        return ListView(
+        if (snapshot.hasError)
+          return _ErrorState(error: snapshot.error, onRetry: _retry);
+        final excluded = {...widget.existingBookIds, ..._added};
+        final books = (snapshot.data ?? const <Book>[])
+            .where((book) => !excluded.contains(book.id))
+            .toList();
+        if (books.isEmpty)
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.library_add_check_outlined, size: 42),
+                const SizedBox(height: 12),
+                const Text('추가할 수 있는 도서가 없습니다.'),
+                TextButton(onPressed: _retry, child: const Text('다시 조회')),
+              ],
+            ),
+          );
+        return Column(
           children: [
-            for (final book in snapshot.data!)
-              ListTile(
-                leading: const Icon(Icons.menu_book_outlined),
-                title: Text(book.title),
-                subtitle: Text(book.author ?? ''),
-                onTap: () => Navigator.pop(context, book),
+            if (_error != null)
+              MaterialBanner(
+                content: const Text('도서 추가에 실패했습니다.'),
+                actions: [
+                  TextButton(onPressed: _retry, child: const Text('재시도')),
+                ],
               ),
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: _coverGrid,
+                itemCount: books.length,
+                itemBuilder: (context, index) {
+                  final book = books[index];
+                  final pending = _pending.contains(book.id);
+                  return _CoverTile(
+                    book: book,
+                    onTap: pending ? null : () => _add(book),
+                    overlay: pending
+                        ? const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Material(
+                            color: Colors.white70,
+                            shape: CircleBorder(),
+                            child: Padding(
+                              padding: EdgeInsets.all(5),
+                              child: Icon(Icons.add),
+                            ),
+                          ),
+                  );
+                },
+              ),
+            ),
           ],
         );
       },
@@ -1190,11 +1265,55 @@ class _ShelfTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE3E6EE)),
             ),
-            child: const Icon(
-              Icons.collections_bookmark_outlined,
-              size: 44,
-              color: Color(0xFF8A94A8),
-            ),
+            child: shelf.coverImageUrl == null || shelf.coverImageUrl!.isEmpty
+                ? const Icon(
+                    Icons.collections_bookmark_outlined,
+                    size: 44,
+                    color: Color(0xFF8A94A8),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final previews = shelf.previewCoverImageUrls
+                          .where((url) => url != shelf.coverImageUrl)
+                          .take(2)
+                          .toList();
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          for (
+                            var index = previews.length - 1;
+                            index >= 0;
+                            index--
+                          )
+                            Positioned(
+                              left: 10.0 + index * 13,
+                              top: 12.0 + index * 7,
+                              child: Opacity(
+                                opacity: .55,
+                                child: BookCover(
+                                  url: previews[index],
+                                  width: constraints.maxWidth * .68,
+                                  height: constraints.maxHeight * .78,
+                                ),
+                              ),
+                            ),
+                          Positioned.fill(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                left: previews.isEmpty ? 0 : 26,
+                                top: previews.isEmpty ? 0 : 8,
+                              ),
+                              child: BookCover(
+                                url: shelf.coverImageUrl,
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
           ),
         ),
         const SizedBox(height: 10),

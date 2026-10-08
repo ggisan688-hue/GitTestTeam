@@ -45,4 +45,6 @@ management:
       exposure:
         include: health,info
 gemini:
-  api-key: ${GEMINI_API_KEY}
+  # AI features are optional in local/dev environments. A missing key must
+  # not prevent authentication, reading, or rooms from starting.
+  api-key: ${GEMINI_API_KEY:}

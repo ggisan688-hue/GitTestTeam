@@ -11,6 +11,9 @@ class BookViewModel extends ChangeNotifier {
   final BookRepository _repository;
   bool _isDisposed = false;
   List<Book> books = const [];
+  bool booksHasNext = true;
+  bool isLoadingNextBooks = false;
+  int _booksPage = -1;
   List<RecentBook> recentBooks = const [];
   Book? selectedBook;
   BookContent? content;
@@ -28,12 +31,21 @@ class BookViewModel extends ChangeNotifier {
   BookLoadState state = BookLoadState.idle;
   String? errorMessage;
 
-  Future<void> loadBooks() async {
+  Future<void> loadBooks({bool refresh = false}) async {
+    if (isLoadingNextBooks) return;
     state = BookLoadState.loading;
+    if (refresh) {
+      books = const [];
+      _booksPage = -1;
+      booksHasNext = true;
+    }
     errorMessage = null;
     notifyListeners();
     try {
-      books = await _repository.books();
+      final result = await _repository.booksPage(page: 0);
+      books = result.items;
+      _booksPage = result.page;
+      booksHasNext = result.hasNext;
       state = books.isEmpty ? BookLoadState.empty : BookLoadState.success;
     } on ApiException catch (e) {
       state = (e.statusCode == null || e.statusCode! >= 500)
@@ -45,6 +57,24 @@ class BookViewModel extends ChangeNotifier {
       errorMessage = '서버에 연결할 수 없습니다.';
     }
     notifyListeners();
+  }
+
+  Future<void> loadNextBooks() async {
+    if (isLoadingNextBooks || !booksHasNext || _booksPage < 0) return;
+    isLoadingNextBooks = true;
+    notifyListeners();
+    try {
+      final result = await _repository.booksPage(page: _booksPage + 1);
+      final seen = books.map((book) => book.id).toSet();
+      books = [...books, ...result.items.where((book) => seen.add(book.id))];
+      _booksPage = result.page;
+      booksHasNext = result.hasNext;
+    } on ApiException catch (e) {
+      errorMessage = e.message;
+    } finally {
+      isLoadingNextBooks = false;
+      if (!_isDisposed) notifyListeners();
+    }
   }
 
   Future<void> loadBook(int bookId) async {

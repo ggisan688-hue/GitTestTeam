@@ -34,4 +34,6 @@ interface AiReadingFriendRepository
         extends org.springframework.data.jpa.repository.JpaRepository<AiReadingFriend, Long> {
 
     java.util.List<AiReadingFriend> findByIsDefaultTrue();
+    java.util.List<AiReadingFriend> findByUserIdAndIsDefaultFalseOrderByCreatedAtAsc(Long userId);
+    java.util.Optional<AiReadingFriend> findByIdAndUserIdAndIsDefaultFalse(Long id, Long userId);
 }
