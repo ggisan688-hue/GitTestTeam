@@ -80,6 +80,7 @@ class ReadingRoom {
     this.passwordRequired = false,
     this.currentBookId,
     this.books = const [],
+    this.coverImageUrl,
   });
 
   final int id;
@@ -110,6 +111,7 @@ class ReadingRoom {
   final bool passwordRequired;
   final int? currentBookId;
   final List<ReadingRoomBookItem> books;
+  final String? coverImageUrl;
 
   factory ReadingRoom.fromJson(Map<String, dynamic> json) => ReadingRoom(
     id: _jsonInt(json['id']),
@@ -159,6 +161,7 @@ class ReadingRoom {
               ReadingRoomBookItem.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(),
+    coverImageUrl: _jsonNullableString(json['coverImageUrl']),
   );
 }
 

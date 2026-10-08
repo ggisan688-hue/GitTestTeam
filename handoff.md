@@ -107,6 +107,56 @@
 
 ## 2026-10-07 기동 장애 수정
 
+## 2026-10-08 작업 인계: 진행 상태
+
+### 작업 트리 및 DB 주의
+
+- 사용자 작업이 섞인 dirty worktree다. `git reset`, `git checkout --`, migration/data 삭제·초기화 금지.
+- 수정: `ReadingRoomNotes.java`, `advanced_book_reader.dart`, `reading_rooms_screen.dart`, `백엔드 실행 방법.txt`.
+- 추가: `V34__add_ai_reading_friend_selections.sql`, `V35__allow_shared_room_bookmarks.sql`.
+- DB에는 기존 V34가 적용됐지만 원본 SQL이 repo/remote에 없었다. 실제 `selected_ai_friend_type` 컬럼에 맞는 backward-compatible V34를 복원하고 Flyway repair로 dev DB checksum을 정합화했다. V35는 shared note `BOOKMARK` type 및 scope index를 추가했다. 데이터 삭제 없음.
+
+### 이번 세션에서 반영한 활성 코드
+
+1. `lib/view/ridi/advanced_book_reader.dart`
+   - room context의 `보기 설정`이 `_viewerSettings()`를 호출하던 회귀를 `_ViewSettings(showAiFriendSettings: false)`로 수정. 별도 viewer settings 메뉴는 보존.
+   - private highlight tap menu를 bottom sheet에서 anchor 기반 popup으로 변경; 색상 swatch/메모/삭제 제공.
+   - 색상 변경은 해당 highlight PATCH 후 `ReaderSettings.defaultHighlightColor` 저장. 기존 highlight 색상 일괄 변경 없음.
+   - shared highlight도 tap 가능하게 하고 read-only popup 표시. room memo 저장 전 matching shared highlight 생성(duplicate만 무시).
+   - 미완료: personal 보기 설정은 AI friend API를 await한 뒤 열어 느린 네트워크에서 즉시 열림 요구를 만족하지 못한다. lazy-load 리팩터링 필요.
+2. `lib/view/ridi/shelves_screen.dart`
+   - 실제 즐겨찾기 가로 카드, 즐겨찾기 grid, 사용자 지정 선반 상세 grid를 `BookDetailScreen` 대신 `AdvancedBookReaderScreen(bookId: ...)`로 이동.
+   - 기본 `ReaderContext.personal()`이므로 roomId/shared context 전달 없음. 홈/전체 도서/방 카드 미변경.
+3. `lib/view/ridi/reading_rooms_screen.dart`
+   - 실제 방 생성 도서 picker를 가로 ListView에서 높이 360의 세로 GridView.builder로 변경.
+   - 서버 `RoomRequest`가 단일 `bookId`만 지원하므로 선택 정책은 정확히 한 권 필수로 유지. 다중 도서는 UI만으로 처리 불가.
+
+### 조사 완료, 아직 구현하지 못한 요구
+
+- 방 전용 cover image 없음: 현 `uploadMyRoomProfileImage`는 방 이미지가 아니라 사용자 room profile image다. `ReadingRoom`/`RoomResponse`에 room image 컬럼도 없다. 새 migration, owner-only upload/remove API, DTO/model/repository/생성·설정 UI가 필요.
+- 다중 책 방 생성 없음: `RoomRequest.bookId`, `RoomService.create`, Flutter `_picked` single-select를 `bookIds` + ordered RoomBook transaction으로 함께 확장해야 하며 기존 단일 API 호환 설계 필요.
+- 참가자 progress API는 있음: `GET /api/reading-rooms/{roomId}/books/{bookId}/progress/participants`, JWT membership 확인, DB PK `(room_id,user_id,book_id)`.
+- 미완료: nickname 없을 때 global nickname/avatar fallback, stable color key, 모든 멤버 legend/bar 시각화. 현재 UI는 text rows와 current-user bar 중심.
+
+### 검증 기록
+
+- Backend: `powershell -ExecutionPolicy Bypass -File .\\run-backend.ps1`로 실행. Flyway 36 migrations validation 및 V35 적용 성공, Tomcat 8088 기동.
+- Health: `curl.exe -s -i http://127.0.0.1:8088/actuator/health` -> HTTP 200, `{"status":"UP","groups":["liveness","readiness"]}`.
+- Spring: `backend\\gradlew.bat test` PASS.
+- Flutter: `C:\\Users\\5\\development\\flutter\\bin\\flutter.bat test` -> 7 tests PASS.
+- Flutter analyze: elevated 실행에서 compile error 없이 info/warning 120개. clean 상태 아님.
+- Debug APK PASS: `build\\app\\outputs\\flutter-apk\\app-debug.apk`.
+- Release APK BLOCKED: `android/key.properties` 없음 -> `:app:verifyReleaseSigning` 실패. 배포 키는 소유자가 제공해야 함.
+- CUA emulator UI BLOCKED: `cua.getState()` -> `apps: []`, `browsers: []`. 실제 A/B/C 화면·API/SQL 권한 시나리오 미검증.
+
+### 다음 우선순위
+
+1. room cover image storage/API/owner authorization 구현.
+2. create room multi-book contract와 ordered RoomBook 저장 구현.
+3. participant progress DTO fallback + dynamic member visualization 구현.
+4. personal 보기 설정 AI 목록 lazy loading.
+5. emulator/CUA 연결 뒤 reader, library navigation, room cover/progress, API/SQL 권한을 직접 검증.
+
 - 원인 1: `V21__add_password_reset_security.sql`와 기존 AI migration이 같은 Flyway 버전 21을 사용해 시작 시 중복 version 오류가 났다.
 - 조치: AI migration SQL 내용은 보존하고 아직 적용 이력이 없는 새 `V27__add_ai_reading_friends.sql`로 승격했다. 기존 AI 테이블이 이미 존재하는 DB도 보존하도록 `CREATE TABLE IF NOT EXISTS`와 기본 친구 중복 방지 조건을 적용했다.
 - 실제 DB 로그: Flyway가 28개 migration을 검증했고 `public` 스키마를 v27로 성공 적용했다. 기존 AI 테이블은 경고와 함께 건너뛰었으며 삭제나 초기화는 수행하지 않았다.

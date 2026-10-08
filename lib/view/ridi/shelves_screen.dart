@@ -10,6 +10,7 @@ import '../../model/shelf.dart';
 import '../../repository/book_repository.dart';
 import '../../repository/shelf_repository.dart';
 import '../../viewmodel/favorite_viewmodel.dart';
+import 'advanced_book_reader.dart';
 import 'book_catalog.dart';
 import 'reading_rooms_screen.dart';
 import 'ridi_store.dart';
@@ -421,7 +422,7 @@ class _FavoriteSection extends StatelessWidget {
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => BookDetailScreen(bookId: book.id),
+                              builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
                             ),
                           );
                           if (context.mounted) onRetry();
@@ -519,7 +520,7 @@ class _FavoriteBooksScreenState extends State<FavoriteBooksScreen> {
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => BookDetailScreen(bookId: book.id),
+                      builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
                     ),
                   );
                   if (mounted) _reload();
@@ -735,7 +736,7 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
                     book: book,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => BookDetailScreen(bookId: book.id),
+                        builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
                       ),
                     ),
                     overlay: Material(

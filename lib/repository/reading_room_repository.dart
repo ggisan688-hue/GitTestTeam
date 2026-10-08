@@ -345,6 +345,24 @@ class ReadingRoomRepository {
   Future<void> deleteMyRoomProfileImage(int roomId) =>
       _api.delete('/api/reading-rooms/$roomId/members/me/profile-image');
 
+  Future<ReadingRoom> uploadCoverImage(
+    int roomId, {
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async => (await _api.uploadFile<ReadingRoom>(
+    '/api/reading-rooms/$roomId/cover-image',
+    method: 'PUT',
+    fieldName: 'coverImage',
+    bytes: bytes,
+    filename: filename,
+    contentType: contentType,
+    parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
+  Future<void> deleteCoverImage(int roomId) =>
+      _api.delete('/api/reading-rooms/$roomId/cover-image');
+
   Future<ReadingRoomMember> updateMyRoomNickname(
     int roomId,
     String roomNickname,

@@ -41,6 +41,7 @@ class ReadingRoom {
   @Column(name = "current_book_id") Long currentBookId;
   @Column(name = "spoiler_lock_enabled") boolean spoilerLockEnabled;
   @Column(name = "selected_ai_friend_type") String selectedAiFriendType;
+  @Column(name = "cover_image_url", length = 500) String coverImageUrl;
   @Column(name = "created_at") Instant createdAt;
   @Column(name = "updated_at") Instant updatedAt;
   @PrePersist void created() { createdAt = updatedAt = Instant.now(); }
@@ -123,6 +124,7 @@ interface RoomMemberProgressRepo extends JpaRepository<RoomMemberProgress, RoomM
 record RoomRequest(@NotBlank(message = "방 이름을 입력해주세요.") @Size(max = 100) String name,
                    @Size(max = 500) String description,
                    @NotNull(message = "함께 읽을 도서를 선택해주세요.") Long bookId,
+                   @Size(min = 1, max = 100) List<@NotNull Long> bookIds,
                    @NotNull @Min(1) @Max(50) Integer maxMembers,
                    Boolean isPublic,
                    Boolean spoilerLockEnabled,
@@ -161,7 +163,8 @@ record RoomResponse(Long id, String name, String description, Long bookId,
                     List<RoomMemberResponse> participants,
                     RoomBookResponse book, RoomBookResponse coverBook, String hostNickname, String myRole,
                     int memberCount, String joinType, String aiFriendType,
-                    boolean passwordRequired, Long currentBookId, List<RoomBookItemResponse> books) {}
+                    boolean passwordRequired, Long currentBookId, List<RoomBookItemResponse> books,
+                    String coverImageUrl) {}
 record JoinRoomResponse(RoomResponse room, boolean alreadyJoined) {}
 
 @org.springframework.stereotype.Service
@@ -257,18 +260,22 @@ class RoomService {
 
   @org.springframework.transaction.annotation.Transactional RoomResponse create(String username, RoomRequest request) {
     AppUser current = userFeatures.me(username);
-    if (request.bookId() == null) {
-      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_REQUIRED", "Select a book for the room.");
-    }
-    validateBook(request.bookId());
+    List<Long> selectedBookIds = selectedBookIds(request);
     ReadingRoom room = new ReadingRoom();
     apply(room, request, 0);
+    room.bookId = selectedBookIds.get(0);
     room.owner = current;
     // Flush both rows before serializing the response. This makes a 201 mean
     // the generated id/code and owner membership are query-visible together.
     room = rooms.saveAndFlush(room);
-    RoomBook firstBook = new RoomBook(); firstBook.roomId = room.id; firstBook.bookId = room.bookId;
-    firstBook.displayOrder = 0; firstBook.addedBy = current.id; roomBooks.save(firstBook);
+    for (int order = 0; order < selectedBookIds.size(); order++) {
+      RoomBook roomBook = new RoomBook();
+      roomBook.roomId = room.id;
+      roomBook.bookId = selectedBookIds.get(order);
+      roomBook.displayOrder = order;
+      roomBook.addedBy = current.id;
+      roomBooks.save(roomBook);
+    }
     room.currentBookId = room.bookId;
     if (request.password() != null && !request.password().isBlank()) room.passwordHash = passwords.encode(request.password());
     room = rooms.save(room);
@@ -279,7 +286,7 @@ class RoomService {
     owner.roomNickname = java.util.Optional.ofNullable(trimToNull(request.roomNickname())).orElse(current.nickname);
     members.saveAndFlush(owner);
     RoomResponse result = response(room, current);
-    log.info("reading-room created roomId={} hostUserId={} bookId={} public={}", room.id, current.id, room.bookId, room.isPublic);
+    log.info("reading-room created roomId={} hostUserId={} bookIds={} public={}", room.id, current.id, selectedBookIds, room.isPublic);
     return result;
   }
 
@@ -323,6 +330,37 @@ class RoomService {
     String oldUrl = member.roomProfileImageUrl;
     member.roomProfileImageUrl = null;
     members.save(member);
+    storage.delete(oldUrl);
+  }
+
+  /** A room cover belongs to the room itself; only its owner may change it. */
+  @org.springframework.transaction.annotation.Transactional
+  RoomResponse updateCoverImage(String username, Long roomId, MultipartFile image,
+                                 ProfileImageStorage storage) {
+    AppUser current = userFeatures.me(username);
+    ReadingRoom room = room(roomId);
+    requireOwner(room, current);
+    String oldUrl = room.coverImageUrl;
+    String savedUrl = storage.save(image);
+    try {
+      room.coverImageUrl = savedUrl;
+      rooms.save(room);
+      storage.delete(oldUrl);
+      return response(room, current);
+    } catch (RuntimeException e) {
+      storage.delete(savedUrl);
+      throw e;
+    }
+  }
+
+  @org.springframework.transaction.annotation.Transactional
+  void deleteCoverImage(String username, Long roomId, ProfileImageStorage storage) {
+    AppUser current = userFeatures.me(username);
+    ReadingRoom room = room(roomId);
+    requireOwner(room, current);
+    String oldUrl = room.coverImageUrl;
+    room.coverImageUrl = null;
+    rooms.save(room);
     storage.delete(oldUrl);
   }
 
@@ -443,7 +481,13 @@ class RoomService {
     if(!members.existsByRoomIdAndUserId(roomId,current.id)) throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다.");
     if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방의 책을 찾을 수 없습니다.");
     java.util.Map<Long,RoomMemberProgress> byUser=roomProgress.findByRoomIdAndBookIdOrderByUpdatedAtDesc(roomId,bookId).stream().collect(java.util.stream.Collectors.toMap(p->p.userId,p->p,(first,ignored)->first));
-    return members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member->{RoomMemberProgress p=byUser.get(member.userId);return new RoomParticipantProgressResponse(member.userId,member.roomNickname==null||member.roomNickname.isBlank()?"참여자":member.roomNickname,member.roomProfileImageUrl,p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.updatedAt,java.util.Objects.equals(member.userId,current.id));}).toList();
+    return members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member->{
+      RoomMemberProgress p=byUser.get(member.userId);
+      RoomMemberResponse identity=users.findById(member.userId)
+          .map(user->memberResponse(member,user))
+          .orElse(new RoomMemberResponse(member.userId,"참여자",member.role,member.joinedAt,member.roomProfileImageUrl));
+      return new RoomParticipantProgressResponse(member.userId,identity.nickname(),identity.roomProfileImageUrl(),p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.updatedAt,java.util.Objects.equals(member.userId,current.id));
+    }).toList();
   }
   private RoomProgressResponse progressResponse(RoomMemberProgress p){return new RoomProgressResponse(p.roomId,p.userId,p.bookId,p.progressPercent,p.lastReadPosition,p.updatedAt);}
   private void normalizeBookOrder(Long roomId){List<RoomBook> list=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId);for(int i=0;i<list.size();i++)list.get(i).displayOrder=i;roomBooks.saveAll(list);}
@@ -485,12 +529,14 @@ class RoomService {
   }
 
   @org.springframework.transaction.annotation.Transactional
-  void delete(String username, Long roomId) {
+  void delete(String username, Long roomId, ProfileImageStorage storage) {
     AppUser current = userFeatures.me(username);
     ReadingRoom room = room(roomId);
     requireOwner(room, current);
+    String coverImageUrl = room.coverImageUrl;
     rooms.delete(room);
     rooms.flush();
+    storage.delete(coverImageUrl);
   }
 
   private ReadingRoom room(Long roomId) {
@@ -529,6 +575,27 @@ class RoomService {
     if (bookId != null && !books.existsById(bookId)) {
       throw new ApiException(HttpStatus.NOT_FOUND, "BOOK_NOT_FOUND", "Book not found.");
     }
+  }
+
+  /**
+   * `bookId` remains the legacy representative-book field. New clients send
+   * the ordered `bookIds` list as well, and its first entry is authoritative.
+   */
+  private List<Long> selectedBookIds(RoomRequest request) {
+    List<Long> ids = request.bookIds() == null ? List.of(request.bookId()) : request.bookIds();
+    if (ids.isEmpty() || ids.stream().anyMatch(java.util.Objects::isNull)) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_REQUIRED", "Select at least one book for the room.");
+    }
+    java.util.LinkedHashSet<Long> unique = new java.util.LinkedHashSet<>(ids);
+    if (unique.size() != ids.size()) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_ROOM_BOOK", "A book can only be selected once.");
+    }
+    List<Long> ordered = List.copyOf(unique);
+    if (!java.util.Objects.equals(request.bookId(), ordered.get(0))) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_ORDER_INVALID", "bookId must match the first bookIds entry.");
+    }
+    ordered.forEach(this::validateBook);
+    return ordered;
   }
 
   private void apply(ReadingRoom room, RoomRequest request, int currentMembers) {
@@ -579,7 +646,7 @@ class RoomService {
         owner ? room.joinCode : null, room.spoilerLockEnabled, room.selectedAiFriendType, participants,
         book, coverBook, ownerUser.nickname, currentMember == null ? null : currentMember.role,
         participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType,
-        room.passwordHash != null, room.currentBookId, roomBooks);
+        room.passwordHash != null, room.currentBookId, roomBooks, room.coverImageUrl);
   }
 
   private List<RoomBookItemResponse> roomBookResponses(ReadingRoom room) { return roomBooks.findByRoomIdOrderByDisplayOrderAsc(room.id).stream().map(item -> books.findById(item.bookId).map(book -> new RoomBookItemResponse(RoomBookResponse.from(book),item.displayOrder,java.util.Objects.equals(room.currentBookId,item.bookId))).orElse(null)).filter(java.util.Objects::nonNull).toList(); }
@@ -688,7 +755,11 @@ class RoomController {
   RoomMemberResponse uploadMyProfileImage(@PathVariable Long roomId, @RequestPart("profileImage") MultipartFile profileImage, org.springframework.security.core.Authentication authentication) { return service.updateMyProfileImage(authentication.getName(), roomId, profileImage, images); }
   @DeleteMapping("/{roomId}/members/me/profile-image") @ResponseStatus(HttpStatus.NO_CONTENT)
   void deleteMyProfileImage(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.deleteMyProfileImage(authentication.getName(), roomId, images); }
+  @PutMapping(value = "/{roomId}/cover-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  RoomResponse uploadCoverImage(@PathVariable Long roomId, @RequestPart("coverImage") MultipartFile coverImage, org.springframework.security.core.Authentication authentication) { return service.updateCoverImage(authentication.getName(), roomId, coverImage, images); }
+  @DeleteMapping("/{roomId}/cover-image") @ResponseStatus(HttpStatus.NO_CONTENT)
+  void deleteCoverImage(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.deleteCoverImage(authentication.getName(), roomId, images); }
   @DeleteMapping("/{roomId}/members/{memberId}") @ResponseStatus(HttpStatus.NO_CONTENT) void kick(@PathVariable Long roomId, @PathVariable Long memberId, org.springframework.security.core.Authentication authentication) { service.kick(authentication.getName(), roomId, memberId); }
   @DeleteMapping("/{roomId}/members/me") @ResponseStatus(HttpStatus.NO_CONTENT) void leave(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.leave(authentication.getName(), roomId); }
-  @DeleteMapping("/{roomId}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.delete(authentication.getName(), roomId); }
+  @DeleteMapping("/{roomId}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.delete(authentication.getName(), roomId, images); }
 }

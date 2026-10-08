@@ -52,7 +52,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   bool _savingHighlight = false;
   List<ReadingNote> _sharedHighlights = const [];
   List<SharedRoomNote> _sharedMemos = const [];
-  List<AiReadingFriend> _aiFriends = const [];
+  List<SharedRoomNote> _sharedBookmarks = const [];
+  final List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
 
   final Map<int, List<AiReadingNote>> _aiNotesByFriend =
@@ -179,6 +180,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         // Keep shared memos separate from private ReadingNote state. The
         // server has already applied room/book membership and spoiler policy.
         _sharedMemos = notes.where((note) => note.type == 'MEMO').toList();
+        _sharedBookmarks = notes
+            .where((note) => note.type == 'BOOKMARK')
+            .toList();
       });
     } on ApiException {
       // Shared-note rendering is supplementary. The room note list keeps a
@@ -553,9 +557,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         .where((c) => c.startParagraphOrder <= _order)
         .toList();
     final title = chapters.isEmpty ? vm.content!.title : chapters.last.title;
-    final marked = vm.readingNotes.any(
-      (n) => n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
-    );
+    final marked = widget.readerContext.isReadingRoom
+        ? _sharedBookmarks.any((n) => n.paragraphOrder == _order)
+        : vm.readingNotes.any(
+            (n) =>
+                n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
+          );
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
@@ -594,6 +601,25 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   }
 
   Future<void> _bookmark(BookViewModel vm) async {
+    if (widget.readerContext.isReadingRoom) {
+      if (_sharedBookmarks.any((note) => note.paragraphOrder == _order)) return;
+      final roomId = widget.readerContext.roomId!;
+      try {
+        await ReadingRoomRepository(
+          ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+        ).createSharedNote(roomId, {
+          'bookId': widget.bookId,
+          'type': 'BOOKMARK',
+          'paragraphOrder': _order,
+        });
+        await _loadSharedHighlights();
+      } on ApiException catch (error) {
+        if (mounted)
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(_sharedNoteError(error))));
+      }
+      return;
+    }
     final hits = vm.readingNotes
         .where(
           (n) =>
@@ -811,6 +837,21 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   );
 
   Future<void> _viewSettings() async {
+    // Room readers must not expose AI-friend controls. Personal readers keep
+    // the existing AI configuration flow below unchanged.
+    if (widget.readerContext.isReadingRoom) {
+      await _open(
+        _ViewSettings(
+          onChange: (settings) async {
+            await context.read<BookViewModel>().saveSettings(settings);
+            if (mounted) _layoutKey = null;
+          },
+          showAiFriendSettings: false,
+        ),
+        place: _SheetPlace.corner,
+      );
+      return;
+    }
     final store = context.read<RidiStore>();
 
     final repository = AiReadingRepository(
@@ -818,17 +859,6 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
 
     try {
-      // 보기 설정을 열 때 서버에서 현재 사용 가능한 AI 친구 목록을 가져온다.
-      final loaded = await Future.wait([
-        repository.getDefaultFriends(),
-        repository.getMyFriends(),
-      ]);
-      final friends = <AiReadingFriend>[...loaded[0], ...loaded[1]];
-
-      if (!mounted) return;
-
-      _aiFriends = friends;
-
       await _open(
         place: _SheetPlace.corner,
         _ViewSettings(
@@ -845,6 +875,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           },
 
           aiFriends: _aiFriends,
+          onLoadAiFriends: () async {
+            final loaded = await Future.wait([
+              repository.getDefaultFriends(),
+              repository.getMyFriends(),
+            ]);
+            return <AiReadingFriend>[...loaded[0], ...loaded[1]];
+          },
 
           selectedAiFriendIds: _selectedAiFriendIds,
 
@@ -963,34 +1000,77 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     });
   }
 
-  Future<void> _openHighlightMenu(ReadingNote note) async {
-    // Shared and AI highlights are rendered with negative local ids. They are
-    // intentionally read-only here; the server remains the final authority.
-    if (!mounted || widget.readerContext.isReadingRoom || note.id <= 0) return;
-    final action = await showModalBottomSheet<_HighlightAction>(
+  Future<void> _openHighlightMenu(
+    ReadingNote note,
+    BuildContext anchorContext,
+  ) async {
+    if (!mounted) return;
+    final position = _memoPopupPosition(anchorContext);
+    if (position == null) return;
+    // Shared and AI highlights have synthetic local IDs. Keep them read-only,
+    // but make their state inspectable at the tapped text instead of swallowing
+    // the gesture.
+    if (widget.readerContext.isReadingRoom || note.id <= 0) {
+      await showMenu<void>(
+        context: context,
+        position: position,
+        items: [
+          PopupMenuItem<void>(
+            enabled: false,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 9,
+                  backgroundColor: _highlightColor(note.highlightColor),
+                ),
+                const SizedBox(width: 10),
+                const Text('공유 형광펜'),
+              ],
+            ),
+          ),
+        ],
+      );
+      return;
+    }
+    final action = await showMenu<_HighlightAction>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('삭제'),
-              onTap: () => Navigator.pop(sheetContext, _HighlightAction.delete),
-            ),
-            ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('형광펜 색깔'),
-              onTap: () => Navigator.pop(sheetContext, _HighlightAction.color),
-            ),
-            ListTile(
-              leading: const Icon(Icons.mode_comment_outlined),
-              title: const Text('메모'),
-              onTap: () => Navigator.pop(sheetContext, _HighlightAction.memo),
-            ),
-          ],
+      position: position,
+      items: [
+        PopupMenuItem<_HighlightAction>(
+          value: _HighlightAction.color,
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 10,
+                backgroundColor: _highlightColor(note.highlightColor),
+              ),
+              const SizedBox(width: 10),
+              const Text('색상'),
+            ],
+          ),
         ),
-      ),
+        const PopupMenuItem<_HighlightAction>(
+          value: _HighlightAction.memo,
+          child: Row(
+            children: [
+              Icon(Icons.mode_comment_outlined),
+              SizedBox(width: 10),
+              Text('메모'),
+            ],
+          ),
+        ),
+        const PopupMenuItem<_HighlightAction>(
+          value: _HighlightAction.delete,
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline),
+              SizedBox(width: 10),
+              Text('삭제'),
+            ],
+          ),
+        ),
+      ],
     );
     if (!mounted || action == null) return;
 
@@ -1025,30 +1105,28 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     }
 
     if (action == _HighlightAction.color) {
-      final color = await showModalBottomSheet<String>(
+      final viewModel = context.read<BookViewModel>();
+      final color = await showMenu<String>(
         context: context,
-        builder: (sheetContext) => SafeArea(
-          child: Wrap(
-            children: ['#FFF59D', '#A5D6A7', '#90CAF9', '#FFCCBC', '#CE93D8']
-                .map(
-                  (value) => ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: _highlightColor(value),
-                    ),
-                    title: Text(value),
-                    onTap: () => Navigator.pop(sheetContext, value),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
+        position: position,
+        items: ['#FFF59D', '#A5D6A7', '#90CAF9', '#FFCCBC', '#CE93D8']
+            .map(
+              (value) => PopupMenuItem<String>(
+                value: value,
+                child: CircleAvatar(
+                  radius: 13,
+                  backgroundColor: _highlightColor(value),
+                ),
+              ),
+            )
+            .toList(),
       );
       if (!mounted || color == null) return;
       try {
-        await context.read<BookViewModel>().updateNote(
-          widget.bookId,
-          note.id,
-          color: color,
+        await viewModel.updateNote(widget.bookId, note.id, color: color);
+        if (!mounted) return;
+        await viewModel.saveSettings(
+          viewModel.readerSettings.copyWith(defaultHighlightColor: color),
         );
       } on ApiException catch (error) {
         if (mounted) {
@@ -1117,6 +1195,21 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         selectedText: selection.selectedText,
         onSave: (memo) async {
           if (widget.readerContext.isReadingRoom) {
+            // Shared memos use their own room-scoped rows. Create the matching
+            // shared highlight first so the selected range is rendered as soon
+            // as the memo is saved; duplicate range creation is idempotent.
+            try {
+              await _createRoomNote(
+                selection,
+                type: 'HIGHLIGHT',
+                highlightColor: context
+                    .read<BookViewModel>()
+                    .readerSettings
+                    .highlightColor,
+              );
+            } on ApiException catch (error) {
+              if (error.errorCode != 'DUPLICATE_SHARED_NOTE') rethrow;
+            }
             await _createRoomNote(selection, type: 'MEMO', content: memo);
           } else {
             await context.read<BookViewModel>().addNote(
@@ -1368,7 +1461,8 @@ class _ReaderPage extends StatelessWidget {
   final bool twoColumns;
   final List<ReadingNote> highlights;
   final ValueChanged<_TextSelection> onHighlight;
-  final ValueChanged<ReadingNote> onHighlightTap;
+  final void Function(ReadingNote note, BuildContext anchorContext)
+  onHighlightTap;
   final List<ReadingNote> memos;
   final Map<int, int> roomMemoCounts;
   final ValueChanged<_TextSelection> onMemo;
@@ -1474,7 +1568,8 @@ class _SelectableParagraphSlice extends StatefulWidget {
   final TextStyle style;
   final List<ReadingNote> highlights;
   final ValueChanged<_TextSelection> onHighlight;
-  final ValueChanged<ReadingNote> onHighlightTap;
+  final void Function(ReadingNote note, BuildContext anchorContext)
+  onHighlightTap;
   final List<ReadingNote> memos;
   final int roomMemoCount;
   final ValueChanged<_TextSelection> onMemo;
@@ -1494,7 +1589,7 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
       note.id,
       TapGestureRecognizer.new,
     );
-    recognizer.onTap = () => widget.onHighlightTap(note);
+    recognizer.onTap = () => widget.onHighlightTap(note, context);
     return recognizer;
   }
 
@@ -1563,9 +1658,7 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
       spans.add(
         TextSpan(
           text: slice.text.substring(from, to),
-          recognizer: highlight != null && highlight.id > 0
-              ? _recognizerFor(highlight)
-              : null,
+          recognizer: highlight != null ? _recognizerFor(highlight) : null,
           style: highlight == null
               ? style
               : style.copyWith(
@@ -2415,9 +2508,11 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
 class _ViewSettings extends StatefulWidget {
   const _ViewSettings({
     required this.onChange,
-    required this.aiFriends,
-    required this.selectedAiFriendIds,
-    required this.onAiFriendDone,
+    this.aiFriends = const [],
+    this.selectedAiFriendIds = const {},
+    this.onAiFriendDone,
+    this.onLoadAiFriends,
+    this.showAiFriendSettings = true,
   });
 
   final ValueChanged<ReaderSettings> onChange;
@@ -2429,7 +2524,9 @@ class _ViewSettings extends StatefulWidget {
   final Set<int> selectedAiFriendIds;
 
   // AI 친구 화면에서 "완료"를 눌렀을 때 호출
-  final Future<void> Function(Set<int> selectedIds) onAiFriendDone;
+  final Future<void> Function(Set<int> selectedIds)? onAiFriendDone;
+  final Future<List<AiReadingFriend>> Function()? onLoadAiFriends;
+  final bool showAiFriendSettings;
 
   @override
   State<_ViewSettings> createState() => _ViewSettingsState();
@@ -2453,6 +2550,8 @@ class _ViewSettingsState extends State<_ViewSettings> {
 
   bool _showAiFriends = false;
   bool _savingAiFriends = false;
+  bool _loadingAiFriends = false;
+  List<AiReadingFriend> _loadedAiFriends = const [];
 
   late Set<int> _draftSelectedIds;
 
@@ -2462,6 +2561,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
 
     // 아직 완료를 누르지 않은 임시 선택 상태
     _draftSelectedIds = <int>{...widget.selectedAiFriendIds};
+    _loadedAiFriends = widget.aiFriends;
   }
 
   @override
@@ -2610,39 +2710,41 @@ class _ViewSettingsState extends State<_ViewSettings> {
             divider,
 
             // AI 친구 설정
-            InkWell(
-              onTap: () {
-                final renderBox =
-                    _viewSettingsKey.currentContext!.findRenderObject()
-                        as RenderBox;
+            if (widget.showAiFriendSettings)
+              InkWell(
+                onTap: () {
+                  final renderBox =
+                      _viewSettingsKey.currentContext!.findRenderObject()
+                          as RenderBox;
 
-                setState(() {
-                  _viewSettingsSize = renderBox.size;
+                  setState(() {
+                    _viewSettingsSize = renderBox.size;
 
-                  _draftSelectedIds = <int>{...widget.selectedAiFriendIds};
+                    _draftSelectedIds = <int>{...widget.selectedAiFriendIds};
 
-                  _showAiFriends = true;
-                });
-              },
-              child: const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 16, 14),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.smart_toy_outlined,
-                      size: 20,
-                      color: Color(0xFF9E9E9E),
-                    ),
-                    SizedBox(width: 10),
-                    Text('AI 친구 설정', style: TextStyle(fontSize: 15)),
-                    Spacer(),
-                    Icon(Icons.chevron_right, color: Color(0xFFB0B0B0)),
-                  ],
+                    _showAiFriends = true;
+                  });
+                  unawaited(_loadAiFriends());
+                },
+                child: const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 14, 16, 14),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.smart_toy_outlined,
+                        size: 20,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                      SizedBox(width: 10),
+                      Text('AI 친구 설정', style: TextStyle(fontSize: 15)),
+                      Spacer(),
+                      Icon(Icons.chevron_right, color: Color(0xFFB0B0B0)),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            divider,
+            if (widget.showAiFriendSettings) divider,
 
             ValueListenableBuilder<bool>(
               valueListenable: _spoiler,
@@ -2751,7 +2853,9 @@ class _ViewSettingsState extends State<_ViewSettings> {
 
           const Divider(height: 1),
 
-          if (widget.aiFriends.isEmpty)
+          if (_loadingAiFriends)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_loadedAiFriends.isEmpty)
             const Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
@@ -2774,7 +2878,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                 child: ListView.separated(
                   controller: _aiScrollController,
                   padding: EdgeInsets.zero,
-                  itemCount: widget.aiFriends.length,
+                  itemCount: _loadedAiFriends.length,
                   separatorBuilder: (_, _) => const Divider(
                     height: 1,
                     indent: 20,
@@ -2782,7 +2886,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                     color: Color(0xFFEDEDED),
                   ),
                   itemBuilder: (_, index) {
-                    final friend = widget.aiFriends[index];
+                    final friend = _loadedAiFriends[index];
 
                     final selected = _draftSelectedIds.contains(friend.id);
 
@@ -2849,6 +2953,25 @@ class _ViewSettingsState extends State<_ViewSettings> {
     );
   }
 
+  Future<void> _loadAiFriends() async {
+    final loader = widget.onLoadAiFriends;
+    if (loader == null || _loadingAiFriends || _loadedAiFriends.isNotEmpty) {
+      return;
+    }
+    setState(() => _loadingAiFriends = true);
+    try {
+      final friends = await loader();
+      if (mounted) setState(() => _loadedAiFriends = friends);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingAiFriends = false);
+    }
+  }
+
   Future<void> _completeAiFriends() async {
     setState(() {
       _savingAiFriends = true;
@@ -2857,7 +2980,10 @@ class _ViewSettingsState extends State<_ViewSettings> {
     try {
       // 여기서만 부모에게 최종 선택을 전달한다.
       // 친구를 누르는 것만으로는 Gemini가 실행되지 않는다.
-      await widget.onAiFriendDone(Set<int>.from(_draftSelectedIds));
+      final onDone = widget.onAiFriendDone;
+      if (onDone != null) {
+        await onDone(Set<int>.from(_draftSelectedIds));
+      }
     } finally {
       if (mounted) {
         setState(() {

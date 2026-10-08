@@ -10,4 +10,5 @@ Started AuthApplication
 나오는거 확인
 포트 안닫혔을때
 Get-NetTCPConnection -LocalPort 8088 -State Listen | Select-Object OwningProcess
+taskkill /PID 27048 /F
 Stop-Process -Id <PID>

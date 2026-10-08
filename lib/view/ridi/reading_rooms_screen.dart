@@ -387,7 +387,9 @@ class _RoomCoverImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final book = room.coverBook ?? room.book;
-    final rawUrl = book?.coverImageUrl?.trim();
+    final rawUrl = room.coverImageUrl?.trim().isNotEmpty == true
+        ? room.coverImageUrl!.trim()
+        : book?.coverImageUrl?.trim();
     Widget fallback = const ColoredBox(
       color: Color(0xFFF1F3F8),
       child: Center(
@@ -404,7 +406,7 @@ class _RoomCoverImage extends StatelessWidget {
         : '${AppConfig.baseUrl}${rawUrl.startsWith('/') ? '' : '/'}$rawUrl';
     return Semantics(
       image: true,
-      label: '${book?.title ?? room.name} 대표 표지',
+      label: '${room.name} 방 커버',
       child: Image.network(
         url,
         fit: BoxFit.cover,
@@ -497,12 +499,10 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
   final _name = TextEditingController();
   final _description = TextEditingController();
   final _nickname = TextEditingController();
-  final _password = TextEditingController();
   late final ReadingRoomRepository _repository;
   late Future<List<Book>> _books;
   final List<Book> _picked = [];
   int _maxMembers = 6;
-  bool _passwordOn = false;
   Uint8List? _imageBytes;
   String? _imageName;
   String? _imageType;
@@ -529,7 +529,6 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
     _name.dispose();
     _description.dispose();
     _nickname.dispose();
-    _password.dispose();
     super.dispose();
   }
 
@@ -582,10 +581,8 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
     if (_submitting) return;
     final err = _name.text.trim().isEmpty
         ? '방 이름을 입력해주세요.'
-        : _picked.length != 1
+        : _picked.isEmpty
         ? '함께 읽을 책을 골라주세요.'
-        : _passwordOn && !RegExp(r'^\d{4}$').hasMatch(_password.text)
-        ? '비밀번호는 숫자 4자리로 적어주세요.'
         : null;
     if (err != null) {
       setState(() => _error = err);
@@ -600,12 +597,12 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
         'name': _name.text.trim(),
         'description': _description.text.trim(),
         'bookId': _picked.first.id,
+        'bookIds': _picked.map((book) => book.id).toList(),
         'maxMembers': _maxMembers,
         'isPublic': true,
         'spoilerLockEnabled': false,
         'selectedAiFriendType': null,
         'roomNickname': _nickname.text.trim(),
-        if (_passwordOn) 'password': _password.text,
       });
       if (_imageBytes != null) {
         try {
@@ -810,42 +807,6 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        _title('비밀번호 설정', '켜면 코드와 비밀번호를 알아야 들어와요'),
-        _panel(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    _passwordOn ? '비밀번호 사용' : '사용 안 함',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const Spacer(),
-                  Switch(
-                    value: _passwordOn,
-                    onChanged: _submitting
-                        ? null
-                        : (v) => setState(() => _passwordOn = v),
-                  ),
-                ],
-              ),
-              if (_passwordOn) ...[
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _password,
-                  enabled: !_submitting,
-                  maxLength: 4,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: _box('숫자 4자리'),
-                ),
-              ],
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -911,16 +872,30 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
               );
             }
             return SizedBox(
-              height: 212,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: books.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 18),
-                itemBuilder: (_, i) => _BookPickCover(
-                  book: books[i],
-                  selected: _picked.any((x) => x.id == books[i].id),
-                  onTap: _submitting ? null : () => _toggleBook(books[i]),
-                ),
+              height: 360,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = (constraints.maxWidth / 132).floor().clamp(
+                    2,
+                    5,
+                  );
+                  return GridView.builder(
+                    key: const PageStorageKey('reading-room-book-picker'),
+                    padding: const EdgeInsets.only(right: 4),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: .54,
+                    ),
+                    itemCount: books.length,
+                    itemBuilder: (_, i) => _BookPickCover(
+                      book: books[i],
+                      selected: _picked.any((x) => x.id == books[i].id),
+                      onTap: _submitting ? null : () => _toggleBook(books[i]),
+                    ),
+                  );
+                },
               ),
             );
           },
@@ -1274,6 +1249,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   late Future<ReadingRoom> _room;
   bool _deleting = false;
   bool _updatingProfileImage = false;
+  bool _updatingCoverImage = false;
   final ImagePicker _imagePicker = ImagePicker();
   @override
   void initState() {
@@ -1360,6 +1336,70 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _updatingProfileImage = false);
+    }
+  }
+
+  Future<void> _editCoverImage() async {
+    if (_updatingCoverImage) return;
+    final action = await showModalBottomSheet<_RoomCoverImageAction>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('방 커버 이미지 선택'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RoomCoverImageAction.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('방 커버 이미지 삭제'),
+              textColor: Colors.red,
+              iconColor: Colors.red,
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RoomCoverImageAction.remove),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    setState(() => _updatingCoverImage = true);
+    try {
+      if (action == _RoomCoverImageAction.remove) {
+        await widget.repository.deleteCoverImage(widget.roomId);
+      } else {
+        final image = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 1600,
+          imageQuality: 85,
+        );
+        if (image == null) return;
+        final extension = image.name.split('.').last.toLowerCase();
+        final bytes = await image.readAsBytes();
+        if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension) ||
+            bytes.length > 5 * 1024 * 1024) {
+          throw ApiException('JPG, PNG, WEBP 형식의 5MB 이하 이미지만 선택할 수 있습니다.');
+        }
+        await widget.repository.uploadCoverImage(
+          widget.roomId,
+          bytes: bytes,
+          filename: image.name,
+          contentType:
+              image.mimeType ??
+              (extension == 'png'
+                  ? 'image/png'
+                  : extension == 'webp'
+                  ? 'image/webp'
+                  : 'image/jpeg'),
+        );
+      }
+      if (mounted) _reload();
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    } finally {
+      if (mounted) setState(() => _updatingCoverImage = false);
     }
   }
 
@@ -1491,6 +1531,11 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                 onTap: () => Navigator.pop(sheet, 'code'),
               ),
             ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('방 커버 이미지 변경'),
+              onTap: () => Navigator.pop(sheet, 'cover'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('방 삭제', style: TextStyle(color: Colors.red)),
               onTap: () => Navigator.pop(sheet, 'delete'),
@@ -1505,6 +1550,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
         await _edit(room);
       case 'code':
         await _regenerate(room);
+      case 'cover':
+        await _editCoverImage();
       case 'delete':
         await _delete(room);
     }
@@ -1839,7 +1886,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   }
 
   Widget _booksCard(ReadingRoom room) {
-    final hasBook = room.bookId != null;
+    final hasBook = room.books.isNotEmpty || room.bookId != null;
+    final bookCount = room.books.isNotEmpty
+        ? room.books.length
+        : (hasBook ? 1 : 0);
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1856,7 +1906,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${hasBook ? 1 : 0}권',
+                '$bookCount권',
                 style: const TextStyle(fontSize: 14, color: _gray),
               ),
               const Spacer(),
@@ -2257,7 +2307,6 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                     const SizedBox(height: 8),
                     LayoutBuilder(
                       builder: (context, c) {
-                        final x = (c.maxWidth - 24) * pct / 100;
                         return SizedBox(
                           height: 44,
                           child: Stack(
@@ -2277,39 +2326,69 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                                   ),
                                 ),
                               ),
-                              // 내 위치 표시 (멤버별 위치는 서버 기능이 생기면 함께)
-                              Positioned(
-                                left: x,
-                                top: 12,
-                                child: Column(
-                                  children: [
-                                    const Icon(
-                                      Icons.arrow_drop_up,
-                                      size: 16,
-                                      color: Color(0xFFE0A030),
-                                    ),
-                                    Container(
-                                      width: 24,
-                                      height: 18,
-                                      alignment: Alignment.center,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFFF1D6),
-                                        borderRadius: BorderRadius.circular(9),
+                              for (final participant in participants)
+                                Positioned(
+                                  left:
+                                      (c.maxWidth - 24) *
+                                      participant.progressPercent.clamp(
+                                        0,
+                                        100,
+                                      ) /
+                                      100,
+                                  top: 12,
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.arrow_drop_up,
+                                        size: 16,
+                                        color: participant.currentUser
+                                            ? const Color(0xFFE0A030)
+                                            : Colors.primaries[participant
+                                                      .userId
+                                                      .abs() %
+                                                  Colors.primaries.length],
                                       ),
-                                      child: Text(
-                                        (mine?.nickname.isEmpty ?? true)
-                                            ? '나'
-                                            : mine!.nickname.characters.first,
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFB7791F),
+                                      Container(
+                                        width: 24,
+                                        height: 18,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: participant.currentUser
+                                              ? const Color(0xFFFFF1D6)
+                                              : Colors
+                                                    .primaries[participant
+                                                            .userId
+                                                            .abs() %
+                                                        Colors.primaries.length]
+                                                    .withValues(alpha: .18),
+                                          borderRadius: BorderRadius.circular(
+                                            9,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          participant.currentUser
+                                              ? '나'
+                                              : (participant.nickname.isEmpty
+                                                    ? '?'
+                                                    : participant
+                                                          .nickname
+                                                          .characters
+                                                          .first),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: participant.currentUser
+                                                ? const Color(0xFFB7791F)
+                                                : Colors.primaries[participant
+                                                          .userId
+                                                          .abs() %
+                                                      Colors.primaries.length],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         );
@@ -2659,6 +2738,8 @@ class _RoomBookPickerState extends State<_RoomBookPicker> {
 }
 
 enum _RoomProfileImageAction { gallery, remove }
+
+enum _RoomCoverImageAction { gallery, remove }
 
 class SharedRoomNotesScreen extends StatefulWidget {
   const SharedRoomNotesScreen({
