@@ -97,17 +97,35 @@ class AiReadingRepository {
     return res.data ?? const [];
   }
 
+
   Future<AiReadingFriend> createFriend({
     required String name,
-    required String persona,
+    String? age,
+    String? gender,
+    String? relationship,
+    String? personality,
+    String? speechStyle,
+    String? traits,
   }) async {
     final res = await _api.post<AiReadingFriend>(
       '/api/ai-reading-friends',
-      body: {'name': name.trim(), 'persona': persona.trim()},
-      parse: (json) => AiReadingFriend.fromJson(json as Map<String, dynamic>),
+      body: {
+        'name': name.trim(),
+        'age': age?.trim(),
+        'gender': gender?.trim(),
+        'relationship': relationship?.trim(),
+        'personality': personality?.trim(),
+        'speechStyle': speechStyle?.trim(),
+        'traits': traits?.trim(),
+      },
+      parse: (json) =>
+          AiReadingFriend.fromJson(Map<String, dynamic>.from(json as Map)),
+      timeout: const Duration(seconds: 120),
     );
+
     return res.data!;
   }
+
 
   Future<void> deleteFriend(int friendId) =>
       _api.delete('/api/ai-reading-friends/$friendId');

@@ -20,6 +20,26 @@ class AiReadingFriend {
     @Column(nullable = false, columnDefinition = "TEXT")
     String persona;
 
+    // 사용자가 직접 입력한 AI 독서친구 정보
+
+@Column(name = "input_age")
+String inputAge;
+
+@Column(name = "input_gender")
+String inputGender;
+
+@Column(name = "input_relationship", columnDefinition = "TEXT")
+String inputRelationship;
+
+@Column(name = "input_personality", columnDefinition = "TEXT")
+String inputPersonality;
+
+@Column(name = "input_speech_style", columnDefinition = "TEXT")
+String inputSpeechStyle;
+
+@Column(name = "input_traits", columnDefinition = "TEXT")
+String inputTraits;
+
     @Column(name = "is_default", nullable = false)
     boolean isDefault;
 

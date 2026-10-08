@@ -177,13 +177,22 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
     if (_submitting) return;
     setState(() => _submitting = true);
-    final persona =
-        '나이: ${_ageController.text.trim()}\n성별: $_gender\n관계: $relationship\n성격: $personality\n말투: $speech\n특징: $feature';
+
     try {
       final token = context.read<RidiStore>().accessToken;
+
       final saved = await AiReadingRepository(
         ApiClient(tokenProvider: () => token),
-      ).createFriend(name: name, persona: persona);
+      ).createFriend(
+        name: name,
+        age: _ageController.text.trim(),
+        gender: _gender,
+        relationship: relationship,
+        personality: personality,
+        speechStyle: speech,
+        traits: feature,
+      );
+
       if (!mounted) return;
       setState(() {
         _friends = [
