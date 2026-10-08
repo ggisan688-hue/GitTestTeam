@@ -183,54 +183,146 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   }
 
   // 메모 생성은 보기 설정 팝업과 독립적으로 실행한다.
+  // 완료된 AI 친구는 건너뛰고,
+// 중단된 AI 친구는 저장된 진행률부터 표시한다.
   Future<void> _generateAiNotesInReader(
       AiReadingRepository repository,
       Set<int> selectedIds,
       ) async {
     for (final friendId in selectedIds) {
       if (!mounted) return;
-      _generatingAiFriendIds.add(friendId);
+
+      // 이미 생성 중인 친구는 중복 실행하지 않는다.
+      if (_generatingAiFriendIds.contains(friendId)) {
+        continue;
+      }
+
+      // 1. 서버에서 현재 진행 상태 확인
+      Map<String, dynamic> initialProgress;
+
+      try {
+        initialProgress = await repository.getReadingProgress(
+          bookId: widget.bookId,
+          friendId: friendId,
+        );
+      } catch (e) {
+        if (!mounted) return;
+
+        _aiFailedFriendIds.add(friendId);
+        _notifyAiProgress();
+
+        _aiMessage(
+          '${_friendName(friendId)}의 진행 상태를 확인하지 못했어요.',
+        );
+
+        debugPrint('AI 진행률 조회 실패: $e');
+        continue;
+      }
+
+      if (!mounted) return;
+
+      final alreadyCompleted =
+          initialProgress['completed'] == true;
+
+      final savedPercent =
+      ((initialProgress['percent'] as num?)?.toInt() ?? 0)
+          .clamp(0, alreadyCompleted ? 100 : 99)
+          .toInt();
+
+      _aiProgressPercent[friendId] =
+      alreadyCompleted ? 100 : savedPercent;
+
       _aiFailedFriendIds.remove(friendId);
-      _aiProgressPercent[friendId] = 0;
+      _notifyAiProgress();
+
+      // 2. 이미 완료된 캐릭터는 재생성하지 않는다.
+      if (alreadyCompleted) {
+        // 메모가 아직 화면에 없다면 기존 메모만 불러온다.
+        if (!_aiNotesByFriend.containsKey(friendId)) {
+          try {
+            final notes = await repository.getNotes(
+              bookId: widget.bookId,
+              friendId: friendId,
+            );
+
+            if (!mounted) return;
+
+            setState(() {
+              _aiNotesByFriend[friendId] = notes;
+            });
+          } catch (e) {
+            debugPrint('기존 AI 메모 조회 실패: $e');
+          }
+        }
+
+        // 진행률 표시 없음, 완료 알림 없음
+        continue;
+      }
+
+      // 3. 처음이거나 중단된 친구만 생성 시작
+      _generatingAiFriendIds.add(friendId);
       _notifyAiProgress();
       _startAiProgressPolling();
+
       try {
         final notes = await repository.generateNotes(
           bookId: widget.bookId,
           friendId: friendId,
         );
+
         if (!mounted) return;
-        // generateNotes는 파싱 실패 시 정상 반환할 수 있으므로 완료 상태를 검증한다.
+
+        // 4. 실제 완료 여부 재확인
         final progress = await repository.getReadingProgress(
           bookId: widget.bookId,
           friendId: friendId,
         );
+
         if (!mounted) return;
+
         final completed = progress['completed'] == true;
-        final percent = (progress['percent'] as num?)?.toInt() ?? 0;
+
+        final percent =
+            (progress['percent'] as num?)?.toInt() ??
+                savedPercent;
+
         setState(() {
           _aiNotesByFriend[friendId] = notes;
+
           _aiProgressPercent[friendId] = completed
-              ? 100 : percent.clamp(0, 99).toInt();
+              ? 100
+              : percent.clamp(0, 99).toInt();
         });
+
         if (completed) {
-          _aiMessage('${_friendName(friendId)}가 AI 메모 작성을 완료했어요.');
+          _aiMessage(
+            '${_friendName(friendId)}가 AI 메모 작성을 완료했어요.',
+          );
         } else {
           _aiFailedFriendIds.add(friendId);
-          _aiMessage('${_friendName(friendId)}의 AI 메모 작성이 중간에 멈췄어요. 다시 시도해 주세요.');
+
+          _aiMessage(
+            '${_friendName(friendId)}의 AI 메모 작성이 중간에 멈췄어요.',
+          );
         }
       } catch (e) {
         if (!mounted) return;
+
         _aiFailedFriendIds.add(friendId);
-        _aiMessage('${_friendName(friendId)}의 AI 메모 작성 중 오류가 발생했어요.');
-        debugPrint('AI 메모 생성 실패 (friendId=$friendId): $e');
-        // 오류가 나도 다른 친구의 작업은 이어서 시도한다.
+
+        _aiMessage(
+          '${_friendName(friendId)}의 AI 메모 작성 중 오류가 발생했어요.',
+        );
+
+        debugPrint('AI 메모 생성 실패: $e');
       } finally {
         _generatingAiFriendIds.remove(friendId);
+
         if (_generatingAiFriendIds.isEmpty) {
           _aiProgressTimer?.cancel();
           _aiProgressTimer = null;
         }
+
         _notifyAiProgress();
       }
     }
@@ -1126,6 +1218,132 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       BuildContext anchorContext,
       ) async {
     if (!mounted) return;
+    // AI 친구 형광펜: 메모 내용을 읽기 전용으로 보여준다.
+    if (note.id <= -1000000000) {
+      String friendName = 'AI 친구';
+      final aiNoteId = -1000000000 - note.id;
+
+      for (final entry in _aiNotesByFriend.entries) {
+        if (entry.value.any((aiNote) => aiNote.id == aiNoteId)) {
+          friendName = _friendName(entry.key);
+          break;
+        }
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.all(24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 56,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Text(
+                        '메모',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Positioned(
+                        left: 8,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text(
+                            '닫기',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text(
+                            '완료',
+                            style: TextStyle(
+                              color: Color(0xFF1E88E5),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 16,
+                        margin: const EdgeInsets.only(top: 2),
+                        decoration: BoxDecoration(
+                          color: _highlightColor(note.highlightColor),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF90CAF9),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          note.selectedText ?? '',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF555555),
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  height: 280,
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      note.preview.isNotEmpty
+                          ? note.preview
+                          : 'AI 메모 내용이 없습니다.',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.7,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      return;
+    }
     final position = _memoPopupPosition(anchorContext);
     if (position == null) return;
     // Shared and AI highlights have synthetic local IDs. Keep them read-only,
