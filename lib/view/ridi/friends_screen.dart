@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
+import '../../repository/ai_reading_repository.dart';
 import 'ridi_theme.dart';
+import 'ridi_store.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -10,41 +14,12 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  final List<_AiFriend> _friends = const [
-    _AiFriend(
-      name: 'A',
-      age: 18,
-      gender: '여자',
-      relationship: '온라인에서 만난 편한 친구',
-      personality: '반응이 빠르고 장난기가 많아요.',
-      speech: '또래 친구처럼 편하고 자연스럽게 말해요.',
-      feature: '사람 관계에 쉽게 과몰입하고 인터넷 문화에 익숙해요.',
-      isDefault: true,
-    ),
-    _AiFriend(
-      name: 'B',
-      age: 22,
-      gender: '여자',
-      relationship: '편하게 이야기할 수 있는 친구',
-      personality: '차분하고 다정한 성격이에요.',
-      speech: '상대방의 이야기를 잘 들어주며 부드럽게 말해요.',
-      feature: '작은 감정의 변화도 잘 알아차리는 편이에요.',
-      isDefault: true,
-    ),
-    _AiFriend(
-      name: 'C',
-      age: 24,
-      gender: '남자',
-      relationship: '솔직하게 이야기하는 친구',
-      personality: '현실적이고 솔직한 성격이에요.',
-      speech: '돌려 말하기보다는 생각을 편하게 이야기해요.',
-      feature: '상황을 객관적으로 보는 편이에요.',
-      isDefault: true,
-    ),
-  ];
+  List<_AiFriend> _friends = [];
+  bool _isLoading = true;
 
   int _selectedIndex = 0;
   bool _isCreating = false;
+  bool _submitting = false;
 
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
@@ -54,6 +29,127 @@ class _FriendsScreenState extends State<FriendsScreen> {
   final _featureController = TextEditingController();
 
   String _gender = '여자';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFriends();
+  }
+
+
+  Future<void> _loadFriends() async {
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final repository = AiReadingRepository(
+        ApiClient(tokenProvider: () => token),
+      );
+
+      final loaded = await Future.wait([
+        repository.getDefaultFriends(),
+        repository.getMyFriends(),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _friends = [
+          ...loaded[0].map(_friendFromApi),
+          ...loaded[1].map(_friendFromApi),
+        ];
+
+        _selectedIndex = 0;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('AI 친구 목록을 불러오지 못했어요: $e')),
+      );
+    }
+  }
+
+  _AiFriend _friendFromApi(AiReadingFriend friend) {
+    final persona = friend.persona ?? '';
+
+    String section(String title, List<String> nextTitles) {
+      final lines = persona.split('\n');
+      final heading = RegExp(
+        r'^#{1,3}\s*(?:\d+\.\s*)?' + RegExp.escape(title) + r'\s*$',
+      );
+
+      final nextHeadings = nextTitles.map(
+            (item) => RegExp(
+          r'^#{1,3}\s*(?:\d+\.\s*)?' + RegExp.escape(item) + r'\s*$',
+        ),
+      );
+
+      final result = <String>[];
+      var reading = false;
+
+      for (final line in lines) {
+        final trimmed = line.trim();
+
+        if (heading.hasMatch(trimmed)) {
+          reading = true;
+          continue;
+        }
+
+        if (reading && nextHeadings.any((regex) => regex.hasMatch(trimmed))) {
+          break;
+        }
+
+        if (reading) result.add(line);
+      }
+
+      return result.join('\n').trim();
+    }
+
+    final profile = section(
+      '기본 프로필',
+      ['성격', '생활과 경험', '말하는 방식'],
+    );
+
+    final personality = section(
+      '성격',
+      ['생활과 경험', '말하는 방식'],
+    );
+
+    final experience = section(
+      '생활과 경험',
+      ['말하는 방식'],
+    );
+
+    final speech = section('말하는 방식', []);
+
+    final ageMatch = RegExp(r'(\d+)\s*(?:살|세|대)').firstMatch(profile);
+    final age = ageMatch == null
+        ? 0
+        : int.tryParse(ageMatch.group(1)!) ?? 0;
+
+    final gender = profile.contains('여성')
+        ? '여자'
+        : profile.contains('남성')
+        ? '남자'
+        : '';
+
+    return _AiFriend(
+      id: friend.id,
+      name: friend.name,
+      age: age,
+      gender: gender,
+      relationship: profile,
+      personality: personality.isNotEmpty ? personality : persona,
+      speech: speech,
+      feature: experience,
+      isDefault: friend.isDefault,
+    );
+  }
+
 
   @override
   void dispose() {
@@ -79,6 +175,36 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
+  Future<void> _createFriend() async {
+    final name = _nameController.text.trim();
+    final relationship = _relationshipController.text.trim();
+    final personality = _personalityController.text.trim();
+    final speech = _speechController.text.trim();
+    final feature = _featureController.text.trim();
+    if (name.isEmpty || relationship.isEmpty || personality.isEmpty || speech.isEmpty || feature.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('모든 항목을 입력해 주세요.')));
+      return;
+    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final persona = '나이: ${_ageController.text.trim()}\n성별: $_gender\n관계: $relationship\n성격: $personality\n말투: $speech\n특징: $feature';
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final saved = await AiReadingRepository(ApiClient(tokenProvider: () => token)).createFriend(name: name, persona: persona);
+      if (!mounted) return;
+      setState(() {
+        _friends = [..._friends, _AiFriend(id: saved.id, name: saved.name, age: int.tryParse(_ageController.text.trim()) ?? 0, gender: _gender, relationship: relationship, personality: personality, speech: speech, feature: feature, isDefault: false)];
+        _selectedIndex = _friends.length - 1;
+        _isCreating = false;
+      });
+      _nameController.clear(); _ageController.clear(); _relationshipController.clear(); _personalityController.clear(); _speechController.clear(); _featureController.clear();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,7 +228,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _friends.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(width: 16),
+                separatorBuilder: (_, _) => const SizedBox(width: 16),
                 itemBuilder: (context, index) {
                   if (index == _friends.length) {
                     return _CreateFriendCard(
@@ -128,6 +254,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
               duration: const Duration(milliseconds: 180),
               child: _isCreating
                   ? _buildCreatePanel()
+                  : _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _friends.isEmpty
+                  ? const Center(
+                child: Text('표시할 AI 친구가 없어요.'),
+              )
                   : _buildFriendDetail(_friends[_selectedIndex]),
             ),
           ],
@@ -189,8 +321,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     // 이후 사용자가 만든 친구만 수정 버튼 표시.
                     if (!friend.isDefault)
                       OutlinedButton(
-                        onPressed: () {},
-                        child: const Text('수정'),
+                        onPressed: friend.id == null ? null : () => _deleteFriend(friend),
+                        child: const Text('삭제'),
                       ),
                   ],
                 ),
@@ -249,6 +381,32 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _deleteFriend(_AiFriend friend) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('AI 친구 삭제'),
+        content: Text('${friend.name}을(를) 삭제할까요?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('삭제')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || friend.id == null) return;
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      await AiReadingRepository(ApiClient(tokenProvider: () => token)).deleteFriend(friend.id!);
+      if (!mounted) return;
+      setState(() {
+        _friends = _friends.where((item) => item.id != friend.id).toList();
+        _selectedIndex = _selectedIndex.clamp(0, _friends.length - 1).toInt();
+      });
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Widget _buildCreatePanel() {
@@ -390,15 +548,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        '지금은 화면 확인 단계예요. 저장 기능은 다음 단계에서 연결할게요.',
-                      ),
-                    ),
-                  );
-                },
+                onPressed: _submitting ? null : _createFriend,
                 child: const Text('AI 친구 만들기'),
               ),
             ),
@@ -604,6 +754,7 @@ InputDecoration _inputDecoration({String? hint}) {
 
 class _AiFriend {
   const _AiFriend({
+    this.id,
     required this.name,
     required this.age,
     required this.gender,
@@ -614,6 +765,7 @@ class _AiFriend {
     required this.isDefault,
   });
 
+  final int? id;
   final String name;
   final int age;
   final String gender;

@@ -92,6 +92,7 @@ class AiReadingRepository {
       '/api/books/$bookId/ai-reading-friends/$friendId/generate',
       body: const {},
       parse: _parseNotes,
+      timeout: const Duration(seconds: 120),
     );
 
     return res.data ?? const <AiReadingNote>[];
@@ -108,6 +109,38 @@ class AiReadingRepository {
     );
 
     return res.data ?? const <AiReadingNote>[];
+  }
+
+  /// 현재 계정이 이 책에서 선택한 AI 친구 목록 조회
+  Future<List<int>> getSelectedFriendIds({
+    required int bookId,
+  }) async {
+    final res = await _api.get<List<int>>(
+      '/api/books/$bookId/ai-reading-friend-selections',
+      parse: (json) => (json as List<dynamic>)
+          .map((id) => (id as num).toInt())
+          .toList(),
+    );
+
+    return res.data ?? const <int>[];
+  }
+
+  /// 현재 계정이 이 책에서 선택한 AI 친구 목록 전체 저장
+  Future<List<int>> saveSelectedFriendIds({
+    required int bookId,
+    required Set<int> friendIds,
+  }) async {
+    final res = await _api.put<List<int>>(
+      '/api/books/$bookId/ai-reading-friend-selections',
+      body: {
+        'friendIds': friendIds.toList(),
+      },
+      parse: (json) => (json as List<dynamic>)
+          .map((id) => (id as num).toInt())
+          .toList(),
+    );
+
+    return res.data ?? const <int>[];
   }
 
   List<AiReadingNote> _parseNotes(Object? json) {

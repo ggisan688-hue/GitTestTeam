@@ -68,10 +68,17 @@ class ApiClient {
   }) => _send('GET', path, query: query, parse: parse);
 
   Future<ApiResponse<T>> post<T>(
-    String path, {
-    Object? body,
-    T Function(Object? json)? parse,
-  }) => _send('POST', path, body: body, parse: parse);
+      String path, {
+        Object? body,
+        T Function(Object? json)? parse,
+        Duration? timeout,
+      }) => _send(
+    'POST',
+    path,
+    body: body,
+    parse: parse,
+    timeout: timeout,
+  );
 
   Future<ApiResponse<T>> put<T>(
     String path, {
@@ -142,6 +149,7 @@ class ApiClient {
     Map<String, String>? query,
     Object? body,
     T Function(Object? json)? parse,
+    Duration? timeout,
   }) async {
     final requestId = _newRequestId();
     final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
@@ -151,7 +159,7 @@ class ApiClient {
     if (body != null) req.body = jsonEncode(body);
     try {
       final res = await http.Response.fromStream(
-        await _client.send(req).timeout(_requestTimeout),
+        await _client.send(req).timeout(timeout ?? _requestTimeout),
       );
       if (kDebugMode && path.startsWith('/api/reading-rooms')) {
         // Never write invite codes, request/response bodies, or JWTs to

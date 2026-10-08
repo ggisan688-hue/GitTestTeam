@@ -82,11 +82,58 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       await _wake(vm.readerSettings.keepScreenOn);
       if (mounted) setState(() {});
       unawaited(_loadSharedHighlights());
+      unawaited(_restoreAiFriendSelection());
     });
   }
 
   Future<void> _wake(bool enabled) =>
       enabled ? WakelockPlus.enable() : WakelockPlus.disable();
+
+  Future<void> _restoreAiFriendSelection() async {
+    if (!mounted) return;
+
+    final token = context.read<RidiStore>().accessToken;
+    final repository = AiReadingRepository(
+      ApiClient(tokenProvider: () => token),
+    );
+
+    try {
+      // 현재 계정과 책에 저장된 AI 친구 목록 조회
+      final selectedIds = await repository.getSelectedFriendIds(
+        bookId: widget.bookId,
+      );
+
+      final loadedNotes = <int, List<AiReadingNote>>{};
+
+      // 기존 AI 메모만 조회한다. 새로 생성하지 않는다.
+      for (final friendId in selectedIds) {
+        loadedNotes[friendId] = await repository.getNotes(
+          bookId: widget.bookId,
+          friendId: friendId,
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedAiFriendIds
+          ..clear()
+          ..addAll(selectedIds);
+
+        _aiNotesByFriend
+          ..clear()
+          ..addAll(loadedNotes);
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('AI 친구 선택 상태를 불러오지 못했습니다: ${e.message}'),
+        ),
+      );
+    }
+  }
 
   Future<void> _loadSharedHighlights() async {
     final roomId = widget.readerContext.roomId;
@@ -709,6 +756,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
                 loadedNotes[friendId] = notes;
               }
+
+              // 선택한 AI 친구 목록을 계정별·책별로 서버 DB에 저장
+              await repository.saveSelectedFriendIds(
+                bookId: widget.bookId,
+                friendIds: selectedIds.toSet(),
+              );
 
               if (!mounted) return;
 
