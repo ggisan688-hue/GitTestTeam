@@ -33,10 +33,11 @@ class Shelf {
     bookCount: (json['bookCount'] as num?)?.toInt() ?? 0,
     coverBookId: (json['coverBookId'] as num?)?.toInt(),
     coverImageUrl: json['coverImageUrl']?.toString(),
-    previewCoverImageUrls: (json['previewCoverImageUrls'] as List<dynamic>? ?? const [])
-        .map((value) => value.toString())
-        .where((value) => value.isNotEmpty)
-        .toList(),
+    previewCoverImageUrls:
+        (json['previewCoverImageUrls'] as List<dynamic>? ?? const [])
+            .map((value) => value.toString())
+            .where((value) => value.isNotEmpty)
+            .toList(),
     createdAt: _date(json['createdAt']),
     updatedAt: _date(json['updatedAt']),
   );

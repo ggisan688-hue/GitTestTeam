@@ -99,22 +99,39 @@ class HomeScreen extends StatelessWidget {
                   ],
                 )
               : null;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+          // The shell, recent-reading strip and navigation stay fixed. Only
+          // BookCatalogSection owns a bounded, independent scroll viewport.
+          final catalog = Expanded(child: BookCatalogSection());
+          final main = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (store.loggedIn) ...const [
+                _SectionTitle('최근 읽은 도서'),
+                RecentReadingSection(),
+                SizedBox(height: 24),
+              ],
+              const _SectionTitle('전체 도서'),
+              catalog,
+            ],
+          );
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
             child: side == null
-                ? serverMain
+                ? main
                 : wide
                 ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: serverMain),
+                      Expanded(child: main),
                       const SizedBox(width: 40),
                       SizedBox(width: 340, child: side),
                     ],
                   )
                 : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [side, const SizedBox(height: 32), serverMain],
+                    children: [
+                      side,
+                      const SizedBox(height: 20),
+                      Expanded(child: main),
+                    ],
                   ),
           );
         },

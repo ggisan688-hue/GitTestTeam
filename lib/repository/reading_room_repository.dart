@@ -35,6 +35,20 @@ class RoomParticipantProgress {
       );
 }
 
+class RoomReadingProgress {
+  const RoomReadingProgress({
+    required this.progressPercent,
+    required this.lastReadPosition,
+  });
+  final int progressPercent;
+  final int lastReadPosition;
+  factory RoomReadingProgress.fromJson(Map<String, dynamic> json) =>
+      RoomReadingProgress(
+        progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
+        lastReadPosition: (json['lastReadPosition'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class InviteCodeValidation {
   const InviteCodeValidation({
     required this.roomId,
@@ -285,6 +299,28 @@ class ReadingRoomRepository {
             .toList(),
       )).data ??
       const [];
+
+  Future<RoomReadingProgress> myProgress(int roomId, int bookId) async =>
+      (await _api.get<RoomReadingProgress>(
+        '/api/reading-rooms/$roomId/books/$bookId/progress/me',
+        parse: (json) =>
+            RoomReadingProgress.fromJson(json as Map<String, dynamic>),
+      )).data!;
+
+  Future<void> saveProgress(
+    int roomId,
+    int bookId, {
+    required int progressPercent,
+    required int lastReadPosition,
+  }) async {
+    await _api.post<Object>(
+      '/api/reading-rooms/$roomId/books/$bookId/progress',
+      body: {
+        'progressPercent': progressPercent.clamp(0, 100),
+        'lastReadPosition': lastReadPosition < 0 ? 0 : lastReadPosition,
+      },
+    );
+  }
 
   Future<void> kick(int roomId, int memberId) =>
       _api.delete('/api/reading-rooms/$roomId/members/$memberId');

@@ -73,9 +73,9 @@ class AiReadingRepository {
         return list
             .map(
               (item) => AiReadingFriend.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
             .toList();
       },
     );
@@ -87,13 +87,20 @@ class AiReadingRepository {
     final res = await _api.get<List<AiReadingFriend>>(
       '/api/ai-reading-friends',
       parse: (json) => (json as List)
-          .map((item) => AiReadingFriend.fromJson(Map<String, dynamic>.from(item as Map)))
+          .map(
+            (item) => AiReadingFriend.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
           .toList(),
     );
     return res.data ?? const [];
   }
 
-  Future<AiReadingFriend> createFriend({required String name, required String persona}) async {
+  Future<AiReadingFriend> createFriend({
+    required String name,
+    required String persona,
+  }) async {
     final res = await _api.post<AiReadingFriend>(
       '/api/ai-reading-friends',
       body: {'name': name.trim(), 'persona': persona.trim()},
@@ -140,10 +147,9 @@ class AiReadingRepository {
 
     return list
         .map(
-          (item) => AiReadingNote.fromJson(
-        Map<String, dynamic>.from(item as Map),
-      ),
-    )
+          (item) =>
+              AiReadingNote.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 }

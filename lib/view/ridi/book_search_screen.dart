@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
 import '../../model/book.dart';
+import '../../model/shelf.dart';
 import '../../repository/book_repository.dart';
 import '../../repository/shelf_repository.dart';
-import '../../model/shelf.dart';
 import 'book_catalog.dart';
 import 'ridi_store.dart';
 
@@ -22,9 +22,8 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
   Timer? _debounce;
   late final BookRepository _repository;
   Future<List<Book>>? _results;
-  final String? _category = null; // 카테고리 선택은 화면에서 뺌 → 항상 전체
   Object? _error;
-
+  int _request = 0;
   @override
   void initState() {
     super.initState();
@@ -50,14 +49,13 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       });
       return;
     }
+    final request = ++_request;
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       setState(() {
         _error = null;
-        _results = _repository.search(term, category: _category).catchError((
-          Object error,
-        ) {
-          _error = error;
+        _results = _repository.search(term).catchError((Object e) {
+          if (mounted && request == _request) _error = e;
           return <Book>[];
         });
       });
@@ -86,7 +84,7 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                         _search('');
                       },
                     ),
-              hintText: '제목 또는 저자로 검색',
+              hintText: '제목, 저자, 카테고리 검색',
               border: const OutlineInputBorder(),
             ),
           ),
@@ -95,14 +93,12 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       ],
     ),
   );
-
   Widget _body() {
-    if (_results == null)
-      return const Center(child: Text('제목 또는 저자를 입력해 주세요.'));
+    if (_results == null) return const Center(child: Text('검색어를 입력해 주세요.'));
     return FutureBuilder<List<Book>>(
       future: _results,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done)
+      builder: (context, s) {
+        if (s.connectionState != ConnectionState.done)
           return const Center(child: CircularProgressIndicator());
         if (_error != null)
           return Center(
@@ -121,32 +117,9 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
               ],
             ),
           );
-        final books = snapshot.data ?? const [];
+        final books = s.data ?? const <Book>[];
         if (books.isEmpty) return const Center(child: Text('검색 결과가 없습니다.'));
-        return ListView.separated(
-          itemCount: books.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final book = books[index];
-            return ListTile(
-              leading: const Icon(Icons.menu_book_outlined),
-              title: Text(book.title),
-              subtitle: Text(
-                '${book.author ?? ''}${book.category?.isNotEmpty == true ? ' · ${book.category}' : ''}',
-              ),
-              trailing: IconButton(
-                tooltip: '책장에 담기',
-                icon: const Icon(Icons.playlist_add_outlined),
-                onPressed: () => _addToShelf(book),
-              ),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => BookDetailScreen(bookId: book.id),
-                ),
-              ),
-            );
-          },
-        );
+        return _SearchGrid(books: books, onAdd: _addToShelf);
       },
     );
   }
@@ -165,15 +138,15 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       }
       final shelf = await showModalBottomSheet<Shelf>(
         context: context,
-        builder: (context) => SafeArea(
+        builder: (sheet) => SafeArea(
           child: ListView(
             shrinkWrap: true,
             children: [
-              for (final value in choices)
+              for (final item in choices)
                 ListTile(
-                  title: Text(value.name),
-                  subtitle: Text('${value.bookCount}권'),
-                  onTap: () => Navigator.pop(context, value),
+                  title: Text(item.name),
+                  subtitle: Text('${item.bookCount}권'),
+                  onTap: () => Navigator.pop(sheet, item),
                 ),
             ],
           ),
@@ -184,10 +157,39 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       if (mounted)
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('${shelf.name}에 담았습니다.')));
-    } on ApiException catch (error) {
+    } on ApiException catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+            .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
+}
+
+class _SearchGrid extends StatelessWidget {
+  const _SearchGrid({required this.books, required this.onAdd});
+  final List<Book> books;
+  final ValueChanged<Book> onAdd;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final cols = c.maxWidth >= 750
+          ? 5
+          : (c.maxWidth / 148).floor().clamp(2, 4).toInt();
+      return GridView.builder(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols,
+          mainAxisSpacing: 22,
+          crossAxisSpacing: 16,
+          childAspectRatio: .49,
+        ),
+        itemCount: books.length,
+        itemBuilder: (context, i) => BookCatalogCard(
+          book: books[i],
+          onAddToShelf: () => onAdd(books[i]),
+        ),
+      );
+    },
+  );
 }

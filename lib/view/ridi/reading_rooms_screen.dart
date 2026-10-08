@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_config.dart';
 import '../../core/room_sync_client.dart';
 import '../../model/book.dart';
 import '../../model/reading_room.dart';
@@ -303,60 +304,125 @@ class _RoomTile extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _RoomCoverImage(room: room),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x33000000), Color(0xCC000000)],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  room.isPublic ? Icons.public : Icons.lock_outline,
-                  size: 22,
-                  color: const Color(0xFF6B7488),
+                Row(
+                  children: [
+                    Icon(
+                      room.isPublic ? Icons.public : Icons.lock_outline,
+                      size: 22,
+                      color: Colors.white,
+                    ),
+                    const Spacer(),
+                    if (onDelete != null)
+                      IconButton(
+                        tooltip: '독서방 전체 삭제',
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        onPressed: onDelete,
+                      ),
+                  ],
                 ),
                 const Spacer(),
-                if (onDelete != null)
-                  IconButton(
-                    tooltip: '독서방 전체 삭제',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    onPressed: onDelete,
+                Text(
+                  room.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  room.description?.isNotEmpty == true
+                      ? room.description!
+                      : '함께 읽는 방',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${room.ownerNickname} · ${room.members}/${room.maxMembers}명${room.bookId == null ? '' : ' · 대표 도서'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFE8E8E8),
+                  ),
+                ),
               ],
             ),
-            const Spacer(),
-            Text(
-              room.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              room.description?.isNotEmpty == true
-                  ? room.description!
-                  : '함께 읽는 방',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF6B6B6B)),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${room.ownerNickname} · ${room.members}/${room.maxMembers}명${room.bookId == null ? '' : ' · 대표 도서'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8A)),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
+}
+
+class _RoomCoverImage extends StatelessWidget {
+  const _RoomCoverImage({required this.room});
+  final ReadingRoom room;
+
+  @override
+  Widget build(BuildContext context) {
+    final book = room.coverBook ?? room.book;
+    final rawUrl = book?.coverImageUrl?.trim();
+    Widget fallback = const ColoredBox(
+      color: Color(0xFFF1F3F8),
+      child: Center(
+        child: Icon(
+          Icons.menu_book_rounded,
+          size: 48,
+          color: Color(0xFF9AA3B5),
+        ),
+      ),
+    );
+    if (rawUrl == null || rawUrl.isEmpty) return fallback;
+    final url = rawUrl.startsWith('http')
+        ? rawUrl
+        : '${AppConfig.baseUrl}${rawUrl.startsWith('/') ? '' : '/'}$rawUrl';
+    return Semantics(
+      image: true,
+      label: '${book?.title ?? room.name} 대표 표지',
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+        loadingBuilder: (context, child, loading) => loading == null
+            ? child
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  fallback,
+                  const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
 }
 
 /// 점선 [+] 칸 — 누르면 방 만들기
@@ -1819,6 +1885,73 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     );
   }
 
+  Widget _coverHeader(ReadingRoom room) {
+    final book = room.coverBook ?? room.book;
+    return Semantics(
+      label: '${room.name} 대표 도서 ${book?.title ?? '미지정'}',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 220,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _RoomCoverImage(room: room),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x22000000), Color(0xDD000000)],
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .94),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        room.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (book != null)
+                        Text(
+                          '${book.title} · ${book.author}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF555555),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<ReadingRoom>(
     future: _room,
@@ -1918,6 +2051,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                 children: [
+                  _coverHeader(r),
+                  const SizedBox(height: 16),
                   if (wide)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2113,7 +2248,7 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                                     )
                                   : null,
                               label: Text(
-                                '${participant.nickname} ${participant.progressPercent}%',
+                                '${participant.currentUser ? '나' : participant.nickname} ${participant.progressPercent}%',
                               ),
                               visualDensity: VisualDensity.compact,
                             ),

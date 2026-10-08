@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_config.dart';
 import '../../model/book.dart';
 import '../../repository/book_repository.dart';
 import '../../viewmodel/book_viewmodel.dart';
@@ -20,12 +21,27 @@ class BookCatalogSection extends StatefulWidget {
 }
 
 class _BookCatalogSectionState extends State<BookCatalogSection> {
+  final ScrollController _scrollController = ScrollController();
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => context.read<BookViewModel>().loadBooks(),
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 320) {
+      context.read<BookViewModel>().loadNextBooks();
+    }
   }
 
   @override
@@ -61,27 +77,45 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
         final columns = constraints.maxWidth >= 750
             ? 5
             : (constraints.maxWidth / 148).floor().clamp(2, 4).toInt();
-        return GridView.builder(
-          shrinkWrap: true,
-          primary: false,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: vm.books.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 22,
-            crossAxisSpacing: 16,
-            childAspectRatio: .49,
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollUpdateNotification) _onScroll();
+            return false;
+          },
+          child: GridView.builder(
+            controller: _scrollController,
+            primary: false,
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount:
+                vm.books.length +
+                (vm.isLoadingNextBooks || vm.booksHasNext ? 1 : 0),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisSpacing: 22,
+              crossAxisSpacing: 16,
+              childAspectRatio: .49,
+            ),
+            itemBuilder: (_, index) {
+              if (index >= vm.books.length) {
+                return vm.isLoadingNextBooks
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const SizedBox.shrink();
+              }
+              return BookCatalogCard(book: vm.books[index]);
+            },
           ),
-          itemBuilder: (_, index) => _CatalogCard(book: vm.books[index]),
         );
       },
     );
   }
 }
 
-class _CatalogCard extends StatelessWidget {
-  const _CatalogCard({required this.book});
+class BookCatalogCard extends StatelessWidget {
+  const BookCatalogCard({super.key, required this.book, this.onAddToShelf});
   final Book book;
+  final VoidCallback? onAddToShelf;
   static const coverW = 132.0;
   static const coverH = 196.0;
   @override
@@ -95,7 +129,26 @@ class _CatalogCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          BookCover(url: book.coverImageUrl, width: coverW, height: coverH),
+          Stack(
+            children: [
+              BookCover(url: book.coverImageUrl, width: coverW, height: coverH),
+              if (onAddToShelf != null)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Material(
+                    color: Colors.white.withValues(alpha: .9),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: '책장에 추가',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.playlist_add_outlined, size: 18),
+                      onPressed: onAddToShelf,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 10),
           Text(
             book.title,
@@ -534,10 +587,14 @@ class BookCover extends StatelessWidget {
       ),
     );
     if (url == null || url!.trim().isEmpty) return fallback;
+    final source = url!.trim();
+    final resolvedUrl = source.startsWith('http')
+        ? source
+        : '${AppConfig.baseUrl}${source.startsWith('/') ? '' : '/'}$source';
     return ClipRRect(
       borderRadius: BorderRadius.circular(5),
       child: Image.network(
-        url!,
+        resolvedUrl,
         width: width,
         height: height,
         fit: BoxFit.cover,

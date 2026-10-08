@@ -58,6 +58,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   final Map<int, List<AiReadingNote>> _aiNotesByFriend =
       <int, List<AiReadingNote>>{};
   String? _layoutKey;
+  int _windowStart = 0;
+  int _windowEnd = 0;
+  List<BookParagraph> _paginationSource = const [];
   Timer? _timer;
 
   @override
@@ -69,7 +72,25 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       await vm.loadReader(widget.bookId);
       final p = vm.content?.paragraphs ?? const <BookParagraph>[];
       if (!mounted || p.isEmpty) return;
-      final saved = vm.readingProgress?.lastReadPosition ?? p.first.order;
+      var saved = vm.readingProgress?.lastReadPosition ?? p.first.order;
+      // A room reader never resumes from a personal row.  The server scopes
+      // this lookup to the JWT participant plus (room, book).
+      if (widget.readerContext.isReadingRoom) {
+        try {
+          final roomId = widget.readerContext.roomId!;
+          final roomProgress = await ReadingRoomRepository(
+            ApiClient(
+              tokenProvider: () => context.read<RidiStore>().accessToken,
+            ),
+          ).myProgress(roomId, widget.bookId);
+          saved = roomProgress.lastReadPosition == 0
+              ? p.first.order
+              : roomProgress.lastReadPosition;
+        } on ApiException {
+          // The regular reader remains usable if a room was left remotely.
+        }
+      }
+      if (!mounted) return;
       // Progress is a stable paragraph_order, not a transient page index.
       // Older/deleted paragraph data falls back to the closest valid order.
       _order = p
@@ -148,12 +169,27 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     final p =
         context.read<BookViewModel>().content?.paragraphs ??
         const <BookParagraph>[];
-    if (p.isNotEmpty)
-      await context.read<BookViewModel>().saveReaderProgress(
+    if (p.isEmpty || !mounted) return;
+    if (widget.readerContext.isReadingRoom) {
+      final percent = ((_order / p.last.order) * 100)
+          .round()
+          .clamp(0, 100)
+          .toInt();
+      await ReadingRoomRepository(
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      ).saveProgress(
+        widget.readerContext.roomId!,
         widget.bookId,
-        _order,
-        p.last.order,
+        progressPercent: percent,
+        lastReadPosition: _order,
       );
+      return;
+    }
+    await context.read<BookViewModel>().saveReaderProgress(
+      widget.bookId,
+      _order,
+      p.last.order,
+    );
   }
 
   void _debounceSave() {
@@ -215,6 +251,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                               _order = _pages[i].firstOrder;
                             });
                             _debounceSave();
+                            _expandWindowIfNeeded();
                           },
                           itemBuilder: (_, i) => _ReaderPage(
                             page: _pages[i.clamp(0, _pages.length - 1)],
@@ -289,10 +326,28 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         '${c.maxWidth.toInt()}:${c.maxHeight.toInt()}:${s.fontScale}:${s.lineHeightStep}:$two:${p.length}:$textScaler';
     if (!_ready || _layoutKey == key || c.maxWidth <= 0 || c.maxHeight <= 0)
       return;
+    final settingsChanged = _layoutKey != null && _layoutKey != key;
     _layoutKey = key;
+    _paginationSource = p;
+    final orderIndex = p.indexWhere((paragraph) => paragraph.order == _order);
+    if (settingsChanged || _windowEnd == 0 || _windowEnd > p.length) {
+      final anchor = orderIndex < 0 ? 0 : orderIndex;
+      _windowStart = (anchor - 24).clamp(0, p.length);
+      _windowEnd = (anchor + 96).clamp(_windowStart + 1, p.length);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _layoutKey != key) return;
-      final pages = _paginate(p, s, c.maxWidth, c.maxHeight, two, textScaler);
+      // TextPainter measurement is deliberately bounded to the visible
+      // reading window. More paragraphs are paginated only as the reader
+      // approaches the window edge; this avoids long-book entry jank.
+      final pages = _paginate(
+        p.sublist(_windowStart, _windowEnd),
+        s,
+        c.maxWidth,
+        c.maxHeight,
+        two,
+        textScaler,
+      );
       final at = pages.indexWhere((e) => e.contains(_order));
       final targetPage = pages.isEmpty
           ? 0
@@ -322,6 +377,23 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           _controller.jumpToPage(targetPage);
       });
     });
+  }
+
+  void _expandWindowIfNeeded() {
+    if (_pages.isEmpty) return;
+    if (_page <= 2 && _windowStart > 0) {
+      _windowStart = (_windowStart - 80).clamp(0, _windowStart);
+    } else if (_page >= _pages.length - 3 &&
+        _windowEnd < _paginationSource.length) {
+      _windowEnd = (_windowEnd + 80).clamp(
+        _windowEnd,
+        _paginationSource.length,
+      );
+    } else {
+      return;
+    }
+    _layoutKey = null;
+    if (mounted) setState(() {});
   }
 
   List<_Page> _paginate(
@@ -823,7 +895,21 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         _order = order;
       });
       _debounceSave();
+      return;
     }
+    // TOC targets can sit outside the lazy window. Re-anchor first; the next
+    // layout pass paginates only the target neighbourhood and restores it.
+    final sourceIndex = _paginationSource.indexWhere((p) => p.order == order);
+    if (sourceIndex < 0) return;
+    setState(() {
+      _order = order;
+      _windowStart = (sourceIndex - 24).clamp(0, _paginationSource.length);
+      _windowEnd = (sourceIndex + 96).clamp(
+        _windowStart + 1,
+        _paginationSource.length,
+      );
+      _layoutKey = null;
+    });
   }
 
   Future<void> _openHighlightMenu(ReadingNote note) async {

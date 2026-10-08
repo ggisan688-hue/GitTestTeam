@@ -76,6 +76,7 @@ record BookResponse(Long id, String title, String author, String description,
   }
 }
 record BookSearchResponse(List<BookResponse> items, int page, int size, long total, boolean hasNext) {}
+record BookPageResponse(List<BookResponse> items, int page, int size, long total, boolean hasNext) {}
 
 @Service
 class BookService {
@@ -84,6 +85,11 @@ class BookService {
 
   List<BookResponse> list() {
     return books.findAllByOrderByCreatedAtDescIdDesc().stream().map(BookResponse::from).toList();
+  }
+  BookPageResponse listPage(int page, int size) {
+    if (page < 0 || size < 1 || size > 50) throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PAGE", "Invalid page.");
+    Page<Book> result=books.findAll(PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("id").descending())));
+    return new BookPageResponse(result.getContent().stream().map(BookResponse::from).toList(),page,size,result.getTotalElements(),result.hasNext());
   }
 
   BookResponse get(Long id) {
@@ -136,6 +142,8 @@ class BookController {
     log.info("GET /api/books -> {} book(s)", books.size());
     return books;
   }
+  @GetMapping("/page")
+  BookPageResponse listPage(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return service.listPage(page,size);}
 
   @GetMapping("/{bookId}")
   BookResponse get(@PathVariable Long bookId) {

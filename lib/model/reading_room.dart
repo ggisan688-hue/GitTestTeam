@@ -74,6 +74,7 @@ class ReadingRoom {
     this.spoilerLockEnabled = false,
     this.selectedAiFriendType,
     this.book,
+    this.coverBook,
     this.myRole,
     this.participants = const [],
     this.passwordRequired = false,
@@ -100,6 +101,10 @@ class ReadingRoom {
   final bool spoilerLockEnabled;
   final String? selectedAiFriendType;
   final ReadingRoomBook? book;
+
+  /// Current room book, or the first linked book for legacy rooms. Used as
+  /// the stable visual cover without adding a mutable duplicate DB column.
+  final ReadingRoomBook? coverBook;
   final String? myRole;
   final List<ReadingRoomMember> participants;
   final bool passwordRequired;
@@ -127,6 +132,11 @@ class ReadingRoom {
     book: json['book'] is Map
         ? ReadingRoomBook.fromJson(
             Map<String, dynamic>.from(json['book'] as Map),
+          )
+        : null,
+    coverBook: json['coverBook'] is Map
+        ? ReadingRoomBook.fromJson(
+            Map<String, dynamic>.from(json['coverBook'] as Map),
           )
         : null,
     myRole: _jsonNullableString(json['myRole']),

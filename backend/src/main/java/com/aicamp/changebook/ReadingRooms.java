@@ -159,7 +159,7 @@ record RoomResponse(Long id, String name, String description, Long bookId,
                     boolean joined, boolean owner, String joinCode,
                     boolean spoilerLockEnabled, String selectedAiFriendType,
                     List<RoomMemberResponse> participants,
-                    RoomBookResponse book, String hostNickname, String myRole,
+                    RoomBookResponse book, RoomBookResponse coverBook, String hostNickname, String myRole,
                     int memberCount, String joinType, String aiFriendType,
                     boolean passwordRequired, Long currentBookId, List<RoomBookItemResponse> books) {}
 record JoinRoomResponse(RoomResponse room, boolean alreadyJoined) {}
@@ -564,15 +564,22 @@ class RoomService {
             .orElse(null))
         .filter(java.util.Objects::nonNull)
         .toList();
+    List<RoomBookItemResponse> roomBooks = roomBookResponses(room);
     RoomBookResponse book = room.bookId == null ? null : books.findById(room.bookId)
         .map(RoomBookResponse::from).orElse(null);
+    // The current book is the room's primary book. Older rooms that predate
+    // current_book_id retain their first linked book (display_order ASC).
+    // This is computed, not persisted, so existing rows require no migration.
+    RoomBookResponse coverBook = roomBooks.stream().filter(RoomBookItemResponse::current)
+        .map(RoomBookItemResponse::book).findFirst()
+        .orElseGet(() -> roomBooks.isEmpty() ? book : roomBooks.get(0).book());
     return new RoomResponse(room.id, room.name, room.description, room.bookId,
         participants.size(), room.maxMembers, room.isPublic, ownerId,
         ownerUser.nickname, room.createdAt, joined, owner,
         owner ? room.joinCode : null, room.spoilerLockEnabled, room.selectedAiFriendType, participants,
-        book, ownerUser.nickname, currentMember == null ? null : currentMember.role,
+        book, coverBook, ownerUser.nickname, currentMember == null ? null : currentMember.role,
         participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType,
-        room.passwordHash != null, room.currentBookId, roomBookResponses(room));
+        room.passwordHash != null, room.currentBookId, roomBooks);
   }
 
   private List<RoomBookItemResponse> roomBookResponses(ReadingRoom room) { return roomBooks.findByRoomIdOrderByDisplayOrderAsc(room.id).stream().map(item -> books.findById(item.bookId).map(book -> new RoomBookItemResponse(RoomBookResponse.from(book),item.displayOrder,java.util.Objects.equals(room.currentBookId,item.bookId))).orElse(null)).filter(java.util.Objects::nonNull).toList(); }

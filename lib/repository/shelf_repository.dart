@@ -1,4 +1,5 @@
 import '../core/api_client.dart';
+import '../model/book.dart';
 import '../model/shelf.dart';
 
 class ShelfRepository {
@@ -88,6 +89,18 @@ class ShelfRepository {
 
   Future<void> addBook(int shelfId, int bookId) =>
       _api.post('/api/shelves/$shelfId/books/$bookId');
+
+  /// Server-side exclusion is authoritative; callers also receive a stable
+  /// list suitable for a second, local stale-state filter.
+  Future<List<Book>> candidates(int shelfId) async {
+    final response = await _api.get<List<Book>>(
+      '/api/shelves/$shelfId/book-candidates',
+      parse: (json) => (json as List)
+          .map((item) => Book.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList(),
+    );
+    return response.data ?? const [];
+  }
 
   Future<void> removeBook(int shelfId, int bookId) =>
       _api.delete('/api/shelves/$shelfId/books/$bookId');

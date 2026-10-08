@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,8 +35,8 @@ class ShelfBook {
  @PrePersist void create(){createdAt=Instant.now();}
 }
 class ShelfBookId implements java.io.Serializable { Long shelfId; Long bookId; public ShelfBookId(){} public boolean equals(Object o){if(!(o instanceof ShelfBookId x))return false;return java.util.Objects.equals(shelfId,x.shelfId)&&java.util.Objects.equals(bookId,x.bookId);} public int hashCode(){return java.util.Objects.hash(shelfId,bookId);} }
-interface ShelfRepository extends JpaRepository<Shelf,Long>{List<Shelf> findByUserIdOrderByUpdatedAtDesc(Long userId); Optional<Shelf> findByIdAndUserId(Long id,Long userId); boolean existsByUserIdAndNameIgnoreCase(Long userId,String name); @Modifying(flushAutomatically=true,clearAutomatically=true) @Query("delete from Shelf s where s.user.id = :userId") int deleteAllByUserId(@Param("userId") Long userId);}
-interface ShelfBookRepository extends JpaRepository<ShelfBook,ShelfBookId>{List<ShelfBook> findByShelfIdOrderByDisplayOrderAsc(Long shelfId); boolean existsByShelfIdAndBookId(Long shelfId,Long bookId); void deleteByShelfIdAndBookId(Long shelfId,Long bookId); long countByShelfId(Long shelfId);}
+interface ShelfRepository extends JpaRepository<Shelf,Long>{List<Shelf> findByUserIdOrderByUpdatedAtDesc(Long userId); Optional<Shelf> findByIdAndUserId(Long id,Long userId); @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select s from Shelf s where s.id=:id and s.user.id=:userId") Optional<Shelf> findOwnedForUpdate(@Param("id") Long id,@Param("userId") Long userId); boolean existsByUserIdAndNameIgnoreCase(Long userId,String name); @Modifying(flushAutomatically=true,clearAutomatically=true) @Query("delete from Shelf s where s.user.id = :userId") int deleteAllByUserId(@Param("userId") Long userId);}
+interface ShelfBookRepository extends JpaRepository<ShelfBook,ShelfBookId>{List<ShelfBook> findByShelfIdOrderByDisplayOrderAsc(Long shelfId); boolean existsByShelfIdAndBookId(Long shelfId,Long bookId); void deleteByShelfIdAndBookId(Long shelfId,Long bookId); long countByShelfId(Long shelfId); @Query(value="select b.* from change_book_books b where not exists (select 1 from change_book_shelf_books sb where sb.shelf_id=:shelfId and sb.book_id=b.id) order by b.created_at desc, b.id desc",nativeQuery=true) List<Book> findCandidates(@Param("shelfId") Long shelfId);}
 record ShelfRequest(@NotBlank @Size(max=80) String name,@Size(max=300) String description,Boolean isPublic,List<Long> bookIds){}
 record ShelfResponse(Long id,String name,String description,boolean isPublic,long bookCount,Long coverBookId,String coverImageUrl,List<String> previewCoverImageUrls,Instant createdAt,Instant updatedAt){}
 record ShelfDetailResponse(Long id,String name,String description,boolean isPublic,long bookCount,Long coverBookId,String coverImageUrl,List<String> previewCoverImageUrls,List<BookResponse> books,Instant createdAt,Instant updatedAt){}
@@ -54,7 +55,8 @@ record ShelfBulkDeleteResponse(int deletedCount){}
  ShelfDetailResponse detail(String username,Long id){Shelf s=owned(username,id);List<Book> ordered=orderedBooks(id);List<BookResponse> list=ordered.stream().map(BookResponse::from).toList();Book cover=ordered.isEmpty()?null:ordered.get(0);List<String> previews=ordered.stream().map(book->book.coverImageUrl).filter(url->url!=null&&!url.isBlank()).limit(3).toList();return new ShelfDetailResponse(s.id,s.name,s.description,s.isPublic,list.size(),cover==null?null:cover.id,cover==null?null:cover.coverImageUrl,previews,list,s.createdAt,s.updatedAt);}
  void delete(String username,Long id){shelves.delete(owned(username,id));}
  @org.springframework.transaction.annotation.Transactional int deleteAll(String username){return shelves.deleteAllByUserId(user(username).id);}
- void add(String username,Long shelfId,Long bookId){Shelf s=owned(username,shelfId);if(!books.existsById(bookId))throw new ApiException(HttpStatus.NOT_FOUND,"BOOK_NOT_FOUND","책을 찾을 수 없습니다.");if(shelfBooks.existsByShelfIdAndBookId(s.id,bookId))throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_SHELF_BOOK","이미 책장에 담긴 도서입니다.");ShelfBook b=new ShelfBook();b.shelfId=s.id;b.bookId=bookId;b.displayOrder=(int)shelfBooks.countByShelfId(s.id);shelfBooks.save(b);}
+ List<BookResponse> candidates(String username,Long shelfId){Shelf s=owned(username,shelfId);return shelfBooks.findCandidates(s.id).stream().map(BookResponse::from).toList();}
+ @org.springframework.transaction.annotation.Transactional boolean add(String username,Long shelfId,Long bookId){AppUser u=user(username);Shelf s=shelves.findOwnedForUpdate(shelfId,u.id).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHELF_NOT_FOUND","Shelf not found."));if(!books.existsById(bookId))throw new ApiException(HttpStatus.NOT_FOUND,"BOOK_NOT_FOUND","Book not found.");if(shelfBooks.existsByShelfIdAndBookId(s.id,bookId))return false;ShelfBook b=new ShelfBook();b.shelfId=s.id;b.bookId=bookId;b.displayOrder=(int)shelfBooks.countByShelfId(s.id);try{shelfBooks.saveAndFlush(b);return true;}catch(org.springframework.dao.DataIntegrityViolationException e){if(shelfBooks.existsByShelfIdAndBookId(s.id,bookId))return false;throw e;}}
  void remove(String username,Long shelfId,Long bookId){Shelf s=owned(username,shelfId);if(!shelfBooks.existsByShelfIdAndBookId(s.id,bookId))throw new ApiException(HttpStatus.NOT_FOUND,"SHELF_BOOK_NOT_FOUND","책장에 없는 도서입니다.");shelfBooks.deleteByShelfIdAndBookId(s.id,bookId);}
  String blank(String x){return x==null||x.trim().isEmpty()?null:x.trim();}
 }
@@ -66,6 +68,7 @@ record ShelfBulkDeleteResponse(int deletedCount){}
  @PatchMapping("/{shelfId}") ShelfResponse update(@PathVariable Long shelfId,@Valid @RequestBody ShelfRequest r,org.springframework.security.core.Authentication a){return service.update(a.getName(),shelfId,r);}
  @DeleteMapping ShelfBulkDeleteResponse deleteAll(org.springframework.security.core.Authentication a){return new ShelfBulkDeleteResponse(service.deleteAll(a.getName()));}
  @DeleteMapping("/{shelfId}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long shelfId,org.springframework.security.core.Authentication a){service.delete(a.getName(),shelfId);}
- @PostMapping("/{shelfId}/books/{bookId}") @ResponseStatus(HttpStatus.NO_CONTENT) void add(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){service.add(a.getName(),shelfId,bookId);}
+ @GetMapping("/{shelfId}/book-candidates") List<BookResponse> candidates(@PathVariable Long shelfId,org.springframework.security.core.Authentication a){return service.candidates(a.getName(),shelfId);}
+ @PostMapping("/{shelfId}/books/{bookId}") org.springframework.http.ResponseEntity<Void> add(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){return service.add(a.getName(),shelfId,bookId)?org.springframework.http.ResponseEntity.noContent().build():org.springframework.http.ResponseEntity.ok().build();}
  @DeleteMapping("/{shelfId}/books/{bookId}") @ResponseStatus(HttpStatus.NO_CONTENT) void remove(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){service.remove(a.getName(),shelfId,bookId);}
 }

@@ -20,6 +20,15 @@ class BookRepository {
     return res.data ?? const [];
   }
 
+  Future<BookSearchPage> booksPage({int page = 0, int size = 20}) async {
+    final res = await _api.get<BookSearchPage>(
+      '/api/books/page',
+      query: {'page': '$page', 'size': '$size'},
+      parse: (json) => BookSearchPage.fromJson(json as Map<String, dynamic>),
+    );
+    return res.data!;
+  }
+
   Future<Book> book(int bookId) async {
     final res = await _api.get<Book>(
       '/api/books/$bookId',
