@@ -1,6 +1,7 @@
 package com.aicamp.changebook;
 
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
 import java.util.List;
 import jakarta.validation.Valid;
@@ -16,17 +17,24 @@ class AiReadingController {
     private final AiReadingNoteRepository noteRepository;
     private final AiReadingFriendRepository friendRepository;
     private final UserRepository userRepository;
+    private final BookParagraphRepository paragraphRepository;
+    private final AiReadingProgressRepository progressRepository;
 
     AiReadingController(
-            AiReadingService aiReadingService,
-            AiReadingNoteRepository noteRepository,
-            AiReadingFriendRepository friendRepository, UserRepository userRepository
-    ) {
-        this.aiReadingService = aiReadingService;
-        this.noteRepository = noteRepository;
-        this.friendRepository = friendRepository;
-        this.userRepository = userRepository;
-    }
+        AiReadingService aiReadingService,
+        AiReadingNoteRepository noteRepository,
+        AiReadingFriendRepository friendRepository,
+        UserRepository userRepository,
+        BookParagraphRepository paragraphRepository,
+        AiReadingProgressRepository progressRepository
+) {
+    this.aiReadingService = aiReadingService;
+    this.noteRepository = noteRepository;
+    this.friendRepository = friendRepository;
+    this.userRepository = userRepository;
+    this.paragraphRepository = paragraphRepository;
+    this.progressRepository = progressRepository;
+}
 
 
     // =========================================================
@@ -115,6 +123,56 @@ class AiReadingController {
                 .map(AiReadingNoteResponse::from)
                 .toList();
     }
+
+    // =========================================================
+// AI 친구의 독서 진행률 조회
+// =========================================================
+
+@GetMapping("/books/{bookId}/ai-reading-friends/{friendId}/progress")
+Map<String, Object> getReadingProgress(
+        @PathVariable Long bookId,
+        @PathVariable Long friendId,
+        org.springframework.security.core.Authentication authentication
+) {
+    var user = currentUser(authentication);
+    requireAccessibleFriend(friendId, authentication);
+
+    var paragraphs =
+            paragraphRepository.findByBookIdOrderByParagraphOrderAsc(bookId);
+
+    var progress = progressRepository
+            .findByUserIdAndFriendIdAndBookId(
+                    user.id,
+                    friendId,
+                    bookId
+            );
+
+    int total = paragraphs.size();
+
+    int processed = progress.map(p ->
+            (int) paragraphs.stream()
+                    .filter(paragraph ->
+                            paragraph.paragraphOrder <= p.lastParagraphOrder)
+                    .count()
+    ).orElse(0);
+
+    boolean completed = progress
+            .map(p -> p.completed)
+            .orElse(false);
+
+    int percent = completed
+            ? 100
+            : total == 0
+                    ? 0
+                    : Math.min(99, processed * 100 / total);
+
+    return Map.of(
+            "friendId", friendId,
+            "bookId", bookId,
+            "percent", percent,
+            "completed", completed
+    );
+}
 
     // =========================================================
     // 해당 책의 AI 메모 조회

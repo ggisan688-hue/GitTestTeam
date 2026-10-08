@@ -130,6 +130,18 @@ class AiReadingRepository {
     return res.data ?? const <AiReadingNote>[];
   }
 
+  Future<Map<String, dynamic>> getReadingProgress({
+    required int bookId,
+    required int friendId,
+  }) async {
+    final res = await _api.get<Map<String, dynamic>>(
+      '/api/books/$bookId/ai-reading-friends/$friendId/progress',
+      parse: (data) => Map<String, dynamic>.from(data as Map),
+    );
+
+    return res.data ?? <String, dynamic>{};
+  }
+
   /// 이미 생성되어 있는 AI 독서 메모 조회
   Future<List<AiReadingNote>> getNotes({
     required int bookId,
