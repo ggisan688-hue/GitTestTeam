@@ -18,6 +18,9 @@ class AiReadingProgress {
     @Column(name = "book_id", nullable = false)
     Long bookId;
 
+    @Column(name = "user_id", nullable = false)
+    Long userId;
+
     @Column(name = "last_paragraph_order", nullable = false)
     Integer lastParagraphOrder;
 
@@ -37,8 +40,9 @@ class AiReadingProgress {
 interface AiReadingProgressRepository
         extends org.springframework.data.jpa.repository.JpaRepository<AiReadingProgress, Long> {
 
-    Optional<AiReadingProgress> findByFriendIdAndBookId(
-            Long friendId,
-            Long bookId
-    );
+    Optional<AiReadingProgress> findByUserIdAndFriendIdAndBookId(
+        Long userId,
+        Long friendId,
+        Long bookId
+);
 }

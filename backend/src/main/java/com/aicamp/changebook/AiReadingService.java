@@ -48,7 +48,7 @@ private final ObjectMapper objectMapper;
     // 책 전체 읽기
     // =========================================================
 
-    void generateNotes(Long bookId, Long friendId) {
+    void generateNotes(Long userId, Long bookId, Long friendId) {
 
     AiReadingFriend friend = loadFriend(friendId);
 
@@ -65,13 +65,18 @@ private final ObjectMapper objectMapper;
 
     AiReadingProgress progress =
             progressRepository
-                    .findByFriendIdAndBookId(friendId, bookId)
+                    .findByUserIdAndFriendIdAndBookId(
+                        userId,
+                        friendId,
+                        bookId
+)
                     .orElseGet(() -> {
                         AiReadingProgress newProgress =
                                 new AiReadingProgress();
 
                         newProgress.friendId = friendId;
                         newProgress.bookId = bookId;
+                        newProgress.userId = userId;
                         newProgress.lastParagraphOrder = 0;
                         newProgress.bookMemory = "";
                         newProgress.personaMemory = "";
@@ -207,13 +212,14 @@ private final ObjectMapper objectMapper;
                     );
 
             if (saveGeneratedNote(
-                    bookId,
-                    friend,
-                    paragraph,
-                    note
-            )) {
-                savedCount++;
-            }
+                userId,
+                bookId,
+                friend,
+                paragraph,
+                note
+        )) {
+        savedCount++;
+        }
         }
 
         if (result.book_memory() != null
@@ -936,11 +942,12 @@ private ChunkResponse parseChunkResponse(
     // =========================================================
 
     private boolean saveGeneratedNote(
-            Long bookId,
-            AiReadingFriend friend,
-            BookParagraph paragraph,
-            GeneratedNote generatedNote
-    ) {
+        Long userId,
+        Long bookId,
+        AiReadingFriend friend,
+        BookParagraph paragraph,
+        GeneratedNote generatedNote
+) {
 
         if (generatedNote.anchor_text() == null
                 || generatedNote.anchor_text().isBlank()) {
@@ -986,6 +993,7 @@ private ChunkResponse parseChunkResponse(
 
         note.friendId = friend.id;
         note.bookId = bookId;
+        note.userId = userId;
 
         note.paragraphOrder =
                 paragraph.paragraphOrder;

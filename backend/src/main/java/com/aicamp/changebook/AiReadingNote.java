@@ -17,6 +17,9 @@ class AiReadingNote {
     @Column(name = "book_id", nullable = false)
     Long bookId;
 
+    @Column(name = "user_id", nullable = false)
+    Long userId;
+
     @Column(name = "paragraph_order", nullable = false)
     Integer paragraphOrder;
 
@@ -40,5 +43,9 @@ interface AiReadingNoteRepository
         extends org.springframework.data.jpa.repository.JpaRepository<AiReadingNote, Long> {
 
     java.util.List<AiReadingNote>
-        findByFriendIdAndBookIdOrderByParagraphOrderAsc(Long friendId, Long bookId);
+    findByUserIdAndFriendIdAndBookIdOrderByParagraphOrderAsc(
+            Long userId,
+            Long friendId,
+            Long bookId
+    );
 }

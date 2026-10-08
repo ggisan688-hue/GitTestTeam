@@ -738,18 +738,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
               // 선택된 친구들만 처리한다.
               for (final friendId in selectedIds) {
                 // 먼저 DB에 기존 메모가 있는지 확인
-                var notes = await repository.getNotes(
+                // 백엔드가 진행 상태를 확인해서
+                // 처음부터 읽거나, 중간부터 이어 읽거나,
+                // 이미 완료된 경우 기존 메모를 반환한다.
+                final notes = await repository.generateNotes(
                   bookId: widget.bookId,
                   friendId: friendId,
                 );
-
-                // 기존 메모가 없을 때만 Gemini 생성
-                if (notes.isEmpty) {
-                  notes = await repository.generateNotes(
-                    bookId: widget.bookId,
-                    friendId: friendId,
-                  );
-                }
 
                 loadedNotes[friendId] = notes;
               }

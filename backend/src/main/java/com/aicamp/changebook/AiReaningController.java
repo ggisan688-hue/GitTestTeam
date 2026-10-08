@@ -84,51 +84,63 @@ class AiReadingController {
     record CreateAiReadingFriendRequest(@NotBlank @Size(max=100) String name, @NotBlank @Size(max=4000) String persona) {}
 
 
+           // =========================================================
+    // 해당 책의 AI 메모 생성
     // =========================================================
-// 해당 책의 AI 메모 조회
-// =========================================================
 
-@GetMapping(
-        "/books/{bookId}/ai-reading-friends/{friendId}/notes"
-)
-List<AiReadingNoteResponse> getNotes(
-        @PathVariable Long bookId,
-        @PathVariable Long friendId,
-        org.springframework.security.core.Authentication authentication
-) {
-    requireAccessibleFriend(friendId, authentication);
+    @PostMapping(
+            "/books/{bookId}/ai-reading-friends/{friendId}/generate"
+    )
+    List<AiReadingNoteResponse> generate(
+            @PathVariable Long bookId,
+            @PathVariable Long friendId,
+            org.springframework.security.core.Authentication authentication
+    ) {
+        var user = currentUser(authentication);
+        requireAccessibleFriend(friendId, authentication);
 
-    return noteRepository
-            .findByFriendIdAndBookIdOrderByParagraphOrderAsc(
-                    friendId,
-                    bookId
-            )
-            .stream()
-            .map(AiReadingNoteResponse::from)
-            .toList();
-}
+        aiReadingService.generateNotes(
+                user.id,
+                bookId,
+                friendId
+        );
 
-/**
- * Generate notes only after the caller has been authorised for the selected
- * friend.  The client intentionally calls this only when the preceding GET
- * returned an empty list; an empty list itself remains a normal 200 response.
- */
-@PostMapping("/books/{bookId}/ai-reading-friends/{friendId}/generate")
-@org.springframework.transaction.annotation.Transactional
-List<AiReadingNoteResponse> generateNotes(
-        @PathVariable Long bookId,
-        @PathVariable Long friendId,
-        org.springframework.security.core.Authentication authentication
-) {
-    requireAccessibleFriend(friendId, authentication);
-    aiReadingService.generateNotes(bookId, friendId);
-    return noteRepository
-            .findByFriendIdAndBookIdOrderByParagraphOrderAsc(friendId, bookId)
-            .stream()
-            .map(AiReadingNoteResponse::from)
-            .toList();
-}
+        return noteRepository
+                .findByUserIdAndFriendIdAndBookIdOrderByParagraphOrderAsc(
+                        user.id,
+                        friendId,
+                        bookId
+                )
+                .stream()
+                .map(AiReadingNoteResponse::from)
+                .toList();
+    }
 
+    // =========================================================
+    // 해당 책의 AI 메모 조회
+    // =========================================================
+
+    @GetMapping(
+            "/books/{bookId}/ai-reading-friends/{friendId}/notes"
+    )
+    List<AiReadingNoteResponse> getNotes(
+            @PathVariable Long bookId,
+            @PathVariable Long friendId,
+            org.springframework.security.core.Authentication authentication
+    ) {
+        var user = currentUser(authentication);
+        requireAccessibleFriend(friendId, authentication);
+
+        return noteRepository
+                .findByUserIdAndFriendIdAndBookIdOrderByParagraphOrderAsc(
+                        user.id,
+                        friendId,
+                        bookId
+                )
+                .stream()
+                .map(AiReadingNoteResponse::from)
+                .toList();
+    }
 
     // =========================================================
     // AI 친구 응답
