@@ -68,17 +68,11 @@ class ApiClient {
   }) => _send('GET', path, query: query, parse: parse);
 
   Future<ApiResponse<T>> post<T>(
-      String path, {
-        Object? body,
-        T Function(Object? json)? parse,
-        Duration? timeout,
-      }) => _send(
-    'POST',
-    path,
-    body: body,
-    parse: parse,
-    timeout: timeout,
-  );
+    String path, {
+    Object? body,
+    T Function(Object? json)? parse,
+    Duration? timeout,
+  }) => _send('POST', path, body: body, parse: parse, timeout: timeout);
 
   Future<ApiResponse<T>> put<T>(
     String path, {

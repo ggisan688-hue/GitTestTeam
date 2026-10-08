@@ -151,9 +151,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('AI 친구 선택 상태를 불러오지 못했습니다: ${e.message}'),
-        ),
+        SnackBar(content: Text('AI 친구 선택 상태를 불러오지 못했습니다: ${e.message}')),
       );
     }
   }

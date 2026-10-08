@@ -144,14 +144,11 @@ class AiReadingRepository {
   }
 
   /// 현재 계정이 이 책에서 선택한 AI 친구 목록 조회
-  Future<List<int>> getSelectedFriendIds({
-    required int bookId,
-  }) async {
+  Future<List<int>> getSelectedFriendIds({required int bookId}) async {
     final res = await _api.get<List<int>>(
       '/api/books/$bookId/ai-reading-friend-selections',
-      parse: (json) => (json as List<dynamic>)
-          .map((id) => (id as num).toInt())
-          .toList(),
+      parse: (json) =>
+          (json as List<dynamic>).map((id) => (id as num).toInt()).toList(),
     );
 
     return res.data ?? const <int>[];
@@ -164,12 +161,9 @@ class AiReadingRepository {
   }) async {
     final res = await _api.put<List<int>>(
       '/api/books/$bookId/ai-reading-friend-selections',
-      body: {
-        'friendIds': friendIds.toList(),
-      },
-      parse: (json) => (json as List<dynamic>)
-          .map((id) => (id as num).toInt())
-          .toList(),
+      body: {'friendIds': friendIds.toList()},
+      parse: (json) =>
+          (json as List<dynamic>).map((id) => (id as num).toInt()).toList(),
     );
 
     return res.data ?? const <int>[];

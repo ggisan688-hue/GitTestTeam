@@ -36,7 +36,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     _loadFriends();
   }
 
-
   Future<void> _loadFriends() async {
     try {
       final token = context.read<RidiStore>().accessToken;
@@ -67,9 +66,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
         _isLoading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 친구 목록을 불러오지 못했어요: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('AI 친구 목록을 불러오지 못했어요: $e')));
     }
   }
 
@@ -83,9 +81,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
 
       final nextHeadings = nextTitles.map(
-            (item) => RegExp(
-          r'^#{1,3}\s*(?:\d+\.\s*)?' + RegExp.escape(item) + r'\s*$',
-        ),
+        (item) =>
+            RegExp(r'^#{1,3}\s*(?:\d+\.\s*)?' + RegExp.escape(item) + r'\s*$'),
       );
 
       final result = <String>[];
@@ -109,27 +106,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
       return result.join('\n').trim();
     }
 
-    final profile = section(
-      '기본 프로필',
-      ['성격', '생활과 경험', '말하는 방식'],
-    );
+    final profile = section('기본 프로필', ['성격', '생활과 경험', '말하는 방식']);
 
-    final personality = section(
-      '성격',
-      ['생활과 경험', '말하는 방식'],
-    );
+    final personality = section('성격', ['생활과 경험', '말하는 방식']);
 
-    final experience = section(
-      '생활과 경험',
-      ['말하는 방식'],
-    );
+    final experience = section('생활과 경험', ['말하는 방식']);
 
     final speech = section('말하는 방식', []);
 
     final ageMatch = RegExp(r'(\d+)\s*(?:살|세|대)').firstMatch(profile);
-    final age = ageMatch == null
-        ? 0
-        : int.tryParse(ageMatch.group(1)!) ?? 0;
+    final age = ageMatch == null ? 0 : int.tryParse(ageMatch.group(1)!) ?? 0;
 
     final gender = profile.contains('여성')
         ? '여자'
@@ -149,7 +135,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
       isDefault: friend.isDefault,
     );
   }
-
 
   @override
   void dispose() {
@@ -181,25 +166,53 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final personality = _personalityController.text.trim();
     final speech = _speechController.text.trim();
     final feature = _featureController.text.trim();
-    if (name.isEmpty || relationship.isEmpty || personality.isEmpty || speech.isEmpty || feature.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('모든 항목을 입력해 주세요.')));
+    if (name.isEmpty ||
+        relationship.isEmpty ||
+        personality.isEmpty ||
+        speech.isEmpty ||
+        feature.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('모든 항목을 입력해 주세요.')));
       return;
     }
     if (_submitting) return;
     setState(() => _submitting = true);
-    final persona = '나이: ${_ageController.text.trim()}\n성별: $_gender\n관계: $relationship\n성격: $personality\n말투: $speech\n특징: $feature';
+    final persona =
+        '나이: ${_ageController.text.trim()}\n성별: $_gender\n관계: $relationship\n성격: $personality\n말투: $speech\n특징: $feature';
     try {
       final token = context.read<RidiStore>().accessToken;
-      final saved = await AiReadingRepository(ApiClient(tokenProvider: () => token)).createFriend(name: name, persona: persona);
+      final saved = await AiReadingRepository(
+        ApiClient(tokenProvider: () => token),
+      ).createFriend(name: name, persona: persona);
       if (!mounted) return;
       setState(() {
-        _friends = [..._friends, _AiFriend(id: saved.id, name: saved.name, age: int.tryParse(_ageController.text.trim()) ?? 0, gender: _gender, relationship: relationship, personality: personality, speech: speech, feature: feature, isDefault: false)];
+        _friends = [
+          ..._friends,
+          _AiFriend(
+            id: saved.id,
+            name: saved.name,
+            age: int.tryParse(_ageController.text.trim()) ?? 0,
+            gender: _gender,
+            relationship: relationship,
+            personality: personality,
+            speech: speech,
+            feature: feature,
+            isDefault: false,
+          ),
+        ];
         _selectedIndex = _friends.length - 1;
         _isCreating = false;
       });
-      _nameController.clear(); _ageController.clear(); _relationshipController.clear(); _personalityController.clear(); _speechController.clear(); _featureController.clear();
+      _nameController.clear();
+      _ageController.clear();
+      _relationshipController.clear();
+      _personalityController.clear();
+      _speechController.clear();
+      _featureController.clear();
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -208,18 +221,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 친구'),
-      ),
+      appBar: AppBar(title: const Text('AI 친구')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(44, 24, 44, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '함께 책을 읽을 AI 친구를 만나보세요.',
-              style: RidiText.sub,
-            ),
+            const Text('함께 책을 읽을 AI 친구를 만나보세요.', style: RidiText.sub),
 
             const SizedBox(height: 22),
 
@@ -257,9 +265,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   : _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _friends.isEmpty
-                  ? const Center(
-                child: Text('표시할 AI 친구가 없어요.'),
-              )
+                  ? const Center(child: Text('표시할 AI 친구가 없어요.'))
                   : _buildFriendDetail(_friends[_selectedIndex]),
             ),
           ],
@@ -272,10 +278,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Container(
       key: ValueKey('detail-${friend.name}'),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 42,
-        vertical: 30,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 30),
       decoration: BoxDecoration(
         color: RidiColors.bg,
         border: Border.all(color: RidiColors.grayLight),
@@ -321,7 +324,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     // 이후 사용자가 만든 친구만 수정 버튼 표시.
                     if (!friend.isDefault)
                       OutlinedButton(
-                        onPressed: friend.id == null ? null : () => _deleteFriend(friend),
+                        onPressed: friend.id == null
+                            ? null
+                            : () => _deleteFriend(friend),
                         child: const Text('삭제'),
                       ),
                   ],
@@ -329,10 +334,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                 const SizedBox(height: 6),
 
-                Text(
-                  '${friend.age}살 · ${friend.gender}',
-                  style: RidiText.sub,
-                ),
+                Text('${friend.age}살 · ${friend.gender}', style: RidiText.sub),
 
                 const SizedBox(height: 26),
 
@@ -347,10 +349,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ),
                     const SizedBox(width: 48),
                     Expanded(
-                      child: _DetailRow(
-                        label: '성격',
-                        value: friend.personality,
-                      ),
+                      child: _DetailRow(label: '성격', value: friend.personality),
                     ),
                   ],
                 ),
@@ -361,17 +360,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: _DetailRow(
-                        label: '특징',
-                        value: friend.feature,
-                      ),
+                      child: _DetailRow(label: '특징', value: friend.feature),
                     ),
                     const SizedBox(width: 48),
                     Expanded(
-                      child: _DetailRow(
-                        label: '말투',
-                        value: friend.speech,
-                      ),
+                      child: _DetailRow(label: '말투', value: friend.speech),
                     ),
                   ],
                 ),
@@ -390,22 +383,31 @@ class _FriendsScreenState extends State<FriendsScreen> {
         title: const Text('AI 친구 삭제'),
         content: Text('${friend.name}을(를) 삭제할까요?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('삭제')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('삭제'),
+          ),
         ],
       ),
     );
     if (confirmed != true || !mounted || friend.id == null) return;
     try {
       final token = context.read<RidiStore>().accessToken;
-      await AiReadingRepository(ApiClient(tokenProvider: () => token)).deleteFriend(friend.id!);
+      await AiReadingRepository(ApiClient(tokenProvider: () => token))
+          .deleteFriend(friend.id!);
       if (!mounted) return;
       setState(() {
         _friends = _friends.where((item) => item.id != friend.id).toList();
         _selectedIndex = _selectedIndex.clamp(0, _friends.length - 1).toInt();
       });
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -423,137 +425,122 @@ class _FriendsScreenState extends State<FriendsScreen> {
       // 생성 폼 안쪽만 세로 스크롤
       padding: const EdgeInsets.fromLTRB(34, 26, 34, 30),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '새로운 AI 친구 만들기',
-              style: RidiText.heading,
-            ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('새로운 AI 친구 만들기', style: RidiText.heading),
 
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-            // 이름 / 나이 / 성별
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _InputField(
-                    label: '이름',
-                    controller: _nameController,
-                    hint: '예) hihi',
-                  ),
+          // 이름 / 나이 / 성별
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _InputField(
+                  label: '이름',
+                  controller: _nameController,
+                  hint: '예) hihi',
                 ),
-
-                const SizedBox(width: 18),
-
-                SizedBox(
-                  width: 150,
-                  child: _InputField(
-                    label: '나이',
-                    controller: _ageController,
-                    hint: '예) 20',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-
-                const SizedBox(width: 18),
-
-                SizedBox(
-                  width: 180,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '성별',
-                        style: RidiText.bodyBold,
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _gender,
-                        decoration: _inputDecoration(),
-                        items: const [
-                          DropdownMenuItem(
-                            value: '여자',
-                            child: Text('여자'),
-                          ),
-                          DropdownMenuItem(
-                            value: '남자',
-                            child: Text('남자'),
-                          ),
-                          DropdownMenuItem(
-                            value: '없음',
-                            child: Text('없음'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _gender = value;
-                            });
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 26),
-
-            // 나와의 관계
-            _InputField(
-              label: '나와의 관계',
-              controller: _relationshipController,
-              hint: '예) 아는 동생! 친하다',
-              minLines: 3,
-              maxLines: 6,
-            ),
-
-            const SizedBox(height: 24),
-
-            // 성격
-            _InputField(
-              label: '성격',
-              controller: _personalityController,
-              hint: '예) 유쾌발랄상쾌. 항상 밝아서 보기 좋다.',
-              minLines: 3,
-              maxLines: 6,
-            ),
-
-            const SizedBox(height: 24),
-
-            // 말투
-            _InputField(
-              label: '말투',
-              controller: _speechController,
-              hint: '예) 나를 언니라고 부름. 또래 여학생 말투다.',
-              minLines: 3,
-              maxLines: 6,
-            ),
-
-            const SizedBox(height: 24),
-
-            // 특징
-            _InputField(
-              label: '특징',
-              controller: _featureController,
-              hint: '예) 사소한 거에도 감동 받고, 기뻐하는 타입',
-              minLines: 3,
-              maxLines: 6,
-            ),
-
-            const SizedBox(height: 28),
-
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: _submitting ? null : _createFriend,
-                child: const Text('AI 친구 만들기'),
               ),
+
+              const SizedBox(width: 18),
+
+              SizedBox(
+                width: 150,
+                child: _InputField(
+                  label: '나이',
+                  controller: _ageController,
+                  hint: '예) 20',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+
+              const SizedBox(width: 18),
+
+              SizedBox(
+                width: 180,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('성별', style: RidiText.bodyBold),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _gender,
+                      decoration: _inputDecoration(),
+                      items: const [
+                        DropdownMenuItem(value: '여자', child: Text('여자')),
+                        DropdownMenuItem(value: '남자', child: Text('남자')),
+                        DropdownMenuItem(value: '없음', child: Text('없음')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _gender = value;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 26),
+
+          // 나와의 관계
+          _InputField(
+            label: '나와의 관계',
+            controller: _relationshipController,
+            hint: '예) 아는 동생! 친하다',
+            minLines: 3,
+            maxLines: 6,
+          ),
+
+          const SizedBox(height: 24),
+
+          // 성격
+          _InputField(
+            label: '성격',
+            controller: _personalityController,
+            hint: '예) 유쾌발랄상쾌. 항상 밝아서 보기 좋다.',
+            minLines: 3,
+            maxLines: 6,
+          ),
+
+          const SizedBox(height: 24),
+
+          // 말투
+          _InputField(
+            label: '말투',
+            controller: _speechController,
+            hint: '예) 나를 언니라고 부름. 또래 여학생 말투다.',
+            minLines: 3,
+            maxLines: 6,
+          ),
+
+          const SizedBox(height: 24),
+
+          // 특징
+          _InputField(
+            label: '특징',
+            controller: _featureController,
+            hint: '예) 사소한 거에도 감동 받고, 기뻐하는 타입',
+            minLines: 3,
+            maxLines: 6,
+          ),
+
+          const SizedBox(height: 28),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _submitting ? null : _createFriend,
+              child: const Text('AI 친구 만들기'),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -594,16 +581,10 @@ class _FriendCard extends StatelessWidget {
             CircleAvatar(
               radius: 25,
               backgroundColor: RidiColors.panel,
-              child: Text(
-                friend.name,
-                style: RidiText.heading,
-              ),
+              child: Text(friend.name, style: RidiText.heading),
             ),
             const SizedBox(height: 10),
-            Text(
-              friend.name,
-              style: RidiText.bodyBold,
-            ),
+            Text(friend.name, style: RidiText.bodyBold),
           ],
         ),
       ),
@@ -612,10 +593,7 @@ class _FriendCard extends StatelessWidget {
 }
 
 class _CreateFriendCard extends StatelessWidget {
-  const _CreateFriendCard({
-    required this.selected,
-    required this.onTap,
-  });
+  const _CreateFriendCard({required this.selected, required this.onTap});
 
   final bool selected;
   final VoidCallback onTap;
@@ -641,16 +619,9 @@ class _CreateFriendCard extends StatelessWidget {
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.add,
-              size: 34,
-              color: RidiColors.blue,
-            ),
+            Icon(Icons.add, size: 34, color: RidiColors.blue),
             SizedBox(height: 10),
-            Text(
-              'AI 친구 만들기',
-              style: RidiText.bodyBold,
-            ),
+            Text('AI 친구 만들기', style: RidiText.bodyBold),
           ],
         ),
       ),
@@ -659,10 +630,7 @@ class _CreateFriendCard extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.label,
-    required this.value,
-  });
+  const _DetailRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -672,15 +640,9 @@ class _DetailRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: RidiText.bodyBold,
-        ),
+        Text(label, style: RidiText.bodyBold),
         const SizedBox(height: 5),
-        Text(
-          value,
-          style: RidiText.body,
-        ),
+        Text(value, style: RidiText.body),
       ],
     );
   }
@@ -708,10 +670,7 @@ class _InputField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: RidiText.bodyBold,
-        ),
+        Text(label, style: RidiText.bodyBold),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
@@ -732,22 +691,14 @@ InputDecoration _inputDecoration({String? hint}) {
     hintStyle: RidiText.sub,
     filled: true,
     fillColor: RidiColors.bg,
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: 14,
-      vertical: 13,
-    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(
-        color: RidiColors.grayLight,
-      ),
+      borderSide: const BorderSide(color: RidiColors.grayLight),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(
-        color: RidiColors.blue,
-        width: 1.5,
-      ),
+      borderSide: const BorderSide(color: RidiColors.blue, width: 1.5),
     ),
   );
 }
