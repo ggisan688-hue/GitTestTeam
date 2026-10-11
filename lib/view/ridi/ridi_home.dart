@@ -59,9 +59,23 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Reading rooms',
             icon: const Icon(Icons.groups_outlined, size: 28),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ReadingRoomsScreen()),
-            ),
+            onPressed: () {
+              if (!store.loggedIn) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('로그인이 필요합니다.'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ReadingRoomsScreen(),
+                ),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.search_rounded, size: 28),
@@ -154,25 +168,43 @@ class HomeScreen extends StatelessWidget {
               catalog,
             ],
           );
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-            child: side == null
-                ? main
-                : wide
-                ? Row(
-                    children: [
-                      Expanded(child: main),
-                      const SizedBox(width: 40),
-                      SizedBox(width: 340, child: side),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      side,
-                      const SizedBox(height: 20),
-                      Expanded(child: main),
-                    ],
-                  ),
+          // 비회원 화면은 기존 코드 그대로 유지
+          if (!store.loggedIn) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+              child: main,
+            );
+          }
+
+// 로그인 회원만 화면 전체 스크롤 적용
+          return NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification.depth == 0 &&
+                  notification.metrics.extentAfter < 320) {
+                context.read<BookViewModel>().loadNextBooks();
+              }
+              return false;
+            },
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+              child: wide
+                  ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: serverMain),
+                  const SizedBox(width: 40),
+                  SizedBox(width: 340, child: side!),
+                ],
+              )
+                  : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  side!,
+                  const SizedBox(height: 20),
+                  serverMain,
+                ],
+              ),
+            ),
           );
         },
       ),

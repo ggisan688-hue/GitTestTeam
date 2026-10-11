@@ -48,6 +48,7 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<BookViewModel>();
+    final loggedIn = context.watch<RidiStore>().loggedIn;
     if (vm.state == BookLoadState.loading && vm.books.isEmpty) {
       return const SizedBox(
         height: 170,
@@ -75,9 +76,29 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
     // 표지가 주인공인 세로 카드 (리디처럼): 표지 → 제목 → 저자
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 750
+        final columns = !loggedIn && constraints.maxWidth >= 750
             ? 5
             : (constraints.maxWidth / 148).floor().clamp(2, 4).toInt();
+        // 로그인 회원은 홈 화면 전체가 스크롤되도록
+// 책 목록 자체의 스크롤을 비활성화
+        if (loggedIn) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            primary: false,
+            padding: const EdgeInsets.only(right: 12, bottom: 24),
+            itemCount: vm.books.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisSpacing: 22,
+              crossAxisSpacing: 16,
+              childAspectRatio: 0.49,
+            ),
+            itemBuilder: (_, index) {
+              return BookCatalogCard(book: vm.books[index]);
+            },
+          );
+        }
         return NotificationListener<ScrollNotification>(
           onNotification: (notification) {
             if (notification is ScrollUpdateNotification) _onScroll();
@@ -85,7 +106,7 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
           },
           child: Scrollbar(
             controller: _scrollController,
-            thumbVisibility: true,
+            thumbVisibility: false,
             interactive: true,
             thickness: 10,
             radius: const Radius.circular(10),
@@ -97,9 +118,9 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
                   (vm.isLoadingNextBooks || vm.booksHasNext ? 1 : 0),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: columns,
-                mainAxisSpacing: 24,
+                mainAxisSpacing: loggedIn ? 22 : 24,
                 crossAxisSpacing: 16,
-                childAspectRatio: 0.72,
+                childAspectRatio: loggedIn ? 0.49 : 0.72,
               ),
               itemBuilder: (_, index) {
                 if (index >= vm.books.length) {
@@ -129,80 +150,82 @@ class BookCatalogCard extends StatelessWidget {
   final Book book;
   final VoidCallback? onAddToShelf;
 
-  static const coverW = 175.0;
-  static const coverH = 260.0;
-
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BookDetailScreen(bookId: book.id),
-      ),
-    ),
-    borderRadius: BorderRadius.circular(8),
-    child: Center(
-      child: SizedBox(
-        width: coverW,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                BookCover(
-                  url: book.coverImageUrl,
-                  width: coverW,
-                  height: coverH,
-                ),
-                if (onAddToShelf != null)
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: Material(
-                      color: Colors.white.withValues(alpha: .9),
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: '책장에 추가',
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(
-                          Icons.playlist_add_outlined,
-                          size: 18,
-                        ),
-                        onPressed: () {
-                          if (!context.read<RidiStore>().loggedIn) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('로그인이 필요합니다.'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          onAddToShelf?.call();
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              book.title,
-              style: RidiText.bodyBold.copyWith(fontSize: 15),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              book.author ?? '',
-              style: RidiText.sub,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final loggedIn = context.watch<RidiStore>().loggedIn;
+    final coverW = loggedIn ? 132.0 : 175.0;
+    final coverH = loggedIn ? 196.0 : 260.0;
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookDetailScreen(bookId: book.id),
         ),
       ),
-    ),
-  );
+      borderRadius: BorderRadius.circular(8),
+      child: Center(
+        child: SizedBox(
+          width: coverW,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  BookCover(
+                    url: book.coverImageUrl,
+                    width: coverW,
+                    height: coverH,
+                  ),
+                  if (onAddToShelf != null)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Material(
+                        color: Colors.white.withValues(alpha: .9),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: '책장에 추가',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(
+                            Icons.playlist_add_outlined,
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            if (!context.read<RidiStore>().loggedIn) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('로그인이 필요합니다.'),
+                                ),
+                              );
+                              return;
+                            }
+
+                            onAddToShelf?.call();
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                book.title,
+                style: RidiText.bodyBold.copyWith(fontSize: 15),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                book.author ?? '',
+                style: RidiText.sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class BookDetailScreen extends StatefulWidget {
