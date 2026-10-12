@@ -254,31 +254,46 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
             const SizedBox(height: 22),
 
+
             SizedBox(
               height: 150,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _friends.length + 1,
-                separatorBuilder: (_, _) => const SizedBox(width: 16),
-                itemBuilder: (context, index) {
-                  if (index == _friends.length) {
-                    return _CreateFriendCard(
+              child: Row(
+                children: [
+                  // 왼쪽: AI 친구 목록만 가로 스크롤
+                  Expanded(
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _friends.length,
+                      separatorBuilder: (_, _) =>
+                      const SizedBox(width: 16),
+                      itemBuilder: (context, index) {
+                        final friend = _friends[index];
+
+                        return _FriendCard(
+                          friend: friend,
+                          selected: _selectedIndex == index &&
+                              (!_isCreating ||
+                                  _editingFriend?.id == friend.id),
+                          onTap: () => _selectFriend(index),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // 오른쪽: AI 친구 만들기 버튼 고정
+                  SizedBox(
+                    width: 170,
+                    child: _CreateFriendCard(
                       selected: _isCreating && _editingFriend == null,
                       onTap: _startCreating,
-                    );
-                  }
-
-                  final friend = _friends[index];
-
-                  return _FriendCard(
-                    friend: friend,
-                    selected: _selectedIndex == index &&
-                        (!_isCreating || _editingFriend?.id == friend.id),
-                    onTap: () => _selectFriend(index),
-                  );
-                },
+                    ),
+                  ),
+                ],
               ),
             ),
+
 
             const SizedBox(height: 24),
 
