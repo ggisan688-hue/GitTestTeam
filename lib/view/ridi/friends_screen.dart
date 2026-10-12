@@ -326,11 +326,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+
           CircleAvatar(
             radius: 54,
             backgroundColor: RidiColors.panel,
             child: Text(
-              friend.name,
+              friend.name.characters.take(2).toString(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: RidiText.f,
                 fontSize: 32,
@@ -340,7 +344,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
           ),
 
+
           const SizedBox(width: 42),
+
 
           Expanded(
             child: Column(
@@ -348,15 +354,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      friend.name,
-                      style: const TextStyle(
-                        fontFamily: RidiText.f,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: RidiColors.ink,
-                      ),
+                    Flexible(
+                      child: Text(
+                    friend.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: RidiColors.ink,
                     ),
+                  ),
+                ),
                     const SizedBox(width: 12),
 
 
@@ -385,7 +396,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                 const SizedBox(height: 6),
 
-                Text('${friend.age}살 · ${friend.gender}', style: RidiText.sub),
+
+
+
+                Text(
+                  friend.gender.trim().isEmpty || friend.gender.trim() == '없음'
+                      ? '${friend.age}살'
+                      : '${friend.age}살 · ${friend.gender}',
+                  style: RidiText.sub,
+                ),
+
+
 
                 const SizedBox(height: 26),
 
@@ -404,6 +425,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ),
                   ],
                 ),
+
+
 
                 const SizedBox(height: 24),
 
@@ -745,13 +768,29 @@ class _FriendCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+
             CircleAvatar(
               radius: 25,
               backgroundColor: RidiColors.panel,
-              child: Text(friend.name, style: RidiText.heading),
+              child: Text(
+                friend.name.characters.take(2).toString(),
+                style: RidiText.heading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+
             const SizedBox(height: 10),
-            Text(friend.name, style: RidiText.bodyBold),
+
+            Text(
+              friend.name,
+              style: RidiText.bodyBold,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              softWrap: true,
+            ),
+
           ],
         ),
       ),
