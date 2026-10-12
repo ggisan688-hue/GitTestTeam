@@ -47,6 +47,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   late PageController _controller;
   final _pages = <_Page>[];
   int _page = 0, _order = 1;
+  Offset? _pageTapStart;
+  DateTime? _pageTapTime;
+  bool _annotationTapHandled = false;
   bool _ready = false,
       _controls = false,
       _sheetOpen = false,
@@ -352,7 +355,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     selectedText: note.selectedText,
     startOffset: note.startOffset,
     endOffset: note.endOffset,
-    highlightColor: 'BLUE',
+    highlightColor: note.highlightColor,
     preview: note.content,
     createdAt: null,
   );
@@ -430,12 +433,68 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             }
             return Stack(
               children: [
-                GestureDetector(
+                Listener(
                   behavior: HitTestBehavior.translucent,
-                  onTap: _sheetOpen
-                      ? null
-                      : () => setState(() => _controls = !_controls),
+                  onPointerDown: (event) {
+                    _annotationTapHandled = false;
+                    _pageTapStart = event.localPosition;
+                    _pageTapTime = DateTime.now();
+                  },
+                  onPointerCancel: (_) {
+                    _pageTapStart = null;
+                    _pageTapTime = null;
+                    _annotationTapHandled = false;
+                  },
+                  onPointerUp: (event) {
+                    final start = _pageTapStart;
+                    final time = _pageTapTime;
+                    final end = event.localPosition;
+                    final width = c.maxWidth;
+
+                    _pageTapStart = null;
+                    _pageTapTime = null;
+
+                    if (_sheetOpen || start == null || time == null) {
+                      return;
+                    }
+
+                    // 길게 누르기와 드래그 제외
+                    if (DateTime.now().difference(time).inMilliseconds > 250 ||
+                        (end - start).distance > 10) {
+                      return;
+                    }
+
+                    // 메모·형광펜의 onTap 처리가 끝난 뒤 페이지 넘김 여부 확인
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted || _sheetOpen || _annotationTapHandled) {
+                        return;
+                      }
+
+                      final x = end.dx;
+
+                      if (x < width * 0.25) {
+                        if (_page > 0 && _controller.hasClients) {
+                          _controller.previousPage(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      } else if (x > width * 0.75) {
+                        if (_page < _pages.length - 1 && _controller.hasClients) {
+                          _controller.nextPage(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      } else {
+                        setState(() => _controls = !_controls);
+                      }
+                    });
+
+                    WidgetsBinding.instance.ensureVisualUpdate();
+                  },
                   child: PageView.builder(
+                    physics: const NeverScrollableScrollPhysics(),
                     controller: _controller,
                     itemCount: _pages.length,
                     onPageChanged: (i) {
@@ -683,8 +742,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
     // The rendered page has 142px vertical padding. Keep additional room for
     // font metrics/margins so a Column never exceeds the PageView viewport.
+    // 상·하단 여백 260 + 글꼴 및 문단 높이 오차 여유 40
     final columnWidth = (width - (two ? 86 : 60)) / (two ? 2 : 1),
-        limit = height - 200;
+        limit = height - 300;
     final result = <_Page>[];
     var columns = <List<_Slice>>[[]];
     var used = 0.0;
@@ -1179,8 +1239,295 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     });
   }
 
+  Future<bool> _showAllMatchingMemos(
+      int paragraphOrder, {
+        int? startOffset,
+        int? endOffset,
+      }) async {
+    _annotationTapHandled = true;
+    if (!mounted) return false;
+
+    final items = <({
+    String author,
+    String content,
+    String quote,
+    Color color,
+    })>[];
+
+    bool matches(int order, int? start, int? end) {
+      if (order != paragraphOrder) return false;
+
+      // 범위를 알 수 없는 아이콘은 해당 문단의 메모를 모두 표시
+      if (startOffset == null || endOffset == null) return true;
+
+      // 범위 없는 메모를 특정 선택 범위에 섞지 않음
+      if (start == null || end == null) return false;
+
+      // 선택 범위가 동일하거나 일부라도 겹치는 메모
+      return start < endOffset! && end > startOffset!;
+    }
+
+    // 개인 독서 화면의 내 메모
+    if (!widget.readerContext.isReadingRoom) {
+      for (final note in context.read<BookViewModel>().readingNotes) {
+        if (note.type == ReaderNoteType.memo &&
+            matches(
+              note.paragraphOrder,
+              note.startOffset,
+              note.endOffset,
+            )) {
+          items.add((
+          author: '내 메모',
+          content: note.memoContent ?? '메모 내용이 없습니다.',
+          quote: note.selectedText ?? '',
+          color: _highlightColor(note.highlightColor),
+          ));
+        }
+      }
+    }
+
+    // 독서방의 공유 메모
+    if (widget.readerContext.isReadingRoom) {
+      for (final note in _sharedMemos) {
+        // 잠긴 메모의 내용과 선택 범위는 표시하지 않음
+        if (note.isSpoilerLocked) continue;
+
+        if (matches(
+          note.paragraphOrder,
+          note.startOffset,
+          note.endOffset,
+        )) {
+          items.add((
+          author: note.nickname,
+          content: note.content ?? '메모 내용이 없습니다.',
+          quote: note.selectedText ?? '',
+          color: _highlightColor(note.highlightColor),
+          ));
+        }
+      }
+    }
+
+    // 현재 선택한 AI 친구의 메모
+    for (final friendId in _selectedAiFriendIds) {
+      for (final note
+      in _aiNotesByFriend[friendId] ?? const <AiReadingNote>[]) {
+        if (matches(
+          note.paragraphOrder,
+          note.startOffset,
+          note.endOffset,
+        )) {
+          items.add((
+          author: _friendName(friendId),
+          content: note.content,
+          quote: note.selectedText ?? '',
+          color: _highlightColor(note.highlightColor),
+          ));
+        }
+      }
+    }
+
+    if (items.isEmpty) return false;
+
+    int currentIndex = 0;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final item = items[currentIndex];
+
+          return Dialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.all(24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 560,
+                maxHeight: MediaQuery.sizeOf(context).height - 80,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 56,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          const Text(
+                            '메모',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Positioned(
+                            left: 8,
+                            child: TextButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                              },
+                              child: const Text(
+                                '닫기',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 8,
+                            child: TextButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                              },
+                              child: const Text(
+                                '완료',
+                                style: TextStyle(
+                                  color: Color(0xFF1E88E5),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+
+                    // 메모를 남긴 선택 문장
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 16,
+                            height: 16,
+                            margin: const EdgeInsets.only(top: 2),
+                            decoration: BoxDecoration(
+                              color: item.color,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: item.color,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item.quote,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF555555),
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 작성자
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Text(
+                        item.author,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF555555),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
+                    // 기존 회색 메모 내용 박스
+                    Container(
+                      height: 280,
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: SingleChildScrollView(
+                        key: ValueKey(currentIndex),
+                        child: SelectableText(
+                          item.content,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            height: 1.7,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // 여러 메모일 때만 이동 버튼 표시
+                    if (items.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              tooltip: '이전 메모',
+                              onPressed: currentIndex > 0
+                                  ? () {
+                                setDialogState(() {
+                                  currentIndex--;
+                                });
+                              }
+                                  : null,
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            Text(
+                              '${currentIndex + 1} / ${items.length}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF555555),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: '다음 메모',
+                              onPressed: currentIndex < items.length - 1
+                                  ? () {
+                                setDialogState(() {
+                                  currentIndex++;
+                                });
+                              }
+                                  : null,
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    return true;
+  }
+
   Future<void> _openHighlightMenu(ReadingNote note) async {
+    _annotationTapHandled = true;
     if (!mounted) return;
+
+    final opened = await _showAllMatchingMemos(
+      note.paragraphOrder,
+      startOffset: note.startOffset,
+      endOffset: note.endOffset,
+    );
+
+    if (opened || !mounted) return;
+
     final viewModel = context.read<BookViewModel>();
 
     // 클릭한 형광펜과 같은 범위에 저장된 내 메모 찾기
@@ -1197,7 +1544,53 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         (note.id > 0 ||
             (note.id <= -2000000000 && note.id > -3000000000));
     if (privateMemoTap && matchingMemos.isNotEmpty) {
-      final memo = matchingMemos.first;
+      ReadingNote? selectedMemo;
+
+      if (matchingMemos.length == 1) {
+        selectedMemo = matchingMemos.single;
+      } else {
+        selectedMemo = await showDialog<ReadingNote>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('메모 ${matchingMemos.length}개'),
+            content: SizedBox(
+              width: 420,
+              height: 300,
+              child: ListView.separated(
+                itemCount: matchingMemos.length,
+                separatorBuilder: (_, __) => const Divider(),
+                itemBuilder: (_, index) {
+                  final memo = matchingMemos[index];
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('메모 ${index + 1}'),
+                    subtitle: Text(
+                      memo.memoContent ?? '메모 내용이 없습니다.',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.pop(dialogContext, memo);
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('닫기'),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (!mounted || selectedMemo == null) return;
+
+      final memo = selectedMemo;
 
       await showDialog<bool>(
         context: context,
@@ -1608,79 +2001,41 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       BuildContext anchorContext, {
         int? noteId,
       }) async {
+    _annotationTapHandled = true;
     if (!mounted) return;
-    if (widget.readerContext.isReadingRoom) {
-      await _showSharedParagraphMemos(
-        paragraphOrder,
-        anchorContext,
-        noteId: noteId,
-      );
-      return;
+
+    int? start;
+    int? end;
+
+    if (noteId != null) {
+      if (widget.readerContext.isReadingRoom) {
+        for (final note in _sharedMemos) {
+          if (note.id == noteId &&
+              note.paragraphOrder == paragraphOrder) {
+            if (note.isSpoilerLocked) return;
+
+            start = note.startOffset;
+            end = note.endOffset;
+            break;
+          }
+        }
+      } else {
+        for (final note in context.read<BookViewModel>().readingNotes) {
+          if (note.id == noteId &&
+              note.type == ReaderNoteType.memo &&
+              note.paragraphOrder == paragraphOrder) {
+            start = note.startOffset;
+            end = note.endOffset;
+            break;
+          }
+        }
+      }
     }
-    final notes = context
-        .read<BookViewModel>()
-        .readingNotes
-        .where(
-          (note) =>
-      note.type == ReaderNoteType.memo &&
-          note.paragraphOrder == paragraphOrder &&
-          (noteId == null || note.id == noteId),
-    )
-        .toList();
-    if (notes.isEmpty) return;
-    final position = _memoPopupPosition(anchorContext);
-    if (position == null) return;
-    // A single memo should be useful with one tap.  Multiple memos retain a
-    // compact list first, then open the selected item at the same anchor.
-    final selected = notes.length == 1
-        ? notes.single
-        : await showMenu<ReadingNote>(
-      context: context,
-      position: position,
-      constraints: const BoxConstraints(maxWidth: 300, maxHeight: 360),
-      items: [
-        for (final note in notes)
-          PopupMenuItem<ReadingNote>(
-            value: note,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                note.memoContent ?? '메모',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                note.createdAt == null
-                    ? '내 메모'
-                    : '${note.createdAt!.year}.${note.createdAt!.month.toString().padLeft(2, '0')}.${note.createdAt!.day.toString().padLeft(2, '0')}.',
-              ),
-            ),
-          ),
-      ],
-    );
-    if (!mounted || selected == null) return;
-    await showMenu<void>(
-      context: context,
-      position: position,
-      constraints: const BoxConstraints(maxWidth: 320, maxHeight: 420),
-      items: [
-        PopupMenuItem<void>(
-          enabled: false,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내 메모',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text(selected.memoContent ?? '메모 내용이 없습니다.'),
-              ],
-            ),
-          ),
-        ),
-      ],
+
+    await _showAllMatchingMemos(
+      paragraphOrder,
+      startOffset: start,
+      endOffset: end,
     );
   }
 
@@ -1689,13 +2044,28 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       BuildContext anchorContext, {
         int? noteId,
       }) async {
-    final notes = _sharedMemos
-        .where(
-          (note) =>
-      note.paragraphOrder == paragraphOrder &&
-          (noteId == null || note.id == noteId),
-    )
+    final paragraphMemos = _sharedMemos
+        .where((note) => note.paragraphOrder == paragraphOrder)
         .toList();
+
+    final clickedIndex = noteId == null
+        ? -1
+        : paragraphMemos.indexWhere((note) => note.id == noteId);
+
+    final List<SharedRoomNote> notes;
+
+    if (noteId == null) {
+      notes = paragraphMemos;
+    } else if (clickedIndex < 0) {
+      return;
+    } else {
+      final clickedMemo = paragraphMemos[clickedIndex];
+
+      notes = paragraphMemos.where((note) {
+        return note.startOffset == clickedMemo.startOffset &&
+            note.endOffset == clickedMemo.endOffset;
+      }).toList();
+    }
     if (!mounted || notes.isEmpty) return;
     final position = _memoPopupPosition(anchorContext);
     if (position == null) return;
@@ -1786,14 +2156,18 @@ class _Page {
       columns.expand((e) => e).any((s) => s.order == order);
 }
 
-Color _highlightColor(String? value) => switch (value ?? 'YELLOW') {
-  'PEACH' || '#FFCCBC' => const Color(0x88FFCCBC),
-  'PINK' => const Color(0x88F8BBD0),
-  'GREEN' || '#A5D6A7' => const Color(0x88A5D6A7),
-  'BLUE' || '#90CAF9' => const Color(0x8890CAF9),
-  'PURPLE' || '#CE93D8' => const Color(0x88CE93D8),
-  _ => const Color(0x88FFF59D),
-};
+Color _highlightColor(String? value) {
+  final color = value?.trim().toUpperCase();
+
+  return switch (color) {
+    'PEACH' || '#FFCCBC' => const Color(0x88FFCCBC),
+    'PINK' || '#F8BBD0' => const Color(0x88F8BBD0),
+    'GREEN' || '#A5D6A7' => const Color(0x88A5D6A7),
+    'BLUE' || '#90CAF9' => const Color(0x8890CAF9),
+    'PURPLE' || '#CE93D8' => const Color(0x88CE93D8),
+    _ => const Color(0x88FFF59D),
+  };
+}
 
 enum _HighlightAction { delete, color, memo }
 
@@ -1886,16 +2260,30 @@ class _ReaderPage extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         twoColumns ? 34 : 30,
-        72,
+        110,
         twoColumns ? 34 : 30,
-        70,
+        150,
       ),
-      child: SingleChildScrollView(
-        primary: false,
-        physics: const ClampingScrollPhysics(),
-        // 오른쪽 여백의 메모 표시가 잘리지 않게
-        clipBehavior: Clip.none,
-        child: content,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            primary: false,
+            physics: const ClampingScrollPhysics(),
+            clipBehavior: Clip.none,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  content,
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2009,8 +2397,12 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
         Offset(last.right, last.bottom),
       );
       final local = stackBox.globalToLocal(global);
+
       next.add(
-        _MemoIconAnchor(Offset(local.dx + 1, local.dy - 2), entry.value),
+        _MemoIconAnchor(
+          Offset(local.dx + 1, local.dy - 2),
+          entry.value,
+        ),
       );
     }
     if (next.length == _memoIconPositions.length &&
@@ -2277,13 +2669,13 @@ class _MemoBadge extends StatelessWidget {
       customBorder: const CircleBorder(),
       onTap: () => onTap(context),
       child: Padding(
-        padding: const EdgeInsets.all(5),
+        padding: EdgeInsets.zero,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             const Icon(
               Icons.mode_comment_outlined,
-              size: 17,
+              size: 10,
               color: Color(0xff8d6e63),
             ),
             if (count > 1)

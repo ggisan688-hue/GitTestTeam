@@ -177,33 +177,60 @@ class HomeScreen extends StatelessWidget {
           }
 
 // 로그인 회원만 화면 전체 스크롤 적용
-          return NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification.depth == 0 &&
-                  notification.metrics.extentAfter < 320) {
-                context.read<BookViewModel>().loadNextBooks();
-              }
-              return false;
-            },
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-              child: wide
-                  ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: serverMain),
-                  const SizedBox(width: 40),
-                  SizedBox(width: 340, child: side!),
-                ],
-              )
-                  : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  side!,
-                  const SizedBox(height: 20),
-                  serverMain,
-                ],
-              ),
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+            child: wide
+                ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 왼쪽 도서 영역만 스크롤
+                Expanded(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification.depth == 0 &&
+                          notification.metrics.axis == Axis.vertical &&
+                          notification.metrics.extentAfter < 320) {
+                        context.read<BookViewModel>().loadNextBooks();
+                      }
+                      return false;
+                    },
+                    child: SingleChildScrollView(
+                      primary: false,
+                      child: serverMain,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 40),
+
+                // 오른쪽 프로필·통계는 고정
+                SizedBox(
+                  width: 340,
+                  child: side!,
+                ),
+              ],
+            )
+                : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                side!,
+                const SizedBox(height: 20),
+                Expanded(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification.depth == 0 &&
+                          notification.metrics.axis == Axis.vertical &&
+                          notification.metrics.extentAfter < 320) {
+                        context.read<BookViewModel>().loadNextBooks();
+                      }
+                      return false;
+                    },
+                    child: SingleChildScrollView(
+                      primary: false,
+                      child: serverMain,
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         },

@@ -57,6 +57,7 @@ class AiReadingNote {
     required this.endOffset,
     required this.selectedText,
     required this.content,
+    this.highlightColor,
   });
 
   final int id;
@@ -67,6 +68,7 @@ class AiReadingNote {
   final int endOffset;
   final String selectedText;
   final String content;
+  final String? highlightColor;
 
   factory AiReadingNote.fromJson(Map<String, dynamic> json) {
     return AiReadingNote(
@@ -78,6 +80,7 @@ class AiReadingNote {
       endOffset: (json['endOffset'] as num).toInt(),
       selectedText: json['selectedText']?.toString() ?? '',
       content: json['content']?.toString() ?? '',
+      highlightColor: json['highlightColor']?.toString(),
     );
   }
 }
