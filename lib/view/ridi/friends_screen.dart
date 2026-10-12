@@ -123,17 +123,19 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ? '남자'
         : '';
 
+
     return _AiFriend(
       id: friend.id,
       name: friend.name,
-      age: age,
-      gender: gender,
-      relationship: profile,
-      personality: personality.isNotEmpty ? personality : persona,
-      speech: speech,
-      feature: experience,
+      age: int.tryParse(friend.inputAge ?? '') ?? age,
+      gender: friend.inputGender ?? gender,
+      relationship: friend.inputRelationship ?? '',
+      personality: friend.inputPersonality ?? '',
+      speech: friend.inputSpeechStyle ?? '',
+      feature: friend.inputTraits ?? '',
       isDefault: friend.isDefault,
     );
+
   }
 
   @override

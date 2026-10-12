@@ -283,25 +283,34 @@ Map<String, Object> getReadingProgress(
     // AI 친구 응답
     // =========================================================
 
-    record AiReadingFriendResponse(
-            Long id,
-            String name,
-            boolean isDefault,
-            String persona
-    ) {
 
-        static AiReadingFriendResponse from(
-                AiReadingFriend friend
-        ) {
-
-            return new AiReadingFriendResponse(
-                    friend.id,
-                    friend.name,
-                    friend.isDefault,
-                    friend.persona
-            );
-        }
+record AiReadingFriendResponse(
+        Long id,
+        String name,
+        boolean isDefault,
+        String persona,
+        String inputAge,
+        String inputGender,
+        String inputRelationship,
+        String inputPersonality,
+        String inputSpeechStyle,
+        String inputTraits
+) {
+    static AiReadingFriendResponse from(AiReadingFriend friend) {
+        return new AiReadingFriendResponse(
+                friend.id,
+                friend.name,
+                friend.isDefault,
+                friend.persona,
+                friend.inputAge,
+                friend.inputGender,
+                friend.inputRelationship,
+                friend.inputPersonality,
+                friend.inputSpeechStyle,
+                friend.inputTraits
+        );
     }
+}
 
 
     // =========================================================
