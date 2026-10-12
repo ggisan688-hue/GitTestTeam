@@ -11,6 +11,7 @@ import '../../model/book.dart';
 import '../../model/shared_room_note.dart';
 import '../../viewmodel/book_viewmodel.dart';
 import '../../repository/reading_room_repository.dart';
+import '../../model/reading_room.dart';
 import '../../repository/ai_reading_repository.dart';
 import 'reading_rooms_screen.dart' show showSharedNoteComments;
 import 'ridi_store.dart';
@@ -566,8 +567,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       // TextPainter measurement is deliberately bounded to the visible
       // reading window. More paragraphs are paginated only as the reader
       // approaches the window edge; this avoids long-book entry jank.
+      _windowStart = 0;
+      _windowEnd = p.length;
+
       final pages = _paginate(
-        p.sublist(_windowStart, _windowEnd),
+        p,
         s,
         c.maxWidth,
         c.maxHeight,
@@ -985,6 +989,22 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       bookId: widget.bookId,
       order: _order,
       onGo: _go,
+      pageOf: (order, offset) {
+        final index = _pages.indexWhere(
+              (page) => page.columns
+              .expand((column) => column)
+              .any(
+                (slice) =>
+            slice.order == order &&
+                (offset == null ||
+                    (offset >= slice.start &&
+                        offset <
+                            slice.start + slice.text.length)),
+          ),
+        );
+
+        return index < 0 ? null : index + 1;
+      },
       roomId: widget.readerContext.roomId,
       aiFriends: _aiFriends,
       selectedAiFriendIds: _selectedAiFriendIds,
@@ -1119,6 +1139,35 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
   Future<void> _openHighlightMenu(ReadingNote note) async {
     if (!mounted) return;
+    final viewModel = context.read<BookViewModel>();
+
+    // 클릭한 형광펜과 같은 범위에 저장된 내 메모 찾기
+    final matchingMemos = viewModel.readingNotes.where(
+          (memo) =>
+      memo.type == ReaderNoteType.memo &&
+          memo.paragraphOrder == note.paragraphOrder &&
+          memo.startOffset == note.startOffset &&
+          memo.endOffset == note.endOffset,
+    ).toList();
+
+    if (matchingMemos.isNotEmpty) {
+      final memo = matchingMemos.first;
+
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => _MemoEditorDialog(
+          selectedText: memo.selectedText,
+          initialMemo: memo.memoContent ?? '',
+          onSave: (text) => viewModel.updateNote(
+            widget.bookId,
+            memo.id,
+            memo: text,
+          ),
+        ),
+      );
+
+      return;
+    }
     // AI 친구 형광펜: 메모 내용을 읽기 전용으로 보여준다.
     if (note.id <= -1000000000) {
       String friendName = 'AI 친구';
@@ -1239,6 +1288,27 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                 const SizedBox(height: 20),
               ],
             ),
+          ),
+        ),
+      );
+
+      return;
+    }
+    // 내가 작성한 메모는 형광펜 메뉴 대신 메모 창을 바로 열기
+    if (note.id > 0 && note.type == ReaderNoteType.memo) {
+      if (!mounted) return;
+
+      final viewModel = context.read<BookViewModel>();
+
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => _MemoEditorDialog(
+          selectedText: note.selectedText,
+          initialMemo: note.memoContent ?? '',
+          onSave: (memo) => viewModel.updateNote(
+            widget.bookId,
+            note.id,
+            memo: memo,
           ),
         ),
       );
@@ -1834,11 +1904,7 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
       TapGestureRecognizer.new,
     );
     recognizer.onTap = () {
-      if (note.id <= -2000000000) {
-        widget.onShowMemos(note.paragraphOrder, context);
-      } else {
-        widget.onHighlightTap(note);
-      }
+      widget.onHighlightTap(note);
     };
     return recognizer;
   }
@@ -2271,6 +2337,7 @@ class _Sheet extends StatelessWidget {
 
 class _Notes extends StatefulWidget {
   const _Notes({
+    required this.pageOf,
     required this.bookId,
     required this.order,
     required this.onGo,
@@ -2284,6 +2351,7 @@ class _Notes extends StatefulWidget {
   final int bookId;
   final int order;
   final ValueChanged<int> onGo;
+  final int? Function(int order, int? offset) pageOf;
 
   final List<AiReadingFriend> aiFriends;
   final Set<int> selectedAiFriendIds;
@@ -2374,8 +2442,21 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
               controller: _tabs,
               children: List.generate(4, (index) {
                 // 메모 탭: 사람별 거르기 + 메모 카드 (사용자 첨부 이미지, 수정2-1쪽 "메모 선택시")
-                if (index == 2) {
+                if (index == 0 || index == 2) {
                   return _MemoTab(
+                    allNotesMode: index == 0,
+                    pageOf: widget.pageOf,
+                    otherNotes: index == 0
+                        ? vm.readingNotes.where(
+                          (n) => n.type != ReaderNoteType.memo,
+                    ).toList()
+                        : const <ReadingNote>[],
+                    noteBuilder: (note) => _noteCard(
+                      note,
+                      note.type == ReaderNoteType.bookmark ? 3 : 1,
+                      vm,
+                    ),
+                    bookId: widget.bookId,
                     roomId: widget.roomId,
                     myMemos: vm.readingNotes
                         .where((n) => n.type == ReaderNoteType.memo)
@@ -2401,11 +2482,15 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     : vm.readingNotes
                     .where((note) => note.type == filters[index])
                     .toList())
-                  ..sort(
-                        (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-                      a.createdAt ?? DateTime(0),
-                    ),
-                  );
+                  ..sort((a, b) {
+                    final order =
+                    a.paragraphOrder.compareTo(b.paragraphOrder);
+
+                    if (order != 0) return order;
+
+                    return (a.startOffset ?? 0)
+                        .compareTo(b.startOffset ?? 0);
+                  });
                 if (notes.isEmpty)
                   return Center(
                     child: Text(
@@ -2421,107 +2506,358 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                   itemCount: notes.length,
                   separatorBuilder: (_, _) =>
                   const Divider(height: 1, color: Color(0xFFEDEDED)),
-                  itemBuilder: (_, i) {
-                    final note = notes[i];
-                    final busy = _deletingIds.contains(note.id);
-                    final d = note.createdAt?.toLocal();
-                    final date = d == null
-                        ? ''
-                        : ' · ${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
-                    final kind = switch (note.type) {
-                      ReaderNoteType.memo => '메모',
-                      ReaderNoteType.bookmark => '책갈피',
-                      ReaderNoteType.highlight => '형광펜',
-                    };
-                    final head = note.selectedText?.isNotEmpty == true
-                        ? (note.type == ReaderNoteType.memo
-                        ? '“${note.selectedText}”'
-                        : note.selectedText!)
-                        : (note.type == ReaderNoteType.memo
-                        ? '현재 위치 메모'
-                        : note.preview);
-                    return InkWell(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        widget.onGo(note.paragraphOrder);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 14, 12, 14),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    head,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  if (note.type == ReaderNoteType.memo &&
-                                      (note.memoContent?.isNotEmpty ??
-                                          false)) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      note.memoContent!,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '$kind · 문단 ${note.paragraphOrder}$date',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF8A8A8A),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (note.type == ReaderNoteType.memo)
-                              IconButton(
-                                tooltip: '수정',
-                                onPressed: busy ? null : () => _edit(note),
-                                icon: const Icon(
-                                  Icons.edit_outlined,
-                                  size: 20,
-                                  color: Color(0xFF8A8A8A),
-                                ),
-                              ),
-                            IconButton(
-                              tooltip: '삭제',
-                              onPressed: busy ? null : () => _delete(note),
-                              icon: busy
-                                  ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                                  : const Icon(
-                                Icons.delete_outline,
-                                size: 20,
-                                color: Color(0xFF8A8A8A),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                  itemBuilder: (_, i) => _noteCard(
+                    notes[i], index, vm,
+                  ),
                 );
               }),
             ),
           ),
           // 아래 버튼 줄(현재 위치 메모 · 문단 형광펜 · 모두 삭제)은 뺌 (수정 확인 피드백)
         ],
+      ),
+    );
+  }
+
+  Widget _noteCard(
+      ReadingNote note,
+      int index,
+      BookViewModel vm,
+      ) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).pop();
+        widget.onGo(note.paragraphOrder);
+      },
+      child: _noteCardContent(note, index, vm),
+    );
+  }
+
+  Widget _noteCardContent(ReadingNote note, int index, BookViewModel vm) {
+    if (index == 1) {
+      final d = note.createdAt?.toLocal();
+      final date = d == null
+          ? ''
+          : '${d.year}.'
+          '${d.month.toString().padLeft(2, '0')}.'
+          '${d.day.toString().padLeft(2, '0')}.';
+
+      final text = note.selectedText?.isNotEmpty == true
+          ? note.selectedText!
+          : note.preview;
+
+      final page = widget.pageOf(
+        note.paragraphOrder,
+        note.startOffset,
+      );
+      final location = page == null
+          ? '페이지 확인 불가'
+          : '$page 페이지';
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onGo(note.paragraphOrder);
+              },
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _highlightColor(
+                          note.highlightColor,
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      date.isEmpty
+                          ? location
+                          : '$location  |  $date',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: '형광펜 메뉴',
+                    enabled:
+                    !_deletingIds.contains(note.id),
+                    icon: const Icon(
+                      Icons.more_horiz,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                    onSelected: (action) async {
+                      if (action == 'delete') {
+                        await _delete(note);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Text(
+                          '삭제',
+                          style: TextStyle(
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (index == 3) {
+      final chapters = vm.readerChapters
+          .where(
+            (c) =>
+        c.startParagraphOrder <=
+            note.paragraphOrder,
+      )
+          .toList()
+        ..sort(
+              (a, b) => a.startParagraphOrder
+              .compareTo(b.startParagraphOrder),
+        );
+
+      final chapter =
+      chapters.isEmpty ? null : chapters.last;
+
+      String chapterTitle = '목차 정보 없음';
+
+      if (chapter != null) {
+        final title = chapter.title.trim();
+
+        if (title.isEmpty) {
+          chapterTitle = '제 ${chapter.number}장';
+        } else if (RegExp(
+          r'^(제\s*)?\d+\s*장',
+        ).hasMatch(title)) {
+          chapterTitle = title;
+        } else {
+          chapterTitle =
+          '제 ${chapter.number}장 : $title';
+        }
+      }
+
+      final d = note.createdAt?.toLocal();
+      final date = d == null
+          ? ''
+          : '${d.year}.'
+          '${d.month.toString().padLeft(2, '0')}.'
+          '${d.day.toString().padLeft(2, '0')}.';
+
+      final page = widget.pageOf(
+        note.paragraphOrder,
+        note.startOffset,
+      );
+      final location = page == null
+          ? '페이지 확인 불가'
+          : '$page 페이지';
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          20, 16, 12, 8,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onGo(note.paragraphOrder);
+              },
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.bookmark,
+                    size: 20,
+                    color: Color(0xFFD94A45),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      chapterTitle,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      date.isEmpty
+                          ? location
+                          : '$location  |  $date',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: '책갈피 메뉴',
+                    enabled:
+                    !_deletingIds.contains(note.id),
+                    icon: const Icon(
+                      Icons.more_horiz,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                    onSelected: (action) async {
+                      if (action == 'delete') {
+                        await _delete(note);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Text(
+                          '삭제',
+                          style: TextStyle(
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final busy = _deletingIds.contains(note.id);
+    final d = note.createdAt?.toLocal();
+    final date = d == null
+        ? ''
+        : ' · ${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
+    final kind = switch (note.type) {
+      ReaderNoteType.memo => '메모',
+      ReaderNoteType.bookmark => '책갈피',
+      ReaderNoteType.highlight => '형광펜',
+    };
+    final head = note.selectedText?.isNotEmpty == true
+        ? (note.type == ReaderNoteType.memo
+        ? '“${note.selectedText}”'
+        : note.selectedText!)
+        : (note.type == ReaderNoteType.memo
+        ? '현재 위치 메모'
+        : note.preview);
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).pop();
+        widget.onGo(note.paragraphOrder);
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 14, 12, 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    head,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (note.type == ReaderNoteType.memo &&
+                      (note.memoContent?.isNotEmpty ??
+                          false)) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      note.memoContent!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '$kind · 문단 ${note.paragraphOrder}$date',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8A8A8A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (note.type == ReaderNoteType.memo)
+              IconButton(
+                tooltip: '수정',
+                onPressed: busy ? null : () => _edit(note),
+                icon: const Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: Color(0xFF8A8A8A),
+                ),
+              ),
+            IconButton(
+              tooltip: '삭제',
+              onPressed: busy ? null : () => _delete(note),
+              icon: busy
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: Color(0xFF8A8A8A),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2549,7 +2885,31 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
     if (confirmed != true || !mounted || _deletingIds.contains(note.id)) return;
     setState(() => _deletingIds.add(note.id));
     try {
-      await context.read<BookViewModel>().deleteNote(widget.bookId, note.id);
+      final viewModel = context.read<BookViewModel>();
+
+      final linkedHighlightIds =
+      note.type == ReaderNoteType.memo &&
+          note.startOffset != null &&
+          note.endOffset != null
+          ? viewModel.readingNotes
+          .where(
+            (n) =>
+        n.type == ReaderNoteType.highlight &&
+            n.paragraphOrder == note.paragraphOrder &&
+            n.startOffset != null &&
+            n.endOffset != null &&
+            n.startOffset! <= note.startOffset! &&
+            n.endOffset! >= note.endOffset!,
+      )
+          .map((n) => n.id)
+          .toList()
+          : <int>[];
+
+      await viewModel.deleteNote(widget.bookId, note.id);
+
+      for (final id in linkedHighlightIds) {
+        await viewModel.deleteNote(widget.bookId, id);
+      }
     } on ApiException catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context)
@@ -3429,6 +3789,11 @@ class _ToggleRow extends StatelessWidget {
 /// 방에서 읽으면 방에 공유된 메모 전부(서버), 혼자 읽으면 내 메모만.
 class _MemoTab extends StatefulWidget {
   const _MemoTab({
+    this.allNotesMode = false,
+    this.otherNotes = const <ReadingNote>[],
+    this.noteBuilder,
+    required this.pageOf,
+    required this.bookId,
     required this.roomId,
     required this.myMemos,
     required this.chapters,
@@ -3441,6 +3806,11 @@ class _MemoTab extends StatefulWidget {
     required this.onDelete,
   });
 
+  final bool allNotesMode;
+  final List<ReadingNote> otherNotes;
+  final Widget Function(ReadingNote)? noteBuilder;
+  final int? Function(int order, int? offset) pageOf;
+  final int bookId;
   final int? roomId;
   final List<ReadingNote> myMemos;
   final List<ReaderChapter> chapters;
@@ -3463,6 +3833,7 @@ class _MemoItem {
     required this.author,
     required this.mine,
     required this.order,
+    this.startOffset = 0,
     this.quote,
     this.memo,
     this.color,
@@ -3475,6 +3846,7 @@ class _MemoItem {
   final String author;
   final bool mine;
   final int order;
+  final int startOffset;
   final String? quote, memo, color;
   final DateTime? at;
   final int? comments;
@@ -3486,11 +3858,203 @@ class _MemoItem {
 class _MemoTabState extends State<_MemoTab> {
   Future<List<SharedRoomNote>>? _room;
   String _who = '전체';
+  bool _shareSelecting = false;
+  final Set<int> _selectedMemoIds = <int>{};
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  void _toggleShareSelection() {
+    setState(() {
+      _shareSelecting = !_shareSelecting;
+      _selectedMemoIds.clear();
+    });
+  }
+
+  void _toggleSelectedMemo(int memoId) {
+    setState(() {
+      if (!_selectedMemoIds.add(memoId)) {
+        _selectedMemoIds.remove(memoId);
+      }
+    });
+  }
+
+  Future<void> _showSelectedMemoNotice() async {
+    if (_selectedMemoIds.isEmpty) return;
+
+    final token = context.read<RidiStore>().accessToken;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => token),
+    );
+
+    try {
+      final rooms = await repository.shareTargets(widget.bookId);
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          final selectedRoomIds = <int>{};
+
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text('공유할 독서방 선택'),
+                content: SizedBox(
+                  width: 400,
+                  child: rooms.isEmpty
+                      ? const Text(
+                    '현재 이 책을 공유할 수 있는 교환독서방이 없습니다.',
+                  )
+                      : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final room in rooms)
+                        CheckboxListTile(
+                          title: Text(room.name),
+                          value: selectedRoomIds.contains(room.id),
+                          onChanged: (checked) {
+                            setDialogState(() {
+                              if (checked == true) {
+                                selectedRoomIds.add(room.id);
+                              } else {
+                                selectedRoomIds.remove(room.id);
+                              }
+                            });
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('취소'),
+                  ),
+                  FilledButton(
+                    onPressed: selectedRoomIds.isEmpty
+                        ? null
+                        : () async {
+                      final messenger =
+                      ScaffoldMessenger.of(this.context);
+
+                      final memos = widget.myMemos
+                          .where(
+                            (m) => _selectedMemoIds.contains(m.id),
+                      )
+                          .toList();
+
+                      final roomIds = selectedRoomIds.toList();
+
+                      // 요청 중 중복 클릭 방지
+                      setDialogState(() {
+                        selectedRoomIds.clear();
+                      });
+
+                      try {
+                        for (final roomId in roomIds) {
+                          final existingNotes = await repository.sharedNotes(
+                            roomId,
+                            bookId: widget.bookId,
+                          );
+
+                          for (final memo in memos) {
+                            final alreadyShared = existingNotes.any(
+                                  (note) =>
+                              note.mine &&
+                                  note.type == 'MEMO' &&
+                                  note.paragraphOrder == memo.paragraphOrder &&
+                                  note.startOffset == memo.startOffset &&
+                                  note.endOffset == memo.endOffset &&
+                                  note.selectedText == memo.selectedText &&
+                                  (note.content ?? '') == (memo.memoContent ?? ''),
+                            );
+
+                            if (alreadyShared) continue;
+
+                            final created = await repository.createSharedNote(
+                              roomId,
+                              {
+                                'bookId': widget.bookId,
+                                'type': 'MEMO',
+                                'paragraphOrder': memo.paragraphOrder,
+                                'startOffset': memo.startOffset,
+                                'endOffset': memo.endOffset,
+                                'selectedText': memo.selectedText,
+                                'content': memo.memoContent,
+                                'highlightColor': memo.highlightColor,
+                              },
+                            );
+
+                            existingNotes.add(created);
+                          }
+                        }
+
+                        if (!mounted) return;
+
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+
+                        setState(() {
+                          _shareSelecting = false;
+                          _selectedMemoIds.clear();
+                        });
+
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('공유하였습니다'),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            selectedRoomIds.addAll(roomIds);
+                          });
+                        }
+
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              e is ApiException
+                                  ? '공유하지 못했습니다: ${e.message}'
+                                  : '공유 중 오류가 발생했습니다.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('공유하기'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('독서방 목록을 불러오지 못했습니다: ${e.message}'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('독서방 목록을 불러오는 중 오류가 발생했습니다.'),
+        ),
+      );
+    }
   }
 
   void _load() {
@@ -3512,6 +4076,7 @@ class _MemoTabState extends State<_MemoTab> {
             author: widget.myNickname,
             mine: true,
             order: n.paragraphOrder,
+            startOffset: n.startOffset ?? 0,
             quote: n.selectedText,
             memo: n.memoContent,
             color: n.highlightColor,
@@ -3528,6 +4093,7 @@ class _MemoTabState extends State<_MemoTab> {
             author: n.nickname,
             mine: n.nickname == widget.myNickname,
             order: n.paragraphOrder,
+            startOffset: n.startOffset ?? 0,
             quote: n.selectedText,
             memo: n.content,
             color: n.highlightColor,
@@ -3554,6 +4120,7 @@ class _MemoTabState extends State<_MemoTab> {
             author: friend.name,
             mine: false,
             order: note.paragraphOrder,
+            startOffset: note.startOffset,
             quote: note.selectedText,
             memo: note.content,
             color: '#8FA8FF',
@@ -3611,12 +4178,52 @@ class _MemoTabState extends State<_MemoTab> {
   }
 
   Widget _body(List<_MemoItem> all) {
+    if (widget.allNotesMode) {
+      final entries = <({int order, int offset, int sequence, Widget card})>[];
+      for (final note in widget.otherNotes) {
+        entries.add((
+        order: note.paragraphOrder,
+        offset: note.startOffset ?? 0,
+        sequence: entries.length,
+        card: widget.noteBuilder!(note),
+        ));
+      }
+      for (final memo in all) {
+        entries.add((
+        order: memo.order,
+        offset: memo.startOffset,
+        sequence: entries.length,
+        card: _card(memo),
+        ));
+      }
+      entries.sort((a, b) {
+        final order = a.order.compareTo(b.order);
+        if (order != 0) return order;
+        final offset = a.offset.compareTo(b.offset);
+        return offset != 0 ? offset : a.sequence.compareTo(b.sequence);
+      });
+      if (entries.isEmpty) {
+        return const Center(child: Text('저장한 독서노트가 없습니다.'));
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.only(bottom: 12),
+        itemCount: entries.length,
+        itemBuilder: (_, index) => entries[index].card,
+        separatorBuilder: (_, _) => const Divider(
+          height: 1,
+          indent: 20,
+          endIndent: 20,
+          color: Color(0xFFEDEDED),
+        ),
+      );
+    }
     final others = <String>{
       for (final m in all)
         if (!m.mine) m.author,
     }.toList()..sort();
     final showFilters =
         widget.roomId != null || widget.selectedAiFriendIds.isNotEmpty;
+    final canShowShare = !showFilters || _who == '나';
     final chips = ['전체', '나', ...others];
     final shown =
     all
@@ -3655,30 +4262,128 @@ class _MemoTabState extends State<_MemoTab> {
     final empty = _who == '전체' ? '저장한 메모가 없습니다.' : '$_who 님의 메모가 없습니다.';
     return Column(
       children: [
-        if (showFilters)
-          SizedBox(
-            height: 56,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        if (_shareSelecting)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            child: Row(
               children: [
-                for (final c in chips) ...[
-                  ChoiceChip(
-                    label: Text(c),
-                    selected: _who == c,
-                    showCheckmark: false,
-                    selectedColor: const Color(0xFF111111),
-                    backgroundColor: Colors.white,
-                    labelStyle: TextStyle(
-                      fontSize: 13,
-                      color: _who == c ? Colors.white : const Color(0xFF333333),
-                    ),
-                    shape: const StadiumBorder(
-                      side: BorderSide(color: Color(0xFFDDDDDD)),
-                    ),
-                    onSelected: (_) => setState(() => _who = c),
+                TextButton(
+                  onPressed: _toggleShareSelection,
+                  child: const Text('취소'),
+                ),
+                const SizedBox(width: 8),
+                Builder(
+                  builder: (context) {
+                    final selectableIds = shown
+                        .where((m) => m.mine && m.own != null)
+                        .map((m) => m.own!.id)
+                        .toSet();
+
+                    final allSelected = selectableIds.isNotEmpty &&
+                        selectableIds.every(_selectedMemoIds.contains);
+
+                    return TextButton(
+                      onPressed: selectableIds.isEmpty
+                          ? null
+                          : () {
+                        setState(() {
+                          if (allSelected) {
+                            _selectedMemoIds.removeAll(selectableIds);
+                          } else {
+                            _selectedMemoIds.addAll(selectableIds);
+                          }
+                        });
+                      },
+                      child: Text(
+                        allSelected ? '전체해제' : '전체선택',
+                      ),
+                    );
+                  },
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: _selectedMemoIds.isEmpty
+                      ? null
+                      : _showSelectedMemoNotice,
+                  child: Text(
+                    '다음 (${_selectedMemoIds.length})',
                   ),
+                ),
+              ],
+            ),
+          ),
+        if (!_shareSelecting && (showFilters || canShowShare))
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                if (showFilters)
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final c in chips) ...[
+                            ChoiceChip(
+                              label: Text(c),
+                              selected: _who == c,
+                              showCheckmark: false,
+                              selectedColor: const Color(0xFF111111),
+                              backgroundColor: Colors.white,
+                              labelStyle: TextStyle(
+                                fontSize: 13,
+                                color: _who == c
+                                    ? Colors.white
+                                    : const Color(0xFF333333),
+                              ),
+                              shape: const StadiumBorder(
+                                side: BorderSide(
+                                  color: Color(0xFFDDDDDD),
+                                ),
+                              ),
+                              onSelected: (_) =>
+                                  setState(() => _who = c),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  const Spacer(),
+
+                if (canShowShare) ...[
                   const SizedBox(width: 8),
+                  if (_shareSelecting) ...[
+                    TextButton(
+                      onPressed: _toggleShareSelection,
+                      child: const Text('취소'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _selectedMemoIds.isEmpty
+                          ? null
+                          : _showSelectedMemoNotice,
+                      child: Text(
+                        '다음 (${_selectedMemoIds.length})',
+                      ),
+                    ),
+                  ] else
+                    TextButton.icon(
+                      onPressed: _toggleShareSelection,
+                      icon: const Icon(
+                        Icons.share_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('공유'),
+                    ),
                 ],
               ],
             ),
@@ -3698,6 +4403,18 @@ class _MemoTabState extends State<_MemoTab> {
 
   Widget _card(_MemoItem m) {
     const gray = Color(0xFF9E9E9E);
+    final page = widget.pageOf(m.order, m.startOffset);
+    final d = m.at?.toLocal();
+
+    final date = d == null
+        ? ''
+        : '${d.year}.'
+        '${d.month.toString().padLeft(2, '0')}.'
+        '${d.day.toString().padLeft(2, '0')}.';
+
+    final location = page == null
+        ? '페이지 확인 불가'
+        : '$page 페이지';
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
       child: Column(
@@ -3705,6 +4422,14 @@ class _MemoTabState extends State<_MemoTab> {
         children: [
           Row(
             children: [
+              if (_shareSelecting && m.mine && m.own != null) ...[
+                Checkbox(
+                  value: _selectedMemoIds.contains(m.own!.id),
+                  onChanged: (_) => _toggleSelectedMemo(m.own!.id),
+                ),
+                const SizedBox(width: 4),
+              ],
+
               CircleAvatar(
                 radius: 13,
                 backgroundColor: const Color(0xFFEFF1F5),
@@ -3766,83 +4491,142 @@ class _MemoTabState extends State<_MemoTab> {
                 style: TextStyle(fontSize: 13, color: gray),
               ),
             )
-          else ...[
-            if (m.quote?.isNotEmpty == true)
-              Container(
-                margin: const EdgeInsets.only(left: 36, bottom: 6),
-                padding: const EdgeInsets.only(left: 10),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    left: BorderSide(color: Color(0xFFDDDDDD), width: 2),
-                  ),
-                ),
-                child: Text(
-                  '“${m.quote}”',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6B6B6B),
-                  ),
+          else
+            InkWell(
+              onTap: () {
+                if (_shareSelecting && m.mine && m.own != null) {
+                  _toggleSelectedMemo(m.own!.id);
+                } else {
+                  widget.onGo(m.order);
+                }
+              },
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (m.quote?.isNotEmpty == true)
+                      Container(
+                        margin: const EdgeInsets.only(
+                          left: 36,
+                          bottom: 6,
+                        ),
+                        padding: const EdgeInsets.only(left: 10),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: Color(0xFFDDDDDD),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          '“${m.quote}”',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF6B6B6B),
+                          ),
+                        ),
+                      ),
+                    if (m.memo?.isNotEmpty == true)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 36),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                m.memo!,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                            if (!_shareSelecting &&
+                                m.mine &&
+                                m.own != null)
+                              PopupMenuButton<String>(
+                                tooltip: '메모 메뉴',
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.more_horiz,
+                                  color: gray,
+                                ),
+                                onSelected: (action) async {
+                                  if (action == 'edit') {
+                                    await widget.onEdit(m.own!);
+                                  } else if (action == 'delete') {
+                                    await widget.onDelete(m.own!);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem<String>(
+                                    value: 'edit',
+                                    child: Text('수정'),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    value: 'delete',
+                                    child: Text(
+                                      '삭제',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            if (m.memo?.isNotEmpty == true)
-              Padding(
-                padding: const EdgeInsets.only(left: 36),
-                child: Text(m.memo!, style: const TextStyle(fontSize: 14)),
-              ),
-          ],
-          const SizedBox(height: 6),
+            ),
+          const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.only(left: 28),
-            child: Row(
-              children: [
-                if (m.shared != null)
-                  TextButton.icon(
-                    onPressed: m.locked ? null : () => _openComments(m.shared!),
-                    icon: const Icon(
-                      Icons.chat_bubble_outline,
-                      size: 16,
-                      color: gray,
-                    ),
-                    label: Text(
-                      (m.comments ?? 0) > 0 ? '댓글 ${m.comments}' : '댓글 쓰기',
-                      style: const TextStyle(fontSize: 12, color: gray),
-                    ),
-                  ),
-                if (m.own != null) ...[
-                  IconButton(
-                    tooltip: '수정',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => widget.onEdit(m.own!),
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: gray,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '삭제',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => widget.onDelete(m.own!),
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 18,
-                      color: gray,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                TextButton(
-                  onPressed: () => widget.onGo(m.order),
-                  child: const Text(
-                    '이 문장으로 ›',
-                    style: TextStyle(fontSize: 12, color: gray),
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.only(left: 36),
+            child: Text(
+              date.isEmpty
+                  ? location
+                  : '$location  |  $date',
+              style: const TextStyle(
+                fontSize: 12,
+                color: gray,
+              ),
             ),
           ),
+          if (!_shareSelecting &&
+              (m.shared != null || m.own != null)) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 28),
+              child: Row(
+                children: [
+                  if (m.shared != null)
+                    TextButton.icon(
+                      onPressed: m.locked
+                          ? null
+                          : () => _openComments(m.shared!),
+                      icon: const Icon(
+                        Icons.chat_bubble_outline,
+                        size: 16,
+                        color: gray,
+                      ),
+                      label: Text(
+                        (m.comments ?? 0) > 0
+                            ? '댓글 ${m.comments}'
+                            : '댓글 쓰기',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: gray,
+                        ),
+                      ),
+                    ),
+                  const Spacer(),
+
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
