@@ -523,16 +523,51 @@ class _LineState extends State<_Line> {
       )
       .firstOrNull;
 
+  Future<void> _showSharedHighlight(
+    BuildContext context,
+    RidiStore store,
+    RidiNote note,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('공유 형광펜'),
+        content: Text(
+          store.canDeleteNote(note)
+              ? '공유 형광펜입니다. 삭제할 수 있지만 수정할 수는 없습니다.'
+              : '공유 형광펜은 읽기 전용입니다. 수정·삭제는 개인 형광펜에서만 할 수 있습니다.',
+        ),
+        actions: [
+          if (store.canDeleteNote(note))
+            TextButton(
+              onPressed: () {
+                store.deleteNotes([note.id]);
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('삭제'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = context.watch<RidiStore>();
     final style = widget.style;
     // 이 문장의 내 형광펜들 · 같은 방 남의 메모(말풍선용)
-    final mine =
+    // A highlight made outside a room is personal and editable.  Room
+    // highlights (including one authored by me) are shared, read-only items.
+    final personalHighlights =
         store.notes
             .where(
               (n) =>
                   n.mine &&
+                  n.roomIds.isEmpty &&
                   n.bookId == widget.bookId &&
                   n.kind == NoteKind.highlight &&
                   n.chapter == widget.chapter &&
@@ -544,17 +579,26 @@ class _LineState extends State<_Line> {
                 .wordStart(_words.length)
                 .compareTo(b.wordStart(_words.length)),
           );
-    final others = widget.roomId == null || store.onlyMyNotes
+    final roomHighlights = widget.roomId == null || store.onlyMyNotes
         ? const <RidiNote>[]
         : store
               .roomNotes(widget.roomId!, widget.bookId)
               .where(
-                (n) =>
-                    !n.mine &&
-                    n.chapter == widget.chapter &&
-                    n.line == widget.index,
+                (n) => n.chapter == widget.chapter && n.line == widget.index,
               )
               .toList();
+    // Do not draw a spoiler-locked shared highlight in the reading text.
+    // Keep the complete list for the room-memo badge so it can still explain
+    // that locked notes exist.
+    final unlockedRoomHighlights = widget.roomId == null
+        ? const <RidiNote>[]
+        : roomHighlights
+              .where((n) => !store.isSpoiler(n, widget.roomId!))
+              .toList();
+    final visibleHighlights = [
+      ...personalHighlights,
+      ...unlockedRoomHighlights,
+    ];
 
     // ----- 어절 단위로 span 을 만들면서 글자 위치를 기록 -----
     final spans = <InlineSpan>[TextSpan(text: '  ', style: style)];
@@ -583,14 +627,15 @@ class _LineState extends State<_Line> {
     }
 
     for (var i = 0; i < _words.length; i++) {
-      final note = _noteAt(mine, i);
+      final note = _noteAt(visibleHighlights, i);
       final inSel = i >= sa && i <= sb;
       _starts.add(offset);
       spans.add(TextSpan(text: _words[i], style: paint(note, inSel)));
       offset += _words[i].length;
       final last = i == _words.length - 1;
       // 같은 형광펜·밑줄 안의 어절 사이 공백도 칠한다
-      final nextSame = !last && note != null && _noteAt(mine, i + 1) == note;
+      final nextSame =
+          !last && note != null && _noteAt(visibleHighlights, i + 1) == note;
       final nextSel = !last && inSel && i + 1 <= sb;
       if (!last) {
         spans.add(
@@ -622,13 +667,15 @@ class _LineState extends State<_Line> {
         offset += 1;
       }
     }
-    if (others.isNotEmpty) {
+    if (roomHighlights.isNotEmpty) {
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
           child: _RoomBadge(
-            notes: others,
-            locked: others.every((n) => store.isSpoiler(n, widget.roomId!)),
+            notes: roomHighlights,
+            locked: roomHighlights.every(
+              (n) => store.isSpoiler(n, widget.roomId!),
+            ),
             scale: store.fontScale,
             onTap: () => showRoomMemoDialog(
               context,
@@ -648,9 +695,15 @@ class _LineState extends State<_Line> {
       behavior: HitTestBehavior.opaque,
       onTapUp: (d) {
         final w = _wordAt(d.globalPosition);
-        final note = w == null ? null : _noteAt(mine, w);
+        final note = w == null ? null : _noteAt(visibleHighlights, w);
         if (note == null) {
           widget.onBlankTap?.call();
+          return;
+        }
+        final isShared =
+            widget.roomId != null && note.roomIds.contains(widget.roomId);
+        if (isShared) {
+          _showSharedHighlight(context, store, note);
           return;
         }
         showRidiMemoDialog(
@@ -679,7 +732,7 @@ class _LineState extends State<_Line> {
         if (_selFrom == null) return;
         final (a, b) = _sel;
         // 누른 곳에 이미 형광펜이 있으면 그 형광펜을 편집
-        final existing = mine
+        final existing = personalHighlights
             .where(
               (n) =>
                   n.wordStart(_words.length) <= b &&

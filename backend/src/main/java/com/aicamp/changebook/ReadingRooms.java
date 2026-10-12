@@ -450,7 +450,7 @@ class RoomService {
   RoomResponse addBook(String username, Long roomId, Long bookId) {
     AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current); validateBook(bookId);
     if (roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_ROOM_BOOK","이미 방에 추가된 도서입니다.");
-    RoomBook item=new RoomBook(); item.roomId=roomId; item.bookId=bookId; item.displayOrder=(int)roomBooks.countByRoomId(roomId); item.addedBy=current.id; roomBooks.save(item);
+    RoomBook item=new RoomBook(); item.roomId=roomId; item.bookId=bookId; item.displayOrder=(int)roomBooks.countByRoomId(roomId); item.addedBy=current.id; roomBooks.saveAndFlush(item);
     return response(room,current);
   }
   @org.springframework.transaction.annotation.Transactional
@@ -458,7 +458,7 @@ class RoomService {
     AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current);
     if (roomBooks.countByRoomId(roomId) <= 1) throw new ApiException(HttpStatus.CONFLICT,"LAST_ROOM_BOOK","방의 마지막 도서는 삭제할 수 없습니다.");
     RoomBook item=roomBooks.findByRoomIdAndBookId(roomId,bookId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방 도서를 찾을 수 없습니다."));
-    roomBooks.delete(item); roomBooks.flush(); normalizeBookOrder(roomId);
+    roomBooks.delete(item); roomBooks.flush(); normalizeBookOrder(roomId); roomBooks.flush();
     if (java.util.Objects.equals(room.currentBookId,bookId)) room.currentBookId=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId).get(0).bookId;
     if (java.util.Objects.equals(room.bookId,bookId)) room.bookId=room.currentBookId;
     return response(rooms.save(room),current);
@@ -469,7 +469,7 @@ class RoomService {
     List<RoomBook> list=new java.util.ArrayList<>(roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId));
     RoomBook item=list.stream().filter(x -> x.bookId.equals(bookId)).findFirst().orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방 도서를 찾을 수 없습니다."));
     if (target < 0 || target >= list.size()) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_BOOK_ORDER","도서 순서를 확인해주세요.");
-    list.remove(item); list.add(target,item); for(int i=0;i<list.size();i++) list.get(i).displayOrder=i; roomBooks.saveAll(list);
+    list.remove(item); list.add(target,item); for(int i=0;i<list.size();i++) list.get(i).displayOrder=i; roomBooks.saveAllAndFlush(list);
     return response(room,current);
   }
   @org.springframework.transaction.annotation.Transactional

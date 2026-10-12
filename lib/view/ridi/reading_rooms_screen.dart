@@ -112,13 +112,16 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
     if (_openingRoomId == room.id) return;
     _openingRoomId = room.id;
     try {
-      final changed = await Navigator.of(context).push<bool>(
+      await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) =>
               ReadingRoomDetailScreen(repository: _repository, roomId: room.id),
         ),
       );
-      if (changed == true && mounted) _reload();
+      // A detail route can update its books without navigating away.  Always
+      // reconcile the grid when it closes so its cover/current-book metadata
+      // never remains stale after an add, remove, or reorder.
+      if (mounted) _reload();
     } finally {
       _openingRoomId = null;
     }
@@ -1260,6 +1263,15 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   void _reload() =>
       setState(() => _room = widget.repository.detail(widget.roomId));
 
+  // Book-management endpoints return the fully updated room.  Keep that
+  // response as the visible state immediately instead of waiting for a second
+  // network request to finish, so add/remove/current-book changes cannot look
+  // stale on the detail screen.
+  void _applyRoom(ReadingRoom room) {
+    if (!mounted) return;
+    setState(() => _room = Future<ReadingRoom>.value(room));
+  }
+
   Future<void> _editMyRoomProfileImage() async {
     if (_updatingProfileImage) return;
     final action = await showModalBottomSheet<_RoomProfileImageAction>(
@@ -1902,9 +1914,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     );
     if (picked == null || !mounted) return;
     try {
-      await widget.repository.addBook(room.id, picked.id);
+      final updated = await widget.repository.addBook(room.id, picked.id);
       if (!mounted) return;
-      _reload();
+      _applyRoom(updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${picked.title}을(를) 방에 추가했습니다.')),
       );
@@ -1941,8 +1953,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                           ? null
                           : () async {
                               try {
-                                await widget.repository.setCurrentBook(room.id, book.id);
-                                if (mounted) _reload();
+                                final updated = await widget.repository
+                                    .setCurrentBook(room.id, book.id);
+                                _applyRoom(updated);
                                 if (sheetContext.mounted) Navigator.pop(sheetContext);
                               } on ApiException catch (error) {
                                 if (mounted) _showError(context, error);
@@ -1957,8 +1970,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                                 ? null
                                 : () async {
                                     try {
-                                      await widget.repository.moveBook(room.id, book.id, index - 1);
-                                      if (mounted) _reload();
+                                      final updated = await widget.repository
+                                          .moveBook(room.id, book.id, index - 1);
+                                      _applyRoom(updated);
                                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                                     } on ApiException catch (error) {
                                       if (mounted) _showError(context, error);
@@ -1972,8 +1986,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                                 ? null
                                 : () async {
                                     try {
-                                      await widget.repository.moveBook(room.id, book.id, index + 1);
-                                      if (mounted) _reload();
+                                      final updated = await widget.repository
+                                          .moveBook(room.id, book.id, index + 1);
+                                      _applyRoom(updated);
                                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                                     } on ApiException catch (error) {
                                       if (mounted) _showError(context, error);
@@ -1987,8 +2002,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                                 ? null
                                 : () async {
                                     try {
-                                      await widget.repository.removeBook(room.id, book.id);
-                                      if (mounted) _reload();
+                                      final updated = await widget.repository
+                                          .removeBook(room.id, book.id);
+                                      _applyRoom(updated);
                                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                                     } on ApiException catch (error) {
                                       if (mounted) _showError(context, error);
@@ -2062,6 +2078,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _RoomBookCard(
+                      key: ValueKey('room-book-${room.id}-${item.book.id}'),
                       room: room,
                       book: item.book,
                       isCurrent: item.current,
@@ -2070,6 +2087,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                   ),
                 if (room.books.isEmpty && room.book != null)
                   _RoomBookCard(
+                    key: ValueKey('room-book-${room.id}-${room.book!.id}'),
                     room: room,
                     book: room.book!,
                     isCurrent: true,
@@ -2316,6 +2334,7 @@ class _RoomNicknameDialogState extends State<_RoomNicknameDialog> {
 /// 함께 읽는 책 카드 — 표지 · 제목 · 저자 · "함께 읽는 중" 진행 막대(내 위치 표시) · [책 보기 ›]
 class _RoomBookCard extends StatefulWidget {
   const _RoomBookCard({
+    super.key,
     required this.room,
     required this.book,
     required this.isCurrent,
@@ -2915,10 +2934,12 @@ class SharedRoomNotesScreen extends StatefulWidget {
 class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
   late Future<List<SharedRoomNote>> _notes;
   late final RoomSyncClient _sync;
+  bool _roomOwner = false;
   @override
   void initState() {
     super.initState();
     _notes = widget.repository.sharedNotes(widget.roomId);
+    unawaited(_loadOwnerPermission());
     _sync = RoomSyncClient(
       repository: widget.repository,
       baseUrl: ApiClient().baseUrl,
@@ -2938,6 +2959,15 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
 
   void _reload() =>
       setState(() => _notes = widget.repository.sharedNotes(widget.roomId));
+
+  Future<void> _loadOwnerPermission() async {
+    try {
+      final room = await widget.repository.detail(widget.roomId);
+      if (mounted) setState(() => _roomOwner = room.isOwner);
+    } on ApiException {
+      // The server checks owner authority again when deletion is requested.
+    }
+  }
 
   Future<void> _reveal(SharedRoomNote locked) async {
     try {
@@ -3052,11 +3082,11 @@ class _SharedRoomNotesScreenState extends State<SharedRoomNotesScreen> {
                   ),
                   isThreeLine: true,
                   onTap: note.type == 'MEMO' ? () => _comments(note) : null,
-                  trailing: note.mine
+                  trailing: note.mine || _roomOwner
                       ? PopupMenuButton<_SharedNoteAction>(
                           onSelected: (action) => _manageNote(note, action),
                           itemBuilder: (_) => [
-                            if (note.type == 'MEMO')
+                            if (note.mine && note.type == 'MEMO')
                               const PopupMenuItem(
                                 value: _SharedNoteAction.edit,
                                 child: Text('메모 수정'),

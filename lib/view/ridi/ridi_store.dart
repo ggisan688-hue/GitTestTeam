@@ -1215,6 +1215,19 @@ class RidiStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove a book from the active room immediately.  The room keeps at least
+  /// one book so its current-reading target always remains valid.
+  bool removeRoomBook(String roomId, String bookId) {
+    final r = room(roomId);
+    if (r == null || r.bookIds.length <= 1 || !r.bookIds.contains(bookId)) {
+      return false;
+    }
+    r.bookIds = r.bookIds.where((id) => id != bookId).toList();
+    if (r.lastBookId == bookId) r.lastBookId = r.bookIds.first;
+    notifyListeners();
+    return true;
+  }
+
   // ----- AI 친구 -----
   /// 새 AI 친구 만들기 (UC-09). 성격을 비우면 "○○ 말투의 AI 독서 친구". 서버: POST /api/ai/personas
   RidiPersona createPersona({
@@ -1338,11 +1351,24 @@ class RidiStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 여러 개 삭제 (내 것만) — 달린 댓글도 함께 지운다. 서버: DELETE /api/memos {ids}
+  /// Shared notes are removable by their author or by the owner of one of
+  /// their rooms.  The reader uses this for owner moderation.
+  bool canDeleteNote(RidiNote note) =>
+      note.mine ||
+      note.roomIds.any((roomId) {
+        final value = room(roomId);
+        return value != null && isOwner(value);
+      });
+
+  /// 여러 개 삭제 — 달린 댓글도 함께 지운다. 서버: DELETE /api/memos {ids}
   void deleteNotes(Iterable<String> ids) {
     final set = ids.toSet();
-    notes.removeWhere((n) => set.contains(n.id) && n.mine);
-    comments.removeWhere((c) => set.contains(c.noteId));
+    final removableIds = notes
+        .where((n) => set.contains(n.id) && canDeleteNote(n))
+        .map((n) => n.id)
+        .toSet();
+    notes.removeWhere((n) => removableIds.contains(n.id));
+    comments.removeWhere((c) => removableIds.contains(c.noteId));
     notifyListeners();
   }
 
