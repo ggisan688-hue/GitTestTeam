@@ -2581,15 +2581,31 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
         }
         return latest;
       });
+      // 겹치는 형광펜 색상 혼합
+      final coveredNotes = covered.toList();
+      Color? mixedColor;
+
+      if (coveredNotes.length == 1) {
+        mixedColor = _highlightColor(coveredNotes.first.highlightColor);
+      } else if (coveredNotes.length > 1) {
+        final colors = coveredNotes
+            .map((note) => _highlightColor(note.highlightColor))
+            .toList();
+
+        final red = colors.map((c) => (c.r * 255).round()).reduce((a, b) => a + b) ~/ colors.length;
+        final green = colors.map((c) => (c.g * 255).round()).reduce((a, b) => a + b) ~/ colors.length;
+        final blue = colors.map((c) => (c.b * 255).round()).reduce((a, b) => a + b) ~/ colors.length;
+
+        mixedColor = Color.fromARGB(136, red, green, blue);
+      }
+
       spans.add(
         TextSpan(
           text: slice.text.substring(from, to),
           recognizer: highlight == null ? null : _recognizerFor(highlight),
-          style: highlight == null
+          style: mixedColor == null
               ? style
-              : style.copyWith(
-            backgroundColor: _highlightColor(highlight.highlightColor),
-          ),
+              : style.copyWith(backgroundColor: mixedColor),
         ),
       );
     }
