@@ -596,7 +596,7 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
       _error = null;
     });
     try {
-      final room = await _repository.create({
+      var room = await _repository.create({
         'name': _name.text.trim(),
         'description': _description.text.trim(),
         'bookId': _picked.first.id,
@@ -609,7 +609,7 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
       });
       if (_imageBytes != null) {
         try {
-          await _repository.uploadMyRoomProfileImage(
+          room = await _repository.uploadMyRoomProfileImage(
             room.id,
             bytes: _imageBytes!,
             filename: _imageName ?? 'profile.jpg',
@@ -1250,18 +1250,51 @@ class ReadingRoomDetailScreen extends StatefulWidget {
 
 class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   late Future<ReadingRoom> _room;
+  ReadingRoom? _visibleRoom;
+  RoomSyncClient? _roomSync;
   bool _deleting = false;
+  bool _bookMutationInFlight = false;
   bool _updatingProfileImage = false;
   bool _updatingCoverImage = false;
   final ImagePicker _imagePicker = ImagePicker();
   @override
   void initState() {
     super.initState();
-    _room = widget.repository.detail(widget.roomId);
+    _loadRoom(rebuild: false);
+    _roomSync = RoomSyncClient(
+      repository: widget.repository,
+      baseUrl: AppConfig.baseUrl,
+      token: context.read<RidiStore>().accessToken,
+      roomId: widget.roomId,
+      onChanged: _reload,
+    )..start();
   }
 
-  void _reload() =>
-      setState(() => _room = widget.repository.detail(widget.roomId));
+  @override
+  void dispose() {
+    _roomSync?.dispose();
+    super.dispose();
+  }
+
+  void _reload() {
+    _loadRoom();
+  }
+
+  void _loadRoom({bool rebuild = true}) {
+    final future = widget.repository.detail(widget.roomId);
+    if (rebuild && mounted) {
+      setState(() => _room = future);
+    } else {
+      _room = future;
+    }
+    unawaited(
+      future.then((room) {
+        if (mounted && identical(_room, future)) {
+          setState(() => _visibleRoom = room);
+        }
+      }).catchError((Object _) {}),
+    );
+  }
 
   // Book-management endpoints return the fully updated room.  Keep that
   // response as the visible state immediately instead of waiting for a second
@@ -1269,7 +1302,25 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   // stale on the detail screen.
   void _applyRoom(ReadingRoom room) {
     if (!mounted) return;
-    setState(() => _room = Future<ReadingRoom>.value(room));
+    setState(() {
+      _visibleRoom = room;
+      _room = Future<ReadingRoom>.value(room);
+    });
+  }
+
+  /// A profile write can affect every room surface (member list, progress and
+  /// note author labels).  Paint the successful mutation immediately, then
+  /// fetch the canonical room once so no stale response/cache can remain on
+  /// this screen.  A failed refresh must not hide an already successful edit.
+  Future<void> _applyAndRefreshProfileRoom(ReadingRoom updated) async {
+    _applyRoom(updated);
+    try {
+      final canonical = await widget.repository.detail(widget.roomId);
+      if (mounted) _applyRoom(canonical);
+    } on ApiException {
+      // The mutation response is still authoritative when a follow-up read
+      // temporarily fails (for example while a connection is changing).
+    }
   }
 
   Future<void> _editMyRoomProfileImage() async {
@@ -1306,7 +1357,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     setState(() => _updatingProfileImage = true);
     try {
       if (action == _RoomProfileImageAction.remove) {
-        await widget.repository.deleteMyRoomProfileImage(widget.roomId);
+        final updated = await widget.repository.deleteMyRoomProfileImage(
+          widget.roomId,
+        );
+        await _applyAndRefreshProfileRoom(updated);
       } else {
         final image = await _imagePicker.pickImage(
           source: ImageSource.gallery,
@@ -1330,14 +1384,14 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               'webp' => 'image/webp',
               _ => 'image/jpeg',
             };
-        await widget.repository.uploadMyRoomProfileImage(
+        final updated = await widget.repository.uploadMyRoomProfileImage(
           widget.roomId,
           bytes: bytes,
           filename: image.name,
           contentType: contentType,
         );
+        await _applyAndRefreshProfileRoom(updated);
       }
-      if (mounted) _reload();
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     } catch (_) {
@@ -1394,7 +1448,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
             bytes.length > 5 * 1024 * 1024) {
           throw ApiException('JPG, PNG, WEBP 형식의 5MB 이하 이미지만 선택할 수 있습니다.');
         }
-        await widget.repository.uploadCoverImage(
+        final updated = await widget.repository.uploadCoverImage(
           widget.roomId,
           bytes: bytes,
           filename: image.name,
@@ -1406,6 +1460,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                   ? 'image/webp'
                   : 'image/jpeg'),
         );
+        if (mounted) _applyRoom(updated);
+        return;
       }
       if (mounted) _reload();
     } on ApiException catch (error) {
@@ -1456,8 +1512,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     final body = await showRoomEditor(context, room: room);
     if (body == null || !mounted) return;
     try {
-      await widget.repository.update(room.id, body);
-      _reload();
+      final updated = await widget.repository.update(room.id, body);
+      if (mounted) _applyRoom(updated);
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     }
@@ -1517,8 +1573,8 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
         !mounted)
       return;
     try {
-      await widget.repository.regenerateInviteCode(room.id);
-      _reload();
+      final updated = await widget.repository.regenerateInviteCode(room.id);
+      if (mounted) _applyRoom(updated);
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     }
@@ -1893,12 +1949,14 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     );
     if (name == null || name.isEmpty || name == current || !mounted) return;
     try {
-      await widget.repository.updateMyRoomNickname(room.id, name);
-      if (!mounted) return;
-      _reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('방에서 사용할 이름을 변경했습니다.')),
+      final updated = await widget.repository.updateMyRoomNickname(
+        room.id,
+        name,
       );
+      if (!mounted) return;
+      await _applyAndRefreshProfileRoom(updated);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('방에서 사용할 이름을 변경했습니다.')));
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     }
@@ -1913,15 +1971,36 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       ),
     );
     if (picked == null || !mounted) return;
+    if (_bookMutationInFlight) return;
+    setState(() => _bookMutationInFlight = true);
     try {
       final updated = await widget.repository.addBook(room.id, picked.id);
       if (!mounted) return;
       _applyRoom(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${picked.title}을(를) 방에 추가했습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${picked.title}을(를) 방에 추가했습니다.')));
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
+    } finally {
+      if (mounted) setState(() => _bookMutationInFlight = false);
+    }
+  }
+
+  Future<ReadingRoom?> _changeBooks(
+    Future<ReadingRoom> Function() operation,
+  ) async {
+    if (_bookMutationInFlight) return null;
+    setState(() => _bookMutationInFlight = true);
+    try {
+      final updated = await operation();
+      if (mounted) _applyRoom(updated);
+      return updated;
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+      return null;
+    } finally {
+      if (mounted) setState(() => _bookMutationInFlight = false);
     }
   }
 
@@ -1935,7 +2014,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
           child: Column(
             children: [
               const ListTile(
-                title: Text('방 책 관리', style: TextStyle(fontWeight: FontWeight.w800)),
+                title: Text(
+                  '방 책 관리',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
                 subtitle: Text('현재 읽을 책을 정하고 순서를 바꾸거나 책을 제거할 수 있습니다.'),
               ),
               const Divider(height: 1),
@@ -1946,19 +2028,28 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                     final item = room.books[index];
                     final book = item.book;
                     return ListTile(
-                      leading: BookCover(url: book.coverImageUrl, width: 36, height: 52),
-                      title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      leading: BookCover(
+                        url: book.coverImageUrl,
+                        width: 36,
+                        height: 52,
+                      ),
+                      title: Text(
+                        book.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       subtitle: Text(item.current ? '현재 읽는 책' : book.author),
                       onTap: item.current
                           ? null
                           : () async {
-                              try {
-                                final updated = await widget.repository
-                                    .setCurrentBook(room.id, book.id);
-                                _applyRoom(updated);
-                                if (sheetContext.mounted) Navigator.pop(sheetContext);
-                              } on ApiException catch (error) {
-                                if (mounted) _showError(context, error);
+                              final updated = await _changeBooks(
+                                () => widget.repository.setCurrentBook(
+                                  room.id,
+                                  book.id,
+                                ),
+                              );
+                              if (updated != null && sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
                               }
                             },
                       trailing: Row(
@@ -1969,13 +2060,16 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                             onPressed: index == 0
                                 ? null
                                 : () async {
-                                    try {
-                                      final updated = await widget.repository
-                                          .moveBook(room.id, book.id, index - 1);
-                                      _applyRoom(updated);
-                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                                    } on ApiException catch (error) {
-                                      if (mounted) _showError(context, error);
+                                    final updated = await _changeBooks(
+                                      () => widget.repository.moveBook(
+                                        room.id,
+                                        book.id,
+                                        index - 1,
+                                      ),
+                                    );
+                                    if (updated != null &&
+                                        sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
                                     }
                                   },
                             icon: const Icon(Icons.keyboard_arrow_up),
@@ -1985,13 +2079,16 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                             onPressed: index == room.books.length - 1
                                 ? null
                                 : () async {
-                                    try {
-                                      final updated = await widget.repository
-                                          .moveBook(room.id, book.id, index + 1);
-                                      _applyRoom(updated);
-                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                                    } on ApiException catch (error) {
-                                      if (mounted) _showError(context, error);
+                                    final updated = await _changeBooks(
+                                      () => widget.repository.moveBook(
+                                        room.id,
+                                        book.id,
+                                        index + 1,
+                                      ),
+                                    );
+                                    if (updated != null &&
+                                        sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
                                     }
                                   },
                             icon: const Icon(Icons.keyboard_arrow_down),
@@ -2001,13 +2098,15 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                             onPressed: room.books.length <= 1
                                 ? null
                                 : () async {
-                                    try {
-                                      final updated = await widget.repository
-                                          .removeBook(room.id, book.id);
-                                      _applyRoom(updated);
-                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                                    } on ApiException catch (error) {
-                                      if (mounted) _showError(context, error);
+                                    final updated = await _changeBooks(
+                                      () => widget.repository.removeBook(
+                                        room.id,
+                                        book.id,
+                                      ),
+                                    );
+                                    if (updated != null &&
+                                        sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
                                     }
                                   },
                             icon: const Icon(Icons.delete_outline),
@@ -2171,7 +2270,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   Widget build(BuildContext context) => FutureBuilder<ReadingRoom>(
     future: _room,
     builder: (context, snapshot) {
-      final room = snapshot.data;
+      // Do not depend solely on FutureBuilder's next microtask to paint a
+      // successful profile mutation.  _visibleRoom changes synchronously.
+      final room = _visibleRoom ?? snapshot.data;
       return Scaffold(
         backgroundColor: const Color(0xFFF7F8FA),
         appBar: AppBar(
@@ -2230,8 +2331,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                 child: FilledButton.icon(
                   onPressed: () async {
                     try {
-                      await widget.repository.joinPublic(room.id);
-                      _reload();
+                      final updated = await widget.repository.joinPublic(
+                        room.id,
+                      );
+                      if (mounted) _applyRoom(updated);
                     } on ApiException catch (error) {
                       if (mounted) _showError(context, error);
                     }
@@ -2243,9 +2346,9 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
           ],
         ),
         body: () {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (room == null && snapshot.connectionState != ConnectionState.done)
             return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError)
+          if (room == null && snapshot.hasError)
             return _ErrorState(error: snapshot.error, onRetry: _reload);
           final r = room!;
           return LayoutBuilder(
@@ -2350,10 +2453,13 @@ class _RoomBookCard extends StatefulWidget {
 
 class _RoomBookCardState extends State<_RoomBookCard> {
   late Future<List<RoomParticipantProgress>> _participants;
+  late final ReadingRoomRepository _repository;
 
   @override
   void initState() {
     super.initState();
+    final token = context.read<RidiStore>().accessToken;
+    _repository = ReadingRoomRepository(ApiClient(tokenProvider: () => token));
     _loadParticipants();
   }
 
@@ -2361,14 +2467,14 @@ class _RoomBookCardState extends State<_RoomBookCard> {
   void didUpdateWidget(covariant _RoomBookCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.room.id != widget.room.id ||
-        oldWidget.book.id != widget.book.id) {
+        oldWidget.book.id != widget.book.id ||
+        oldWidget.room != widget.room) {
       _loadParticipants();
     }
   }
 
   void _loadParticipants() {
-    final token = context.read<RidiStore>().accessToken;
-    _participants = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+    _participants = _repository
         .participantProgress(widget.room.id, widget.book.id)
         .catchError((Object _) => <RoomParticipantProgress>[]);
   }
@@ -2466,7 +2572,9 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                                       true
                                   ? CircleAvatar(
                                       backgroundImage: NetworkImage(
-                                        participant.profileImageUrl!,
+                                        _repository.absoluteUrl(
+                                          participant.profileImageUrl!,
+                                        ),
                                       ),
                                     )
                                   : null,
@@ -2686,22 +2794,21 @@ Future<Map<String, dynamic>?> showRoomEditorLegacy(
 
 Future<Map<String, dynamic>?> showRoomEditor(
   BuildContext context, {
-  ReadingRoom? room,
+  required ReadingRoom room,
 }) async {
-  final name = TextEditingController(text: room?.name ?? '');
-  final description = TextEditingController(text: room?.description ?? '');
-  final nickname = TextEditingController();
-  int? bookId = room?.bookId;
-  var maxMembers = room?.maxMembers ?? 6;
-  var isPublic = room?.isPublic ?? true;
-  var spoilerLock = room?.spoilerLockEnabled ?? false;
-  String? aiFriend = room?.selectedAiFriendType;
+  final name = TextEditingController(text: room.name);
+  final description = TextEditingController(text: room.description ?? '');
+  final bookId = room.currentBookId ?? room.bookId;
+  var maxMembers = room.maxMembers;
+  var isPublic = room.isPublic;
+  var spoilerLock = room.spoilerLockEnabled;
+  String? aiFriend = room.selectedAiFriendType;
   try {
     return await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(room == null ? '독서방 만들기' : '방 정보 수정'),
+          title: const Text('방 정보 수정'),
           content: SizedBox(
             width: 480,
             child: SingleChildScrollView(
@@ -2722,26 +2829,12 @@ Future<Map<String, dynamic>?> showRoomEditor(
                     maxLength: 500,
                     decoration: const InputDecoration(labelText: '방 설명 (선택)'),
                   ),
-                  TextField(
-                    controller: nickname,
-                    maxLength: 40,
-                    decoration: const InputDecoration(
-                      labelText: '방에서 사용할 별명 (선택)',
-                    ),
-                  ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      bookId == null ? '함께 읽을 책을 선택하세요' : '대표 도서가 선택되었습니다',
-                    ),
+                    title: const Text('함께 읽는 책'),
+                    subtitle: const Text('책 추가·삭제·현재 책 지정은 방 책 관리에서 하세요.'),
                     trailing: const Icon(Icons.menu_book_outlined),
-                    onTap: () async {
-                      final selected = await Navigator.of(context).push<Book>(
-                        MaterialPageRoute(builder: (_) => _RoomBookPicker()),
-                      );
-                      if (selected != null && context.mounted)
-                        setDialogState(() => bookId = selected.id);
-                    },
+                    onTap: null,
                   ),
                   Row(
                     children: [
@@ -2815,7 +2908,6 @@ Future<Map<String, dynamic>?> showRoomEditor(
                       'isPublic': isPublic,
                       'spoilerLockEnabled': spoilerLock,
                       'selectedAiFriendType': aiFriend,
-                      'roomNickname': nickname.text.trim(),
                     }),
               child: const Text('만들기'),
             ),
@@ -2826,7 +2918,6 @@ Future<Map<String, dynamic>?> showRoomEditor(
   } finally {
     name.dispose();
     description.dispose();
-    nickname.dispose();
   }
 }
 
