@@ -151,6 +151,38 @@ class AiReadingRepository {
   }
 
 
+
+  // 사용자가 생성한 AI 독서친구 수정
+  Future<AiReadingFriend> updateFriend({
+    required int friendId,
+    required String name,
+    String? age,
+    String? gender,
+    String? relationship,
+    String? personality,
+    String? speechStyle,
+    String? traits,
+  }) async {
+    final res = await _api.put<AiReadingFriend>(
+      '/api/ai-reading-friends/$friendId',
+      body: {
+        'name': name.trim(),
+        'age': age?.trim(),
+        'gender': gender?.trim(),
+        'relationship': relationship?.trim(),
+        'personality': personality?.trim(),
+        'speechStyle': speechStyle?.trim(),
+        'traits': traits?.trim(),
+      },
+      parse: (json) => AiReadingFriend.fromJson(
+        Map<String, dynamic>.from(json as Map),
+      ),
+    );
+
+    return res.data!;
+  }
+
+
   Future<void> deleteFriend(int friendId) =>
       _api.delete('/api/ai-reading-friends/$friendId');
 
