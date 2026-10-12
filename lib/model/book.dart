@@ -116,6 +116,7 @@ class ReadingNote {
     required this.preview,
     this.createdAt,
     this.updatedAt,
+    this.readOnly = false,
   });
   final int id;
   final ReaderNoteType type;
@@ -129,6 +130,9 @@ class ReadingNote {
   final String preview;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  /// UI-only provenance flag for annotations rendered from a shared source.
+  /// It is never sent to the personal reading-notes API.
+  final bool readOnly;
   factory ReadingNote.fromJson(Map<String, dynamic> json) => ReadingNote(
     id: (json['id'] as num).toInt(),
     type: ReaderNoteType.values.byName((json['type'] as String).toLowerCase()),

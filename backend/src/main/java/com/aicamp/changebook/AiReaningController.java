@@ -129,6 +129,66 @@ AiReadingFriendResponse createFriend(
 }
 
 
+
+@PutMapping("/ai-reading-friends/{friendId}")
+@org.springframework.transaction.annotation.Transactional
+AiReadingFriendResponse updateFriend(
+        @PathVariable Long friendId,
+        @Valid @RequestBody CreateAiReadingFriendRequest request,
+        org.springframework.security.core.Authentication authentication
+) {
+    var user = currentUser(authentication);
+
+    // 본인이 만든 AI 친구만 수정 가능
+    AiReadingFriend friend = friendRepository
+            .findByIdAndUserIdAndIsDefaultFalse(friendId, user.id)
+            .orElseThrow(() -> new ApiException(
+                    HttpStatus.NOT_FOUND,
+                    "AI_FRIEND_NOT_FOUND",
+                    "수정할 AI 친구를 찾을 수 없습니다."
+            ));
+
+    // 수정된 사용자 정보로 프롬프트 생성
+    String prompt = characterPromptService.makeCharacterPrompt(
+            request.name(),
+            request.age(),
+            request.gender(),
+            request.relationship(),
+            request.personality(),
+            request.speechStyle(),
+            request.traits()
+    );
+
+    // Gemini로 페르소나 다시 생성
+    String generatedPersona = geminiClient.generate(prompt);
+
+    if (generatedPersona == null || generatedPersona.isBlank()) {
+        throw new ApiException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "PERSONA_GENERATION_FAILED",
+                "AI 독서친구 페르소나 재생성에 실패했습니다."
+        );
+    }
+
+    // 사용자가 수정한 정보 저장
+    friend.name = request.name().trim();
+    friend.inputAge = emptyToNull(request.age());
+    friend.inputGender = emptyToNull(request.gender());
+    friend.inputRelationship = emptyToNull(request.relationship());
+    friend.inputPersonality = emptyToNull(request.personality());
+    friend.inputSpeechStyle = emptyToNull(request.speechStyle());
+    friend.inputTraits = emptyToNull(request.traits());
+
+    // 새 페르소나 저장
+    friend.persona = generatedPersona.trim();
+    friend.updatedAt = java.time.OffsetDateTime.now();
+
+    // 기존 친구 ID 및 독서 메모 유지
+    return AiReadingFriendResponse.from(
+            friendRepository.save(friend)
+    );
+}
+
     @DeleteMapping("/ai-reading-friends/{friendId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     @org.springframework.transaction.annotation.Transactional
     void deleteFriend(@PathVariable Long friendId, org.springframework.security.core.Authentication authentication) {
@@ -283,25 +343,34 @@ Map<String, Object> getReadingProgress(
     // AI 친구 응답
     // =========================================================
 
-    record AiReadingFriendResponse(
-            Long id,
-            String name,
-            boolean isDefault,
-            String persona
-    ) {
 
-        static AiReadingFriendResponse from(
-                AiReadingFriend friend
-        ) {
-
-            return new AiReadingFriendResponse(
-                    friend.id,
-                    friend.name,
-                    friend.isDefault,
-                    friend.persona
-            );
-        }
+record AiReadingFriendResponse(
+        Long id,
+        String name,
+        boolean isDefault,
+        String persona,
+        String inputAge,
+        String inputGender,
+        String inputRelationship,
+        String inputPersonality,
+        String inputSpeechStyle,
+        String inputTraits
+) {
+    static AiReadingFriendResponse from(AiReadingFriend friend) {
+        return new AiReadingFriendResponse(
+                friend.id,
+                friend.name,
+                friend.isDefault,
+                friend.persona,
+                friend.inputAge,
+                friend.inputGender,
+                friend.inputRelationship,
+                friend.inputPersonality,
+                friend.inputSpeechStyle,
+                friend.inputTraits
+        );
     }
+}
 
 
     // =========================================================

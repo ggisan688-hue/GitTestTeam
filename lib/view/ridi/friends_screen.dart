@@ -28,6 +28,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   final _speechController = TextEditingController();
   final _featureController = TextEditingController();
 
+  _AiFriend? _editingFriend;
   String _gender = '여자';
 
   @override
@@ -123,17 +124,19 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ? '남자'
         : '';
 
+
     return _AiFriend(
       id: friend.id,
       name: friend.name,
-      age: age,
-      gender: gender,
-      relationship: profile,
-      personality: personality.isNotEmpty ? personality : persona,
-      speech: speech,
-      feature: experience,
+      age: int.tryParse(friend.inputAge ?? '') ?? age,
+      gender: friend.inputGender ?? gender,
+      relationship: friend.inputRelationship ?? '',
+      personality: friend.inputPersonality ?? '',
+      speech: friend.inputSpeechStyle ?? '',
+      feature: friend.inputTraits ?? '',
       isDefault: friend.isDefault,
     );
+
   }
 
   @override
@@ -154,11 +157,22 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
+
   void _startCreating() {
+    _nameController.clear();
+    _ageController.clear();
+    _relationshipController.clear();
+    _personalityController.clear();
+    _speechController.clear();
+    _featureController.clear();
+
     setState(() {
+      _editingFriend = null;
+      _gender = '여자';
       _isCreating = true;
     });
   }
+
 
   Future<void> _createFriend() async {
     final name = _nameController.text.trim();
@@ -240,30 +254,46 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
             const SizedBox(height: 22),
 
+
             SizedBox(
               height: 150,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _friends.length + 1,
-                separatorBuilder: (_, _) => const SizedBox(width: 16),
-                itemBuilder: (context, index) {
-                  if (index == _friends.length) {
-                    return _CreateFriendCard(
-                      selected: _isCreating,
+              child: Row(
+                children: [
+                  // 왼쪽: AI 친구 목록만 가로 스크롤
+                  Expanded(
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _friends.length,
+                      separatorBuilder: (_, _) =>
+                      const SizedBox(width: 16),
+                      itemBuilder: (context, index) {
+                        final friend = _friends[index];
+
+                        return _FriendCard(
+                          friend: friend,
+                          selected: _selectedIndex == index &&
+                              (!_isCreating ||
+                                  _editingFriend?.id == friend.id),
+                          onTap: () => _selectFriend(index),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // 오른쪽: AI 친구 만들기 버튼 고정
+                  SizedBox(
+                    width: 170,
+                    child: _CreateFriendCard(
+                      selected: _isCreating && _editingFriend == null,
                       onTap: _startCreating,
-                    );
-                  }
-
-                  final friend = _friends[index];
-
-                  return _FriendCard(
-                    friend: friend,
-                    selected: !_isCreating && _selectedIndex == index,
-                    onTap: () => _selectFriend(index),
-                  );
-                },
+                    ),
+                  ),
+                ],
               ),
             ),
+
 
             const SizedBox(height: 24),
 
@@ -296,11 +326,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+
           CircleAvatar(
             radius: 54,
             backgroundColor: RidiColors.panel,
             child: Text(
-              friend.name,
+              friend.name.characters.take(2).toString(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: RidiText.f,
                 fontSize: 32,
@@ -310,7 +344,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
           ),
 
+
           const SizedBox(width: 42),
+
 
           Expanded(
             child: Column(
@@ -318,32 +354,59 @@ class _FriendsScreenState extends State<FriendsScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      friend.name,
-                      style: const TextStyle(
-                        fontFamily: RidiText.f,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: RidiColors.ink,
-                      ),
+                    Flexible(
+                      child: Text(
+                    friend.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: RidiColors.ink,
                     ),
+                  ),
+                ),
                     const SizedBox(width: 12),
 
-                    // 기본 A/B/C는 수정 불가.
-                    // 이후 사용자가 만든 친구만 수정 버튼 표시.
-                    if (!friend.isDefault)
+
+                    // 기본 AI 친구는 수정 및 삭제 불가
+                    // 사용자가 생성한 AI 친구만 수정 및 삭제 가능
+                    if (!friend.isDefault) ...[
+                      OutlinedButton(
+                        onPressed: friend.id == null
+                            ? null
+                            : () => _editFriend(friend),
+                        child: const Text('수정'),
+                      ),
+
+                      const SizedBox(width: 8),
+
                       OutlinedButton(
                         onPressed: friend.id == null
                             ? null
                             : () => _deleteFriend(friend),
                         child: const Text('삭제'),
                       ),
+                    ],
+
                   ],
                 ),
 
                 const SizedBox(height: 6),
 
-                Text('${friend.age}살 · ${friend.gender}', style: RidiText.sub),
+
+
+
+                Text(
+                  friend.gender.trim().isEmpty || friend.gender.trim() == '없음'
+                      ? '${friend.age}살'
+                      : '${friend.age}살 · ${friend.gender}',
+                  style: RidiText.sub,
+                ),
+
+
 
                 const SizedBox(height: 26),
 
@@ -362,6 +425,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ),
                   ],
                 ),
+
+
 
                 const SizedBox(height: 24),
 
@@ -420,7 +485,110 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
+
+  void _editFriend(_AiFriend friend) {
+    if (friend.isDefault || friend.id == null) {
+      return;
+    }
+
+    _nameController.text = friend.name;
+    _ageController.text = friend.age?.toString() ?? '';
+    _relationshipController.text = friend.relationship;
+    _personalityController.text = friend.personality;
+    _speechController.text = friend.speech;
+    _featureController.text = friend.feature;
+
+    setState(() {
+      _editingFriend = friend;
+      _isCreating = true;
+      _gender = ['남자', '여자', '없음'].contains(friend.gender)
+          ? friend.gender
+          : '없음';
+    });
+  }
+
+
   Widget _buildCreatePanel() {
+
+    Future<void> _updateFriend() async {
+      final friend = _editingFriend;
+
+      if (friend == null || friend.id == null || friend.isDefault) {
+        return;
+      }
+
+      final name = _nameController.text.trim();
+      final relationship = _relationshipController.text.trim();
+      final personality = _personalityController.text.trim();
+      final speech = _speechController.text.trim();
+      final feature = _featureController.text.trim();
+
+      if (name.isEmpty ||
+          relationship.isEmpty ||
+          personality.isEmpty ||
+          speech.isEmpty ||
+          feature.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('모든 항목을 입력해 주세요.')),
+        );
+        return;
+      }
+
+      if (_submitting) return;
+      setState(() => _submitting = true);
+
+      try {
+        final token = context.read<RidiStore>().accessToken;
+
+        final saved = await AiReadingRepository(
+          ApiClient(tokenProvider: () => token),
+        ).updateFriend(
+          friendId: friend.id!,
+          name: name,
+          age: _ageController.text.trim(),
+          gender: _gender,
+          relationship: relationship,
+          personality: personality,
+          speechStyle: speech,
+          traits: feature,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          final index = _friends.indexWhere((item) => item.id == saved.id);
+
+          if (index >= 0) {
+            _friends[index] = _friendFromApi(saved);
+            _selectedIndex = index;
+          }
+
+          _editingFriend = null;
+          _isCreating = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI 친구 정보가 수정되었습니다.')),
+        );
+      } on ApiException catch (e) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      } catch (e) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('수정 중 오류가 발생했습니다: $e')),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _submitting = false);
+        }
+      }
+    }
+
     return Container(
       key: const ValueKey('create'),
       width: double.infinity,
@@ -436,7 +604,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('새로운 AI 친구 만들기', style: RidiText.heading),
+
+          Text(
+            _editingFriend == null
+                ? '새로운 AI 친구 만들기'
+                : 'AI 친구 수정하기',
+            style: RidiText.heading,
+          ),
+
 
           const SizedBox(height: 24),
 
@@ -544,8 +719,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
-              onPressed: _submitting ? null : _createFriend,
-              child: const Text('AI 친구 만들기'),
+
+              onPressed: _submitting
+                  ? null
+                  : (_editingFriend == null ? _createFriend : _updateFriend),
+              child: Text(
+                _editingFriend == null ? 'AI 친구 만들기' : '수정 저장',
+              ),
+
             ),
           ),
         ],
@@ -587,13 +768,29 @@ class _FriendCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+
             CircleAvatar(
               radius: 25,
               backgroundColor: RidiColors.panel,
-              child: Text(friend.name, style: RidiText.heading),
+              child: Text(
+                friend.name.characters.take(2).toString(),
+                style: RidiText.heading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+
             const SizedBox(height: 10),
-            Text(friend.name, style: RidiText.bodyBold),
+
+            Text(
+              friend.name,
+              style: RidiText.bodyBold,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              softWrap: true,
+            ),
+
           ],
         ),
       ),

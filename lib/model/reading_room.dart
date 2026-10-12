@@ -39,10 +39,12 @@ class ReadingRoomMember {
     required this.nickname,
     required this.role,
     this.roomProfileImageUrl,
+    this.currentUser = false,
   });
   final int userId;
   final String nickname;
   final String role;
+  final bool currentUser;
 
   /// The room-specific photo when present; the API falls back to the member's
   /// account photo so callers can render one consistent avatar field.
@@ -53,6 +55,7 @@ class ReadingRoomMember {
         nickname: _jsonString(json['nickname'], '알 수 없음'),
         role: _jsonString(json['role'], 'MEMBER'),
         roomProfileImageUrl: _jsonNullableString(json['roomProfileImageUrl']),
+        currentUser: _jsonBool(json['currentUser']),
       );
 }
 

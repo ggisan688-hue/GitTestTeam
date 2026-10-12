@@ -1022,12 +1022,13 @@ class _RoomSheet extends StatelessWidget {
                 children: [
                   const Text('함께 읽는 책', style: RidiText.heading),
                   const Spacer(),
-                  RidiOutlineButton(
-                    '책 추가',
-                    icon: Icons.add_rounded,
-                    height: 34,
-                    onTap: () => _addBooks(context, room),
-                  ),
+                  if (owner)
+                    RidiOutlineButton(
+                      '책 추가',
+                      icon: Icons.add_rounded,
+                      height: 34,
+                      onTap: () => _addBooks(context, room),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1043,14 +1044,35 @@ class _RoomSheet extends StatelessWidget {
                       '${b.author} · ${b.chapters}장',
                       style: RidiText.sub,
                     ),
-                    trailing: const Text(
-                      '이어보기  ›',
-                      style: TextStyle(
-                        fontFamily: RidiText.f,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: RidiColors.ink,
-                      ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '이어보기  ›',
+                          style: TextStyle(
+                            fontFamily: RidiText.f,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: RidiColors.ink,
+                          ),
+                        ),
+                        if (owner)
+                          IconButton(
+                            tooltip: '책 삭제',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: books.length <= 1
+                                ? null
+                                : () {
+                                    final removed = store.removeRoomBook(
+                                      room.id,
+                                      b.id,
+                                    );
+                                    if (!removed) {
+                                      ridiToast(context, '방의 마지막 책은 삭제할 수 없어요');
+                                    }
+                                  },
+                          ),
+                      ],
                     ),
                     onTap: () {
                       final nav = Navigator.of(context);

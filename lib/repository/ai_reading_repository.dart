@@ -1,11 +1,18 @@
 import '../core/api_client.dart';
 
+
 class AiReadingFriend {
   const AiReadingFriend({
     required this.id,
     required this.name,
     required this.isDefault,
     this.persona,
+    this.inputAge,
+    this.inputGender,
+    this.inputRelationship,
+    this.inputPersonality,
+    this.inputSpeechStyle,
+    this.inputTraits,
   });
 
   final int id;
@@ -13,15 +20,32 @@ class AiReadingFriend {
   final bool isDefault;
   final String? persona;
 
+  // 사용자가 직접 입력한 정보
+  final String? inputAge;
+  final String? inputGender;
+  final String? inputRelationship;
+  final String? inputPersonality;
+  final String? inputSpeechStyle;
+  final String? inputTraits;
+
   factory AiReadingFriend.fromJson(Map<String, dynamic> json) {
     return AiReadingFriend(
       id: (json['id'] as num).toInt(),
       name: json['name']?.toString() ?? '',
       isDefault: json['isDefault'] == true,
       persona: json['persona'] as String?,
+
+      // DB에 저장된 사용자 입력값
+      inputAge: json['inputAge']?.toString(),
+      inputGender: json['inputGender']?.toString(),
+      inputRelationship: json['inputRelationship']?.toString(),
+      inputPersonality: json['inputPersonality']?.toString(),
+      inputSpeechStyle: json['inputSpeechStyle']?.toString(),
+      inputTraits: json['inputTraits']?.toString(),
     );
   }
 }
+
 
 class AiReadingNote {
   const AiReadingNote({
@@ -121,6 +145,38 @@ class AiReadingRepository {
       parse: (json) =>
           AiReadingFriend.fromJson(Map<String, dynamic>.from(json as Map)),
       timeout: const Duration(seconds: 120),
+    );
+
+    return res.data!;
+  }
+
+
+
+  // 사용자가 생성한 AI 독서친구 수정
+  Future<AiReadingFriend> updateFriend({
+    required int friendId,
+    required String name,
+    String? age,
+    String? gender,
+    String? relationship,
+    String? personality,
+    String? speechStyle,
+    String? traits,
+  }) async {
+    final res = await _api.put<AiReadingFriend>(
+      '/api/ai-reading-friends/$friendId',
+      body: {
+        'name': name.trim(),
+        'age': age?.trim(),
+        'gender': gender?.trim(),
+        'relationship': relationship?.trim(),
+        'personality': personality?.trim(),
+        'speechStyle': speechStyle?.trim(),
+        'traits': traits?.trim(),
+      },
+      parse: (json) => AiReadingFriend.fromJson(
+        Map<String, dynamic>.from(json as Map),
+      ),
     );
 
     return res.data!;

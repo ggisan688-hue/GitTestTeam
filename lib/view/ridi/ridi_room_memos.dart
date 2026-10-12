@@ -290,6 +290,15 @@ class _RoomMemoTile extends StatelessWidget {
                   underline: note.penStyle == PenStyle.underline,
                   size: 12,
                 ),
+                if (store.canDeleteNote(note))
+                  IconButton(
+                    tooltip: '메모 삭제',
+                    icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                    onPressed: () {
+                      store.deleteNotes([note.id]);
+                      ridiToast(context, '메모를 삭제했어요.');
+                    },
+                  ),
               ],
             ),
             if (showQuote && !spoiler) ...[
