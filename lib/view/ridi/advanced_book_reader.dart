@@ -1360,7 +1360,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           author: _friendName(friendId),
           content: note.content,
           quote: note.selectedText ?? '',
-          color: _highlightColor(note.highlightColor),
+          color: _highlightColor(
+            _aiFriendHighlightColors[friendId] ?? 'YELLOW',
+          ),
           ));
         }
       }
@@ -1650,11 +1652,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     // AI 친구 형광펜: 메모 내용을 읽기 전용으로 보여준다.
     if (note.id <= -1000000000) {
       String friendName = 'AI 친구';
+      int? friendId;
       final aiNoteId = -1000000000 - note.id;
 
       for (final entry in _aiNotesByFriend.entries) {
         if (entry.value.any((aiNote) => aiNote.id == aiNoteId)) {
           friendName = _friendName(entry.key);
+          friendId = entry.key;
           break;
         }
       }
@@ -1722,7 +1726,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                         height: 16,
                         margin: const EdgeInsets.only(top: 2),
                         decoration: BoxDecoration(
-                          color: _highlightColor(note.highlightColor),
+                          color: _highlightColor(
+                            friendId == null
+                                ? note.highlightColor
+                                : (_aiFriendHighlightColors[friendId] ?? 'YELLOW'),
+                          ),
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: const Color(0xFF90CAF9),
