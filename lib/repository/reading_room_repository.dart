@@ -401,6 +401,12 @@ class ReadingRoomRepository {
         '/api/reading-rooms/$roomId/books/$bookId',
         parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
       )).data!;
+  Future<ReadingRoom> moveBook(int roomId, int bookId, int order) async =>
+      (await _api.patch<ReadingRoom>(
+        '/api/reading-rooms/$roomId/books/$bookId/order',
+        body: {'order': order},
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
   Future<ReadingRoom> setCurrentBook(int roomId, int bookId) async =>
       (await _api.put<ReadingRoom>(
         '/api/reading-rooms/$roomId/current-book/$bookId',

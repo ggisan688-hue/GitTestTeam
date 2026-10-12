@@ -2269,6 +2269,125 @@ class _Sheet extends StatelessWidget {
   }
 }
 
+class _SharedRoomNotesTab extends StatefulWidget {
+  const _SharedRoomNotesTab({
+    required this.roomId,
+    required this.bookId,
+    required this.type,
+    required this.onGo,
+  });
+
+  final int roomId;
+  final int bookId;
+  final String? type;
+  final ValueChanged<int> onGo;
+
+  @override
+  State<_SharedRoomNotesTab> createState() => _SharedRoomNotesTabState();
+}
+
+class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
+  late Future<List<SharedRoomNote>> _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    final token = context.read<RidiStore>().accessToken;
+    _notes = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+        .sharedNotes(widget.roomId, bookId: widget.bookId);
+  }
+
+  Future<void> _reveal(SharedRoomNote note) async {
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final revealed = await ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+          .revealSharedNote(widget.roomId, note.id);
+      if (mounted) {
+        setState(() {
+          _notes = _notes.then(
+            (items) => [
+              for (final item in items) if (item.id == revealed.id) revealed else item,
+            ],
+          );
+        });
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<SharedRoomNote>>(
+    future: _notes,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return Center(
+          child: TextButton(
+            onPressed: () => setState(_reload),
+            child: const Text('공유 독서노트를 불러오지 못했습니다. 다시 시도'),
+          ),
+        );
+      }
+      final notes = (snapshot.data ?? const <SharedRoomNote>[])
+          .where((note) => widget.type == null || note.type == widget.type)
+          .toList();
+      if (notes.isEmpty) return const Center(child: Text('공유 독서노트가 없습니다.'));
+      return RefreshIndicator(
+        onRefresh: () async => setState(_reload),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: notes.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (_, index) {
+            final note = notes[index];
+            final label = switch (note.type) {
+              'HIGHLIGHT' => '하이라이트',
+              'BOOKMARK' => '북마크',
+              _ => '메모',
+            };
+            if (note.isSpoilerLocked) {
+              return ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: Text('$label · 스포일러 잠금'),
+                subtitle: Text('${note.nickname} · 문단 ${note.paragraphOrder}'),
+                trailing: TextButton(
+                  onPressed: () => _reveal(note),
+                  child: const Text('내용 보기'),
+                ),
+              );
+            }
+            final text = note.content?.isNotEmpty == true
+                ? note.content!
+                : note.selectedText?.isNotEmpty == true
+                ? note.selectedText!
+                : label;
+            return ListTile(
+              leading: Icon(
+                note.type == 'HIGHLIGHT'
+                    ? Icons.format_paint_outlined
+                    : note.type == 'BOOKMARK'
+                    ? Icons.bookmark_outline
+                    : Icons.sticky_note_2_outlined,
+              ),
+              title: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${note.nickname} · $label · 문단 ${note.paragraphOrder}'),
+              onTap: () => widget.onGo(note.paragraphOrder),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
 class _Notes extends StatefulWidget {
   const _Notes({
     required this.bookId,
@@ -2373,10 +2492,27 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
             child: TabBarView(
               controller: _tabs,
               children: List.generate(4, (index) {
+                if (widget.roomId != null) {
+                  return _SharedRoomNotesTab(
+                    roomId: widget.roomId!,
+                    bookId: widget.bookId,
+                    type: switch (index) {
+                      1 => 'HIGHLIGHT',
+                      2 => 'MEMO',
+                      3 => 'BOOKMARK',
+                      _ => null,
+                    },
+                    onGo: (order) {
+                      Navigator.of(context).pop();
+                      widget.onGo(order);
+                    },
+                  );
+                }
                 // 메모 탭: 사람별 거르기 + 메모 카드 (사용자 첨부 이미지, 수정2-1쪽 "메모 선택시")
                 if (index == 2) {
                   return _MemoTab(
                     roomId: widget.roomId,
+                    bookId: widget.bookId,
                     myMemos: vm.readingNotes
                         .where((n) => n.type == ReaderNoteType.memo)
                         .toList(),
@@ -2395,6 +2531,11 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     onDelete: _delete,
                   );
                 }
+                // A room reader must never expose notes saved in the
+                // personal reader.  Shared room memos have their dedicated
+                // tab above; other private-note tabs intentionally stay
+                // empty in this context until their shared counterparts are
+                // created through the room API.
                 final notes =
                 (filters[index] == null
                     ? vm.readingNotes
@@ -3430,6 +3571,7 @@ class _ToggleRow extends StatelessWidget {
 class _MemoTab extends StatefulWidget {
   const _MemoTab({
     required this.roomId,
+    required this.bookId,
     required this.myMemos,
     required this.chapters,
     required this.myNickname,
@@ -3442,6 +3584,7 @@ class _MemoTab extends StatefulWidget {
   });
 
   final int? roomId;
+  final int bookId;
   final List<ReadingNote> myMemos;
   final List<ReaderChapter> chapters;
   final String myNickname;
@@ -3498,7 +3641,7 @@ class _MemoTabState extends State<_MemoTab> {
     if (roomId == null) return;
     final token = context.read<RidiStore>().accessToken;
     _room = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
-        .sharedNotes(roomId);
+        .sharedNotes(roomId, bookId: widget.bookId);
   }
 
   List<_MemoItem> _items(List<SharedRoomNote>? shared) {
@@ -3526,7 +3669,7 @@ class _MemoTabState extends State<_MemoTab> {
         items.add(
           _MemoItem(
             author: n.nickname,
-            mine: n.nickname == widget.myNickname,
+            mine: n.mine,
             order: n.paragraphOrder,
             quote: n.selectedText,
             memo: n.content,

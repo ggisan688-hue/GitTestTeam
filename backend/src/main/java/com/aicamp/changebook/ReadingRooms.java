@@ -141,7 +141,7 @@ record InviteCodeValidationResponse(boolean valid, Long roomId, String roomName,
                                     boolean passwordRequired, int capacity,
                                     int currentMemberCount, boolean alreadyJoined) {}
 record RoomMemberResponse(Long userId, String nickname, String role, Instant joinedAt,
-                          String roomProfileImageUrl) {}
+                          String roomProfileImageUrl, boolean currentUser) {}
 record RoomBookResponse(Long id, String title, String author, String coverImageUrl) {
   static RoomBookResponse from(Book book) {
     return new RoomBookResponse(book.id, book.title, book.author, book.coverImageUrl);
@@ -328,7 +328,7 @@ class RoomService {
       member.roomProfileImageUrl = savedUrl;
       members.save(member);
       storage.delete(oldUrl);
-      return memberResponse(member, current);
+      return memberResponse(member, current, true);
     } catch (RuntimeException e) {
       storage.delete(savedUrl);
       throw e;
@@ -443,19 +443,19 @@ class RoomService {
   RoomMemberResponse updateMyNickname(String username, Long roomId, String nickname) {
     AppUser current = userFeatures.me(username);
     RoomMember member = members.findByRoomIdAndUserId(roomId, current.id).orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "방에 가입한 사용자만 변경할 수 있습니다."));
-    member.roomNickname = trimToNull(nickname); return memberResponse(members.save(member), current);
+    member.roomNickname = trimToNull(nickname); return memberResponse(members.save(member), current, true);
   }
 
   @org.springframework.transaction.annotation.Transactional
   RoomResponse addBook(String username, Long roomId, Long bookId) {
-    AppUser current=userFeatures.me(username); ReadingRoom room=room(roomId); requireOwner(room,current); validateBook(bookId);
+    AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current); validateBook(bookId);
     if (roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_ROOM_BOOK","이미 방에 추가된 도서입니다.");
     RoomBook item=new RoomBook(); item.roomId=roomId; item.bookId=bookId; item.displayOrder=(int)roomBooks.countByRoomId(roomId); item.addedBy=current.id; roomBooks.save(item);
     return response(room,current);
   }
   @org.springframework.transaction.annotation.Transactional
   RoomResponse removeBook(String username, Long roomId, Long bookId) {
-    AppUser current=userFeatures.me(username); ReadingRoom room=room(roomId); requireOwner(room,current);
+    AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current);
     if (roomBooks.countByRoomId(roomId) <= 1) throw new ApiException(HttpStatus.CONFLICT,"LAST_ROOM_BOOK","방의 마지막 도서는 삭제할 수 없습니다.");
     RoomBook item=roomBooks.findByRoomIdAndBookId(roomId,bookId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방 도서를 찾을 수 없습니다."));
     roomBooks.delete(item); roomBooks.flush(); normalizeBookOrder(roomId);
@@ -465,7 +465,7 @@ class RoomService {
   }
   @org.springframework.transaction.annotation.Transactional
   RoomResponse moveBook(String username, Long roomId, Long bookId, int target) {
-    AppUser current=userFeatures.me(username); ReadingRoom room=room(roomId); requireOwner(room,current);
+    AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current);
     List<RoomBook> list=new java.util.ArrayList<>(roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId));
     RoomBook item=list.stream().filter(x -> x.bookId.equals(bookId)).findFirst().orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방 도서를 찾을 수 없습니다."));
     if (target < 0 || target >= list.size()) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_BOOK_ORDER","도서 순서를 확인해주세요.");
@@ -474,17 +474,33 @@ class RoomService {
   }
   @org.springframework.transaction.annotation.Transactional
   RoomResponse setCurrentBook(String username, Long roomId, Long bookId) {
-    AppUser current=userFeatures.me(username); ReadingRoom room=room(roomId); requireOwner(room,current);
+    AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current);
     if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.BAD_REQUEST,"ROOM_BOOK_REQUIRED","방에 있는 도서만 현재 도서로 지정할 수 있습니다.");
     room.currentBookId=bookId; room.bookId=bookId; return response(rooms.save(room),current);
   }
   @org.springframework.transaction.annotation.Transactional
   RoomProgressResponse saveProgress(String username,Long roomId,Long bookId,RoomProgressRequest request) {
-    AppUser current=userFeatures.me(username); room(roomId);
+    AppUser current=userFeatures.me(username);
+    // Serialize writes for a room before reading/updating the composite
+    // progress row.  Besides protecting a first insert from a duplicate-key
+    // race, this makes the max-progress rule deterministic for concurrent
+    // devices belonging to the same member.
+    rooms.findByIdForUpdate(roomId).orElseThrow(
+        () -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "Room not found."));
     if(!members.existsByRoomIdAndUserId(roomId,current.id)) throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 진행률을 저장할 수 있습니다.");
     if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.BAD_REQUEST,"ROOM_BOOK_REQUIRED","방에 추가된 도서만 읽을 수 있습니다.");
     RoomMemberProgress p=roomProgress.findByRoomIdAndUserIdAndBookId(roomId,current.id,bookId).orElseGet(RoomMemberProgress::new);
-    p.roomId=roomId;p.userId=current.id;p.bookId=bookId;if(request.progressPercent()!=null)p.progressPercent=request.progressPercent();if(request.lastReadPosition()!=null)p.lastReadPosition=request.lastReadPosition();p.updatedAt=Instant.now();p=roomProgress.save(p);
+    p.roomId=roomId;
+    p.userId=current.id;
+    p.bookId=bookId;
+    // Percentage is an achievement record, not a cursor: a page turn or an
+    // older device must never make it go backwards.  The cursor itself stays
+    // independent so "continue reading" can deliberately resume where the
+    // member last stopped.
+    if(request.progressPercent()!=null) p.progressPercent=Math.max(p.progressPercent,request.progressPercent());
+    if(request.lastReadPosition()!=null) p.lastReadPosition=request.lastReadPosition();
+    p.updatedAt=Instant.now();
+    p=roomProgress.save(p);
     return progressResponse(p);
   }
   @org.springframework.transaction.annotation.Transactional(readOnly=true)
@@ -498,8 +514,8 @@ class RoomService {
     return members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member->{
       RoomMemberProgress p=byUser.get(member.userId);
       RoomMemberResponse identity=users.findById(member.userId)
-          .map(user->memberResponse(member,user))
-          .orElse(new RoomMemberResponse(member.userId,"참여자",member.role,member.joinedAt,member.roomProfileImageUrl));
+          .map(user->memberResponse(member,user,java.util.Objects.equals(member.userId,current.id)))
+          .orElse(new RoomMemberResponse(member.userId,"참여자",member.role,member.joinedAt,member.roomProfileImageUrl,java.util.Objects.equals(member.userId,current.id)));
       return new RoomParticipantProgressResponse(member.userId,identity.nickname(),identity.roomProfileImageUrl(),p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.updatedAt,java.util.Objects.equals(member.userId,current.id));
     }).toList();
   }
@@ -555,6 +571,11 @@ class RoomService {
 
   private ReadingRoom room(Long roomId) {
     return rooms.findById(roomId).orElseThrow(
+        () -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "Room not found."));
+  }
+
+  private ReadingRoom roomForUpdate(Long roomId) {
+    return rooms.findByIdForUpdate(roomId).orElseThrow(
         () -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "Room not found."));
   }
 
@@ -645,7 +666,7 @@ class RoomService {
     boolean owner = isOwner(room, current, currentMember);
     List<RoomMemberResponse> participants = members.findByRoomIdOrderByJoinedAtAsc(room.id).stream()
         .map(member -> users.findById(member.userId)
-            .map(user -> memberResponse(member, user))
+            .map(user -> memberResponse(member, user, java.util.Objects.equals(member.userId, current.id)))
             .orElse(null))
         .filter(java.util.Objects::nonNull)
         .toList();
@@ -669,7 +690,7 @@ class RoomService {
 
   private List<RoomBookItemResponse> roomBookResponses(ReadingRoom room) { return roomBooks.findByRoomIdOrderByDisplayOrderAsc(room.id).stream().map(item -> books.findById(item.bookId).map(book -> new RoomBookItemResponse(RoomBookResponse.from(book),item.displayOrder,java.util.Objects.equals(room.currentBookId,item.bookId))).orElse(null)).filter(java.util.Objects::nonNull).toList(); }
 
-  private RoomMemberResponse memberResponse(RoomMember member, AppUser user) {
+  private RoomMemberResponse memberResponse(RoomMember member, AppUser user, boolean currentUser) {
     if (member.userId == null) {
       throw new ApiException(HttpStatus.CONFLICT, "ROOM_MEMBER_USER_NOT_FOUND", "A room member has no user reference.");
     }
@@ -679,7 +700,7 @@ class RoomService {
     }
     return new RoomMemberResponse(member.userId,
         member.roomNickname == null || member.roomNickname.isBlank() ? user.nickname : member.roomNickname,
-        member.role, member.joinedAt, imageUrl);
+        member.role, member.joinedAt, imageUrl, currentUser);
   }
 
   private boolean isMember(ReadingRoom room, AppUser user) {

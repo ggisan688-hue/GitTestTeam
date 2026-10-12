@@ -1572,10 +1572,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     }
   }
 
-  void _openBook(ReadingRoom room) => Navigator.of(context).push(
+  void _openBook(ReadingRoom room, int bookId) => Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => AdvancedBookReaderScreen(
-        bookId: room.bookId!,
+        bookId: bookId,
         readerContext: ReaderContext.readingRoom(room.id),
       ),
     ),
@@ -1781,7 +1781,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   Widget _myProfileCard(ReadingRoom room) {
     final me = context.read<RidiStore>().nickname;
     final mine =
-        room.participants.where((m) => m.nickname == me).firstOrNull ??
+        room.participants.where((m) => m.currentUser).firstOrNull ??
         ReadingRoomMember(
           userId: 0,
           nickname: me,
@@ -1880,8 +1880,132 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       builder: (_) => _RoomNicknameDialog(initial: current),
     );
     if (name == null || name.isEmpty || name == current || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('방 이름(닉네임) 변경은 서버 기능이 생기면 연결됩니다.')),
+    try {
+      await widget.repository.updateMyRoomNickname(room.id, name);
+      if (!mounted) return;
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('방에서 사용할 이름을 변경했습니다.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
+  Future<void> _addBook(ReadingRoom room) async {
+    final picked = await Navigator.of(context).push<Book>(
+      MaterialPageRoute(
+        builder: (_) => _RoomBookPicker(
+          excludedBookIds: room.books.map((item) => item.book.id).toSet(),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    try {
+      await widget.repository.addBook(room.id, picked.id);
+      if (!mounted) return;
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${picked.title}을(를) 방에 추가했습니다.')),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
+  Future<void> _manageBooks(ReadingRoom room) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .7,
+          child: Column(
+            children: [
+              const ListTile(
+                title: Text('방 책 관리', style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('현재 읽을 책을 정하고 순서를 바꾸거나 책을 제거할 수 있습니다.'),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: room.books.length,
+                  itemBuilder: (_, index) {
+                    final item = room.books[index];
+                    final book = item.book;
+                    return ListTile(
+                      leading: BookCover(url: book.coverImageUrl, width: 36, height: 52),
+                      title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(item.current ? '현재 읽는 책' : book.author),
+                      onTap: item.current
+                          ? null
+                          : () async {
+                              try {
+                                await widget.repository.setCurrentBook(room.id, book.id);
+                                if (mounted) _reload();
+                                if (sheetContext.mounted) Navigator.pop(sheetContext);
+                              } on ApiException catch (error) {
+                                if (mounted) _showError(context, error);
+                              }
+                            },
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: '위로',
+                            onPressed: index == 0
+                                ? null
+                                : () async {
+                                    try {
+                                      await widget.repository.moveBook(room.id, book.id, index - 1);
+                                      if (mounted) _reload();
+                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                    } on ApiException catch (error) {
+                                      if (mounted) _showError(context, error);
+                                    }
+                                  },
+                            icon: const Icon(Icons.keyboard_arrow_up),
+                          ),
+                          IconButton(
+                            tooltip: '아래로',
+                            onPressed: index == room.books.length - 1
+                                ? null
+                                : () async {
+                                    try {
+                                      await widget.repository.moveBook(room.id, book.id, index + 1);
+                                      if (mounted) _reload();
+                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                    } on ApiException catch (error) {
+                                      if (mounted) _showError(context, error);
+                                    }
+                                  },
+                            icon: const Icon(Icons.keyboard_arrow_down),
+                          ),
+                          IconButton(
+                            tooltip: '책 제거',
+                            onPressed: room.books.length <= 1
+                                ? null
+                                : () async {
+                                    try {
+                                      await widget.repository.removeBook(room.id, book.id);
+                                      if (mounted) _reload();
+                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                    } on ApiException catch (error) {
+                                      if (mounted) _showError(context, error);
+                                    }
+                                  },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1911,10 +2035,13 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               ),
               const Spacer(),
               if (room.isOwner)
+                TextButton(
+                  onPressed: () => _manageBooks(room),
+                  child: const Text('관리'),
+                ),
+              if (room.isOwner)
                 OutlinedButton.icon(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('책 추가는 서버 기능이 생기면 연결됩니다.')),
-                  ),
+                  onPressed: () => _addBook(room),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('책 추가'),
                 ),
@@ -1929,7 +2056,27 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
               ),
             )
           else
-            _RoomBookCard(room: room, onOpen: () => _openBook(room)),
+            Column(
+              children: [
+                for (final item in room.books)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _RoomBookCard(
+                      room: room,
+                      book: item.book,
+                      isCurrent: item.current,
+                      onOpen: () => _openBook(room, item.book.id),
+                    ),
+                  ),
+                if (room.books.isEmpty && room.book != null)
+                  _RoomBookCard(
+                    room: room,
+                    book: room.book!,
+                    isCurrent: true,
+                    onOpen: () => _openBook(room, room.bookId!),
+                  ),
+              ],
+            ),
         ],
       ),
     );
@@ -2168,8 +2315,15 @@ class _RoomNicknameDialogState extends State<_RoomNicknameDialog> {
 
 /// 함께 읽는 책 카드 — 표지 · 제목 · 저자 · "함께 읽는 중" 진행 막대(내 위치 표시) · [책 보기 ›]
 class _RoomBookCard extends StatefulWidget {
-  const _RoomBookCard({required this.room, required this.onOpen});
+  const _RoomBookCard({
+    required this.room,
+    required this.book,
+    required this.isCurrent,
+    required this.onOpen,
+  });
   final ReadingRoom room;
+  final ReadingRoomBook book;
+  final bool isCurrent;
   final VoidCallback onOpen;
   @override
   State<_RoomBookCard> createState() => _RoomBookCardState();
@@ -2188,7 +2342,7 @@ class _RoomBookCardState extends State<_RoomBookCard> {
   void didUpdateWidget(covariant _RoomBookCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.room.id != widget.room.id ||
-        oldWidget.room.bookId != widget.room.bookId) {
+        oldWidget.book.id != widget.book.id) {
       _loadParticipants();
     }
   }
@@ -2196,13 +2350,13 @@ class _RoomBookCardState extends State<_RoomBookCard> {
   void _loadParticipants() {
     final token = context.read<RidiStore>().accessToken;
     _participants = ReadingRoomRepository(ApiClient(tokenProvider: () => token))
-        .participantProgress(widget.room.id, widget.room.bookId!)
+        .participantProgress(widget.room.id, widget.book.id)
         .catchError((Object _) => <RoomParticipantProgress>[]);
   }
 
   @override
   Widget build(BuildContext context) {
-    final b = widget.room.book;
+    final b = widget.book;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -2212,7 +2366,7 @@ class _RoomBookCardState extends State<_RoomBookCard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          BookCover(url: b?.coverImageUrl, width: 84, height: 122),
+          BookCover(url: b.coverImageUrl, width: 84, height: 122),
           const SizedBox(width: 16),
           Expanded(
             child: FutureBuilder<List<RoomParticipantProgress>>(
@@ -2658,6 +2812,9 @@ Future<Map<String, dynamic>?> showRoomEditor(
 }
 
 class _RoomBookPicker extends StatefulWidget {
+  const _RoomBookPicker({this.excludedBookIds = const <int>{}});
+  final Set<int> excludedBookIds;
+
   @override
   State<_RoomBookPicker> createState() => _RoomBookPickerState();
 }
@@ -2693,7 +2850,9 @@ class _RoomBookPickerState extends State<_RoomBookPicker> {
             }),
           );
         }
-        final books = snapshot.data ?? const <Book>[];
+        final books = (snapshot.data ?? const <Book>[])
+            .where((book) => !widget.excludedBookIds.contains(book.id))
+            .toList();
         if (books.isEmpty) {
           return const Center(child: Text('선택할 수 있는 도서가 없습니다.'));
         }
