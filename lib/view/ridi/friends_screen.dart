@@ -14,6 +14,9 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
+
+  final Map<int, String> _friendColors = {};
+
   List<_AiFriend> _friends = [];
   bool _isLoading = true;
 
@@ -49,7 +52,29 @@ class _FriendsScreenState extends State<FriendsScreen> {
         repository.getMyFriends(),
       ]);
 
+
+      final allFriends = [
+        ...loaded[0],
+        ...loaded[1],
+      ];
+
+      final loadedColors = <int, String>{};
+
+      await Future.wait(
+        allFriends.map((friend) async {
+          try {
+            final color = await repository.getFriendHighlightColor(friend.id);
+            loadedColors[friend.id] = color;
+          } catch (e) {
+            debugPrint('AI 친구 ${friend.id} 색상 조회 실패: $e');
+            loadedColors[friend.id] = 'YELLOW';
+          }
+        }),
+      );
+
+
       if (!mounted) return;
+
 
       setState(() {
         _friends = [
@@ -57,9 +82,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ...loaded[1].map(_friendFromApi),
         ];
 
+        _friendColors
+          ..clear()
+          ..addAll(loadedColors);
+
         _selectedIndex = 0;
         _isLoading = false;
       });
+
     } catch (e) {
       if (!mounted) return;
 
@@ -397,6 +427,86 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 const SizedBox(height: 6),
 
 
+
+                const SizedBox(height: 14),
+
+                Row(
+                  children: [
+                    const Text('형광펜 색상'),
+                    const SizedBox(width: 12),
+
+                    ...<String, Color>{
+                      'YELLOW': Colors.yellow,
+                      'PINK': Colors.pinkAccent,
+                      'GREEN': Colors.greenAccent,
+                      'BLUE': Colors.lightBlueAccent,
+                      'PURPLE': Colors.purpleAccent,
+                      'ORANGE': Colors.orangeAccent,
+                    }.entries.map((entry) {
+                      final isSelected =
+                          friend.id != null &&
+                              (_friendColors[friend.id!] ?? 'YELLOW') == entry.key;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: InkWell(
+
+                          onTap: friend.id == null
+                              ? null
+                              : () async {
+                            final friendId = friend.id!;
+                            final previousColor = _friendColors[friendId] ?? 'YELLOW';
+
+                            setState(() {
+                              _friendColors[friendId] = entry.key;
+                            });
+
+                            try {
+                              final token = context.read<RidiStore>().accessToken;
+
+                              await AiReadingRepository(
+                                ApiClient(tokenProvider: () => token),
+                              ).saveFriendHighlightColor(
+                                friendId: friendId,
+                                color: entry.key,
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+
+                              setState(() {
+                                _friendColors[friendId] = previousColor;
+                              });
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('형광펜 색상 저장 실패: $e')),
+                              );
+                            }
+                          },
+
+                          borderRadius: BorderRadius.circular(50),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: entry.value,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected ? Colors.black87 : Colors.transparent,
+                                width: 2.5,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check, size: 17, color: Colors.black87)
+                                : null,
+                          ),
+                        ),
+                      );
+                    }),
+
+                  ],
+                ),
+
+                const SizedBox(height: 14),
 
 
                 Text(

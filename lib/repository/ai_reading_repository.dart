@@ -189,6 +189,34 @@ class AiReadingRepository {
   Future<void> deleteFriend(int friendId) =>
       _api.delete('/api/ai-reading-friends/$friendId');
 
+
+  // AI 친구별 형광펜 색상 조회
+  Future<String> getFriendHighlightColor(int friendId) async {
+    final res = await _api.get<String>(
+      '/api/ai-reading-friends/$friendId/highlight-color',
+      parse: (json) =>
+      (json as Map)['highlightColor']?.toString() ?? 'YELLOW',
+    );
+
+    return res.data ?? 'YELLOW';
+  }
+
+  // AI 친구별 형광펜 색상 저장
+  Future<String> saveFriendHighlightColor({
+    required int friendId,
+    required String color,
+  }) async {
+    final res = await _api.put<String>(
+      '/api/ai-reading-friends/$friendId/highlight-color',
+      body: {'highlightColor': color},
+      parse: (json) =>
+      (json as Map)['highlightColor']?.toString() ?? 'YELLOW',
+    );
+
+    return res.data ?? 'YELLOW';
+  }
+
+
   /// 해당 책을 AI 친구가 읽고 메모를 생성한다.
   ///
   /// 백엔드에서 이미 생성된 메모가 있으면

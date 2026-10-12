@@ -57,11 +57,16 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   bool _savingHighlight = false;
   List<ReadingNote> _sharedHighlights = const [];
   List<SharedRoomNote> _sharedMemos = const [];
+
   List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
 
+// AI 친구별 형광펜 색상
+  final Map<int, String> _aiFriendHighlightColors = {};
+
   final Map<int, List<AiReadingNote>> _aiNotesByFriend =
   <int, List<AiReadingNote>>{};
+
   // AI 친구별 실제 독서 진행률 (0~100)
   final Map<int, int> _aiProgressPercent = <int, int>{};
 
@@ -268,12 +273,29 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         repository.getMyFriends(),
       ]);
 
+
       final loadedFriends = <AiReadingFriend>[
         ...friendLists[0],
         ...friendLists[1],
       ];
 
+// AI 친구별 저장된 형광펜 색상 불러오기
+      final loadedColors = <int, String>{};
+
+      await Future.wait(
+        loadedFriends.map((friend) async {
+          try {
+            loadedColors[friend.id] =
+            await repository.getFriendHighlightColor(friend.id);
+          } catch (e) {
+            debugPrint('AI 친구 ${friend.id} 색상 조회 실패: $e');
+            loadedColors[friend.id] = 'YELLOW';
+          }
+        }),
+      );
+
       final loadedNotes = <int, List<AiReadingNote>>{};
+
 
       // 기존 AI 메모만 조회한다. 새로 생성하지 않는다.
       for (final friendId in selectedIds) {
@@ -287,6 +309,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
       setState(() {
         _aiFriends = loadedFriends;
+
+        _aiFriendHighlightColors
+          ..clear()
+          ..addAll(loadedColors);
 
         _selectedAiFriendIds
           ..clear()
@@ -561,14 +587,27 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                             createdAt: n.createdAt,
                           ),
                         ),
-                        // 선택한 AI 친구가 만든 형광펜
-                        ..._selectedAiFriendIds
-                            .expand(
-                              (friendId) =>
-                          _aiNotesByFriend[friendId] ??
-                              const <AiReadingNote>[],
-                        )
-                            .map(_asAiReaderHighlight),
+
+// 선택한 AI 친구가 만든 형광펜
+                        ..._selectedAiFriendIds.expand(
+                              (friendId) => (_aiNotesByFriend[friendId] ??
+                              const <AiReadingNote>[])
+                              .map(
+                                (note) => ReadingNote(
+                              id: -1000000000 - note.id,
+                              type: ReaderNoteType.highlight,
+                              paragraphOrder: note.paragraphOrder,
+                              selectedText: note.selectedText,
+                              startOffset: note.startOffset,
+                              endOffset: note.endOffset,
+                              highlightColor:
+                              _aiFriendHighlightColors[friendId] ?? 'YELLOW',
+                              preview: note.content,
+                              createdAt: null,
+                            ),
+                          ),
+                        ),
+
                       ]
                           : const <ReadingNote>[],
                       onHighlight: _saveHighlight,
@@ -1111,6 +1150,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       aiFriends: _aiFriends,
       selectedAiFriendIds: _selectedAiFriendIds,
       aiNotesByFriend: _aiNotesByFriend,
+      aiFriendHighlightColors: _aiFriendHighlightColors,
     ),
   );
 
@@ -3082,6 +3122,8 @@ class _Notes extends StatefulWidget {
     required this.aiFriends,
     required this.selectedAiFriendIds,
     required this.aiNotesByFriend,
+    required this.aiFriendHighlightColors,
+
     this.roomId,
   });
 
@@ -3094,6 +3136,8 @@ class _Notes extends StatefulWidget {
   final List<AiReadingFriend> aiFriends;
   final Set<int> selectedAiFriendIds;
   final Map<int, List<AiReadingNote>> aiNotesByFriend;
+  final Map<int, String> aiFriendHighlightColors;
+
 
   @override
   State<_Notes> createState() => _NotesState();
@@ -3221,6 +3265,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     aiFriends: widget.aiFriends,
                     selectedAiFriendIds: widget.selectedAiFriendIds,
                     aiNotesByFriend: widget.aiNotesByFriend,
+                    aiFriendHighlightColors: widget.aiFriendHighlightColors,
 
                     onGo: (order) {
                       Navigator.of(context).pop();
@@ -4570,6 +4615,7 @@ class _MemoTab extends StatefulWidget {
     required this.aiFriends,
     required this.selectedAiFriendIds,
     required this.aiNotesByFriend,
+    required this.aiFriendHighlightColors,
     required this.onGo,
     required this.onEdit,
     required this.onDelete,
@@ -4588,6 +4634,7 @@ class _MemoTab extends StatefulWidget {
   final List<AiReadingFriend> aiFriends;
   final Set<int> selectedAiFriendIds;
   final Map<int, List<AiReadingNote>> aiNotesByFriend;
+  final Map<int, String> aiFriendHighlightColors;
 
   final ValueChanged<int> onGo;
   final Future<void> Function(ReadingNote) onEdit;
@@ -4892,7 +4939,14 @@ class _MemoTabState extends State<_MemoTab> {
             startOffset: note.startOffset,
             quote: note.selectedText,
             memo: note.content,
-            color: '#8FA8FF',
+            color: switch (widget.aiFriendHighlightColors[friend.id] ?? 'YELLOW') {
+              'PINK' => '#FF4081',
+              'GREEN' => '#69F0AE',
+              'BLUE' => '#40C4FF',
+              'PURPLE' => '#E040FB',
+              'ORANGE' => '#FFAB40',
+              _ => '#FFEB3B',
+            },
           ),
         );
       }
