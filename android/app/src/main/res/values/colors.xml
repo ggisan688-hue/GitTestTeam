@@ -2,4 +2,5 @@
 <resources>
     <!-- 앱 켤 때 잠깐 보이는 시작 배경 = 홈 바탕(흰색). 스플래시 화면은 삭제함 -->
     <color name="splash_bg">#FFFFFF</color>
+	<color name="ic_launcher_background">#8E1821</color>
 </resources>
