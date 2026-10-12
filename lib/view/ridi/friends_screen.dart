@@ -354,7 +354,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               children: [
                 Row(
                   children: [
-                    Flexible(
+                    Expanded(
                       child: Text(
                     friend.name,
                     maxLines: 2,
@@ -366,10 +366,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       fontWeight: FontWeight.w700,
                       color: RidiColors.ink,
                     ),
-                  ),
-                ),
+                      ),
+                    ),
+                    const Spacer(),
                     const SizedBox(width: 12),
-
 
                     // 기본 AI 친구는 수정 및 삭제 불가
                     // 사용자가 생성한 AI 친구만 수정 및 삭제 가능
