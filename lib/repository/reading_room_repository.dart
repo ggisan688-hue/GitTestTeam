@@ -346,23 +346,26 @@ class ReadingRoomRepository {
 
   Future<void> delete(int roomId) => _api.delete('/api/reading-rooms/$roomId');
 
-  Future<ReadingRoomMember> uploadMyRoomProfileImage(
+  Future<ReadingRoom> uploadMyRoomProfileImage(
     int roomId, {
     required Uint8List bytes,
     required String filename,
     required String contentType,
-  }) async => (await _api.uploadFile<ReadingRoomMember>(
+  }) async => (await _api.uploadFile<ReadingRoom>(
     '/api/reading-rooms/$roomId/members/me/profile-image',
     method: 'PUT',
     fieldName: 'profileImage',
     bytes: bytes,
     filename: filename,
     contentType: contentType,
-    parse: (json) => ReadingRoomMember.fromJson(json as Map<String, dynamic>),
+    parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
   )).data!;
 
-  Future<void> deleteMyRoomProfileImage(int roomId) =>
-      _api.delete('/api/reading-rooms/$roomId/members/me/profile-image');
+  Future<ReadingRoom> deleteMyRoomProfileImage(int roomId) async =>
+      (await _api.delete<ReadingRoom>(
+        '/api/reading-rooms/$roomId/members/me/profile-image',
+        parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
+      )).data!;
 
   Future<ReadingRoom> uploadCoverImage(
     int roomId, {
@@ -382,13 +385,13 @@ class ReadingRoomRepository {
   Future<void> deleteCoverImage(int roomId) =>
       _api.delete('/api/reading-rooms/$roomId/cover-image');
 
-  Future<ReadingRoomMember> updateMyRoomNickname(
+  Future<ReadingRoom> updateMyRoomNickname(
     int roomId,
     String roomNickname,
-  ) async => (await _api.patch<ReadingRoomMember>(
+  ) async => (await _api.patch<ReadingRoom>(
     '/api/reading-rooms/$roomId/members/me',
     body: {'roomNickname': roomNickname.trim()},
-    parse: (json) => ReadingRoomMember.fromJson(json as Map<String, dynamic>),
+    parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),
   )).data!;
 
   Future<ReadingRoom> addBook(int roomId, int bookId) async =>

@@ -182,16 +182,18 @@ class RoomService {
   private final RoomBookRepo roomBooks;
   private final RoomMemberProgressRepo roomProgress;
   private final org.springframework.security.crypto.password.PasswordEncoder passwords;
+  private final ReadingRoomSyncService sync;
 
   RoomService(RoomRepo rooms, RoomMemberRepo members, UserRepository users,
               BookRepository books, UserFeatureService userFeatures, RoomBookRepo roomBooks,
-              RoomMemberProgressRepo roomProgress, org.springframework.security.crypto.password.PasswordEncoder passwords) {
+              RoomMemberProgressRepo roomProgress, org.springframework.security.crypto.password.PasswordEncoder passwords,
+              ReadingRoomSyncService sync) {
     this.rooms = rooms;
     this.members = members;
     this.users = users;
     this.books = books;
     this.userFeatures = userFeatures;
-    this.roomBooks = roomBooks; this.roomProgress = roomProgress; this.passwords = passwords;
+    this.roomBooks = roomBooks; this.roomProgress = roomProgress; this.passwords = passwords; this.sync = sync;
   }
 
   @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -297,10 +299,17 @@ class RoomService {
     AppUser current = userFeatures.me(username);
     ReadingRoom room = room(roomId);
     requireOwner(room, current);
-    validateBook(request.bookId());
-    if (!roomBooks.existsByRoomIdAndBookId(roomId, request.bookId()))
+    Long currentBookId = room.currentBookId == null ? room.bookId : room.currentBookId;
+    if (currentBookId == null || !java.util.Objects.equals(request.bookId(), currentBookId)) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_UPDATE_REQUIRES_CURRENT_BOOK_ENDPOINT",
+          "Use the room-book management endpoint to change the current book.");
+    }
+    validateBook(currentBookId);
+    if (!roomBooks.existsByRoomIdAndBookId(roomId, currentBookId))
       throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_REQUIRED", "현재 도서는 방에 추가된 도서여야 합니다.");
     apply(room, request, (int) members.countByRoomId(room.id));
+    room.bookId = currentBookId;
+    room.currentBookId = currentBookId;
     return response(rooms.save(room), current);
   }
 
@@ -316,19 +325,22 @@ class RoomService {
   }
 
   @org.springframework.transaction.annotation.Transactional
-  RoomMemberResponse updateMyProfileImage(String username, Long roomId, MultipartFile image,
+  RoomResponse updateMyProfileImage(String username, Long roomId, MultipartFile image,
                                           ProfileImageStorage storage) {
     AppUser current = userFeatures.me(username);
-    room(roomId);
+    ReadingRoom room = room(roomId);
     RoomMember member = members.findByRoomIdAndUserId(roomId, current.id)
         .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "Join the room first."));
     String oldUrl = member.roomProfileImageUrl;
     String savedUrl = storage.save(image);
     try {
       member.roomProfileImageUrl = savedUrl;
-      members.save(member);
+      // Flush before constructing the response/event.  The response is the
+      // source of truth used by the client for its immediate UI update.
+      members.saveAndFlush(member);
       storage.delete(oldUrl);
-      return memberResponse(member, current, true);
+      publishMemberProfileChange(room, current);
+      return response(room, current);
     } catch (RuntimeException e) {
       storage.delete(savedUrl);
       throw e;
@@ -336,15 +348,17 @@ class RoomService {
   }
 
   @org.springframework.transaction.annotation.Transactional
-  void deleteMyProfileImage(String username, Long roomId, ProfileImageStorage storage) {
+  RoomResponse deleteMyProfileImage(String username, Long roomId, ProfileImageStorage storage) {
     AppUser current = userFeatures.me(username);
-    room(roomId);
+    ReadingRoom room = room(roomId);
     RoomMember member = members.findByRoomIdAndUserId(roomId, current.id)
         .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "Join the room first."));
     String oldUrl = member.roomProfileImageUrl;
     member.roomProfileImageUrl = null;
-    members.save(member);
+    members.saveAndFlush(member);
     storage.delete(oldUrl);
+    publishMemberProfileChange(room, current);
+    return response(room, current);
   }
 
   /** A room cover belongs to the room itself; only its owner may change it. */
@@ -440,10 +454,14 @@ class RoomService {
   }
 
   @org.springframework.transaction.annotation.Transactional
-  RoomMemberResponse updateMyNickname(String username, Long roomId, String nickname) {
+  RoomResponse updateMyNickname(String username, Long roomId, String nickname) {
     AppUser current = userFeatures.me(username);
+    ReadingRoom room = room(roomId);
     RoomMember member = members.findByRoomIdAndUserId(roomId, current.id).orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "방에 가입한 사용자만 변경할 수 있습니다."));
-    member.roomNickname = trimToNull(nickname); return memberResponse(members.save(member), current, true);
+    member.roomNickname = trimToNull(nickname);
+    members.saveAndFlush(member);
+    publishMemberProfileChange(room, current);
+    return response(room, current);
   }
 
   @org.springframework.transaction.annotation.Transactional
@@ -760,6 +778,10 @@ class RoomService {
     if (!compact.matches("[A-Z0-9]{8}")) return null;
     return compact.substring(0, 4) + "-" + compact.substring(4);
   }
+  private void publishMemberProfileChange(ReadingRoom room, AppUser member) {
+    Long bookId = room.currentBookId == null ? room.bookId : room.currentBookId;
+    if (bookId != null) sync.publish(room.id, bookId, "room_member_profile.updated", member.id);
+  }
   private String trimToNull(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
 }
 
@@ -784,7 +806,7 @@ class RoomController {
   @PostMapping("/{roomId}/join-code") RoomResponse reissueCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/invite-code/regenerate") RoomResponse regenerateInviteCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }
   @PutMapping("/{roomId}/password") RoomResponse password(@PathVariable Long roomId, @Valid @RequestBody RoomPasswordRequest request, org.springframework.security.core.Authentication authentication) { return service.setPassword(authentication.getName(),roomId,request.password()); }
-  @PatchMapping("/{roomId}/members/me") RoomMemberResponse nickname(@PathVariable Long roomId, @Valid @RequestBody RoomNicknameRequest request, org.springframework.security.core.Authentication authentication) { return service.updateMyNickname(authentication.getName(),roomId,request.roomNickname()); }
+  @PatchMapping("/{roomId}/members/me") RoomResponse nickname(@PathVariable Long roomId, @Valid @RequestBody RoomNicknameRequest request, org.springframework.security.core.Authentication authentication) { return service.updateMyNickname(authentication.getName(),roomId,request.roomNickname()); }
   @PostMapping("/{roomId}/books") RoomResponse addBook(@PathVariable Long roomId,@RequestParam Long bookId,org.springframework.security.core.Authentication authentication){return service.addBook(authentication.getName(),roomId,bookId);}
   @DeleteMapping("/{roomId}/books/{bookId}") RoomResponse removeBook(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.removeBook(authentication.getName(),roomId,bookId);}
   @PatchMapping("/{roomId}/books/{bookId}/order") RoomResponse moveBook(@PathVariable Long roomId,@PathVariable Long bookId,@Valid @RequestBody RoomBookOrderRequest request,org.springframework.security.core.Authentication authentication){return service.moveBook(authentication.getName(),roomId,bookId,request.order());}
@@ -793,9 +815,9 @@ class RoomController {
   @GetMapping("/{roomId}/books/{bookId}/progress/me") RoomProgressResponse myProgress(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.myProgress(authentication.getName(),roomId,bookId);}
   @GetMapping("/{roomId}/books/{bookId}/progress/participants") List<RoomParticipantProgressResponse> participantProgress(@PathVariable Long roomId,@PathVariable Long bookId,org.springframework.security.core.Authentication authentication){return service.participantProgress(authentication.getName(),roomId,bookId);}
   @PutMapping(value = "/{roomId}/members/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  RoomMemberResponse uploadMyProfileImage(@PathVariable Long roomId, @RequestPart("profileImage") MultipartFile profileImage, org.springframework.security.core.Authentication authentication) { return service.updateMyProfileImage(authentication.getName(), roomId, profileImage, images); }
-  @DeleteMapping("/{roomId}/members/me/profile-image") @ResponseStatus(HttpStatus.NO_CONTENT)
-  void deleteMyProfileImage(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { service.deleteMyProfileImage(authentication.getName(), roomId, images); }
+  RoomResponse uploadMyProfileImage(@PathVariable Long roomId, @RequestPart("profileImage") MultipartFile profileImage, org.springframework.security.core.Authentication authentication) { return service.updateMyProfileImage(authentication.getName(), roomId, profileImage, images); }
+  @DeleteMapping("/{roomId}/members/me/profile-image")
+  RoomResponse deleteMyProfileImage(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.deleteMyProfileImage(authentication.getName(), roomId, images); }
   @PutMapping(value = "/{roomId}/cover-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   RoomResponse uploadCoverImage(@PathVariable Long roomId, @RequestPart("coverImage") MultipartFile coverImage, org.springframework.security.core.Authentication authentication) { return service.updateCoverImage(authentication.getName(), roomId, coverImage, images); }
   @DeleteMapping("/{roomId}/cover-image") @ResponseStatus(HttpStatus.NO_CONTENT)
