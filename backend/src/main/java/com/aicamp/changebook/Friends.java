@@ -94,6 +94,7 @@ class FriendService {
     friendship.addressee = target;
     friendship.status = "PENDING";
     friendships.save(friendship);
+    userFeatures.notify(target.id, "FRIEND_REQUEST", "새 친구 요청", current.nickname + "님이 친구 요청을 보냈습니다.", null, current.id);
   }
 
   void respond(String username, Long requestId, boolean accept) {
@@ -103,6 +104,10 @@ class FriendService {
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "FRIEND_REQUEST_NOT_FOUND", "Friend request not found."));
     friendship.status = accept ? "ACCEPTED" : "REJECTED";
     friendships.save(friendship);
+    if (accept) {
+      userFeatures.notify(friendship.requester.id, "FRIEND_ACCEPTED", "친구 요청 수락",
+          current.nickname + "님이 친구 요청을 수락했습니다.", null, current.id);
+    }
   }
 
   void remove(String username, Long friendId) {

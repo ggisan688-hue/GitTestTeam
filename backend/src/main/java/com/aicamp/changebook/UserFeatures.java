@@ -73,9 +73,11 @@ record NotificationResponse(Long id, String type, String title, String body,
                             Long relatedRoomId, Long relatedUserId, boolean read,
                             Instant createdAt) {}
 
-record NotificationSettingsResponse(boolean roomEnabled, boolean activityEnabled) {}
+record NotificationSettingsResponse(boolean friendEnabled, boolean roomEnabled,
+                                    boolean activityEnabled) {}
 
-record NotificationSettingsRequest(Boolean roomEnabled, Boolean activityEnabled) {}
+record NotificationSettingsRequest(Boolean friendEnabled, Boolean roomEnabled,
+                                   Boolean activityEnabled) {}
 
 @Entity
 @Table(name = "change_book_notifications")
@@ -108,6 +110,8 @@ class NotificationSettings {
   @Id
   @Column(name = "user_id")
   Long userId;
+  @Column(name = "friend_enabled", nullable = false)
+  boolean friendEnabled = true;
   @Column(name = "room_enabled", nullable = false)
   boolean roomEnabled = true;
   @Column(name = "activity_enabled", nullable = false)
@@ -121,25 +125,6 @@ class NotificationSettings {
 
 interface AppNotificationRepository extends JpaRepository<AppNotification, Long> {
   List<AppNotification> findByUserIdOrderByCreatedAtDesc(Long userId);
-  @org.springframework.data.jpa.repository.Query("""
-      select notification from AppNotification notification
-      where notification.userId = :userId
-        and notification.type not like concat(:typePrefix, '%')
-      order by notification.createdAt desc
-      """)
-  List<AppNotification> findVisibleByUserIdOrderByCreatedAtDesc(
-      @org.springframework.data.repository.query.Param("userId") Long userId,
-      @org.springframework.data.repository.query.Param("typePrefix") String typePrefix);
-  @org.springframework.data.jpa.repository.Query("""
-      select notification from AppNotification notification
-      where notification.id = :id
-        and notification.userId = :userId
-        and notification.type not like concat(:typePrefix, '%')
-      """)
-  java.util.Optional<AppNotification> findVisibleByIdAndUserId(
-      @org.springframework.data.repository.query.Param("id") Long id,
-      @org.springframework.data.repository.query.Param("userId") Long userId,
-      @org.springframework.data.repository.query.Param("typePrefix") String typePrefix);
 }
 
 interface NotificationSettingsRepository extends JpaRepository<NotificationSettings, Long> {}
@@ -225,30 +210,29 @@ class UserFeatureService {
   }
 
   List<NotificationResponse> notifications(String username) {
-    return notifications.findVisibleByUserIdOrderByCreatedAtDesc(me(username).id, "FRIEND").stream()
+    return notifications.findByUserIdOrderByCreatedAtDesc(me(username).id).stream()
         .map(this::notificationResponse).toList();
   }
 
   void markRead(String username, Long notificationId) {
     AppUser user = me(username);
-    AppNotification notification = notifications.findVisibleByIdAndUserId(
-            notificationId, user.id, "FRIEND")
+    AppNotification notification = notifications.findById(notificationId)
+        .filter(value -> value.userId.equals(user.id))
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOTIFICATION_NOT_FOUND", "Notification not found."));
     notification.read = true;
     notifications.save(notification);
   }
 
-  @Transactional
   void markAllRead(String username) {
-    List<AppNotification> items = notifications.findVisibleByUserIdOrderByCreatedAtDesc(me(username).id, "FRIEND");
+    List<AppNotification> items = notifications.findByUserIdOrderByCreatedAtDesc(me(username).id);
     items.forEach(item -> item.read = true);
     notifications.saveAll(items);
   }
 
   NotificationSettingsResponse notificationSettings(String username) {
     NotificationSettings value = settings.findById(me(username).id).orElseGet(NotificationSettings::new);
-    return new NotificationSettingsResponse(value.userId == null || value.roomEnabled,
-        value.userId == null || value.activityEnabled);
+    return new NotificationSettingsResponse(value.userId == null || value.friendEnabled,
+        value.userId == null || value.roomEnabled, value.userId == null || value.activityEnabled);
   }
 
   NotificationSettingsResponse updateNotificationSettings(String username, NotificationSettingsRequest request) {
@@ -258,16 +242,19 @@ class UserFeatureService {
       created.userId = user.id;
       return created;
     });
+    if (request.friendEnabled() != null) value.friendEnabled = request.friendEnabled();
     if (request.roomEnabled() != null) value.roomEnabled = request.roomEnabled();
     if (request.activityEnabled() != null) value.activityEnabled = request.activityEnabled();
     settings.save(value);
-    return new NotificationSettingsResponse(value.roomEnabled, value.activityEnabled);
+    return new NotificationSettingsResponse(value.friendEnabled, value.roomEnabled, value.activityEnabled);
   }
 
   void notify(Long userId, String type, String title, String body, Long roomId, Long relatedUserId) {
     if (userId == null || userId.equals(relatedUserId)) return;
     NotificationSettings preference = settings.findById(userId).orElse(null);
-    boolean enabled = preference == null || preference.roomEnabled;
+    boolean enabled = type.startsWith("FRIEND")
+        ? preference == null || preference.friendEnabled
+        : preference == null || preference.roomEnabled;
     if (!enabled) return;
     AppNotification notification = new AppNotification();
     notification.userId = userId;

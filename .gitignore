@@ -32,7 +32,6 @@ migrate_working_dir/
 .pub/
 /build/
 /backend/bin/
-/backend/.gradle-user-home/
 /coverage/
 backend/.env
 backend/application-local.yml

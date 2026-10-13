@@ -3995,26 +3995,10 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
                         title: Text(comment.nickname),
                         subtitle: Text(comment.content),
                         trailing: comment.mine
-                            ? PopupMenuButton<_SharedCommentAction>(
-                                tooltip: '댓글 메뉴',
-                                onSelected: (action) {
-                                  if (action == _SharedCommentAction.edit) {
-                                    _edit(comment);
-                                  } else {
-                                    _delete(comment.id);
-                                  }
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: _SharedCommentAction.edit,
-                                    child: Text('댓글 수정'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: _SharedCommentAction.delete,
-                                    child: Text('댓글 삭제'),
-                                  ),
-                                ],
-                              )
+                            ? IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _delete(comment.id),
+                        )
                             : null,
                       ),
                   ],
@@ -4074,56 +4058,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
       }
     }
   }
-
-  Future<void> _edit(SharedRoomNoteComment comment) async {
-    final controller = TextEditingController(text: comment.content);
-    final edited = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('댓글 수정'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 1,
-          maxLines: 5,
-          maxLength: 1000,
-          decoration: const InputDecoration(counterText: ''),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              controller.text.trim(),
-            ),
-            child: const Text('저장'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (edited == null || edited.isEmpty || edited == comment.content) return;
-    try {
-      await widget.repository.updateSharedNoteComment(
-        widget.roomId,
-        widget.note.id,
-        comment.id,
-        edited,
-      );
-      if (mounted) _reload();
-    } on ApiException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_sharedNoteMessage(error))));
-      }
-    }
-  }
 }
-
-enum _SharedCommentAction { edit, delete }
 
 String _sharedNoteMessage(ApiException error) => switch (error.errorCode) {
   'SPOILER_LOCKED' => '현재 읽은 위치 이후의 메모는 확인할 수 없습니다.',

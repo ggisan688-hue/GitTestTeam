@@ -20,8 +20,6 @@ private final AiReadingFriendRepository friendRepository;
 private final UserRepository userRepository;
 private final BookParagraphRepository paragraphRepository;
 private final AiReadingProgressRepository progressRepository;
-private final UserBookProgressRepository userBookProgressRepository;
-private final RoomMemberProgressRepo roomMemberProgressRepository;
 
 // AI 페르소나 생성용
 private final GeminiClient geminiClient;
@@ -36,8 +34,6 @@ AiReadingController(
         UserRepository userRepository,
         BookParagraphRepository paragraphRepository,
         AiReadingProgressRepository progressRepository,
-        UserBookProgressRepository userBookProgressRepository,
-        RoomMemberProgressRepo roomMemberProgressRepository,
         GeminiClient geminiClient,
         CharacterPromptService characterPromptService
 ) {
@@ -47,8 +43,6 @@ AiReadingController(
     this.userRepository = userRepository;
     this.paragraphRepository = paragraphRepository;
     this.progressRepository = progressRepository;
-    this.userBookProgressRepository = userBookProgressRepository;
-    this.roomMemberProgressRepository = roomMemberProgressRepository;
 
     this.geminiClient = geminiClient;
     this.characterPromptService = characterPromptService;
@@ -247,7 +241,6 @@ record CreateAiReadingFriendRequest(
     List<AiReadingNoteResponse> generate(
             @PathVariable Long bookId,
             @PathVariable Long friendId,
-            @RequestParam(required = false) Long roomId,
             org.springframework.security.core.Authentication authentication
     ) {
         var user = currentUser(authentication);
@@ -259,7 +252,15 @@ record CreateAiReadingFriendRequest(
                 friendId
         );
 
-        return visibleNotes(user, friendId, bookId, roomId);
+        return noteRepository
+                .findByUserIdAndFriendIdAndBookIdOrderByParagraphOrderAsc(
+                        user.id,
+                        friendId,
+                        bookId
+                )
+                .stream()
+                .map(AiReadingNoteResponse::from)
+                .toList();
     }
 
     // =========================================================
@@ -322,29 +323,18 @@ Map<String, Object> getReadingProgress(
     List<AiReadingNoteResponse> getNotes(
             @PathVariable Long bookId,
             @PathVariable Long friendId,
-            @RequestParam(required = false) Long roomId,
             org.springframework.security.core.Authentication authentication
     ) {
         var user = currentUser(authentication);
         requireAccessibleFriend(friendId, authentication);
 
-        return visibleNotes(user, friendId, bookId, roomId);
-    }
-
-    /** AI notes must never reveal text beyond the current user's own reader
-     * position.  This is enforced here rather than only in Flutter so direct
-     * REST callers and cached client state cannot bypass the spoiler policy. */
-    private List<AiReadingNoteResponse> visibleNotes(AppUser user, Long friendId, Long bookId, Long roomId) {
-        int lastReadPosition = roomId == null
-                ? userBookProgressRepository.findByUserIdAndBookId(user.id, bookId)
-                    .map(progress -> progress.maxReadPosition).orElse(0)
-                : roomMemberProgressRepository.findByRoomIdAndUserIdAndBookId(roomId, user.id, bookId)
-                    .map(progress -> progress.maxReadPosition).orElse(0);
         return noteRepository
                 .findByUserIdAndFriendIdAndBookIdOrderByParagraphOrderAsc(
-                        user.id, friendId, bookId)
+                        user.id,
+                        friendId,
+                        bookId
+                )
                 .stream()
-                .filter(note -> note.paragraphOrder <= lastReadPosition)
                 .map(AiReadingNoteResponse::from)
                 .toList();
     }
