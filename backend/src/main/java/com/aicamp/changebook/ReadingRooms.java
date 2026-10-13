@@ -105,6 +105,10 @@ class RoomBook {
 }
 class RoomBookId implements java.io.Serializable { Long roomId; Long bookId; public RoomBookId() {} @Override public boolean equals(Object o) { return o instanceof RoomBookId x && java.util.Objects.equals(roomId,x.roomId) && java.util.Objects.equals(bookId,x.bookId); } @Override public int hashCode() { return java.util.Objects.hash(roomId,bookId); } }
 interface RoomBookRepo extends JpaRepository<RoomBook, RoomBookId> {
+  @Query("select count(note) from ReadingRoomNote note where note.roomId = :roomId and note.bookId = :bookId and note.type = 'MEMO'")
+  long countHumanMemos(@org.springframework.data.repository.query.Param("roomId") Long roomId,
+                      @org.springframework.data.repository.query.Param("bookId") Long bookId);
+
   List<RoomBook> findByRoomIdOrderByDisplayOrderAsc(Long roomId);
   boolean existsByRoomIdAndBookId(Long roomId, Long bookId);
   long countByRoomId(Long roomId);
@@ -476,6 +480,9 @@ class RoomService {
     AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current);
     if (roomBooks.countByRoomId(roomId) <= 1) throw new ApiException(HttpStatus.CONFLICT,"LAST_ROOM_BOOK","방의 마지막 도서는 삭제할 수 없습니다.");
     RoomBook item=roomBooks.findByRoomIdAndBookId(roomId,bookId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방 도서를 찾을 수 없습니다."));
+    if (roomBooks.countHumanMemos(roomId, bookId) > 0)
+      throw new ApiException(HttpStatus.CONFLICT, "ROOM_BOOK_HAS_MEMOS",
+          "이 방에서 나 또는 친구가 남긴 메모가 있어 도서를 삭제할 수 없습니다.");
     roomBooks.delete(item); roomBooks.flush(); normalizeBookOrder(roomId); roomBooks.flush();
     if (java.util.Objects.equals(room.currentBookId,bookId)) room.currentBookId=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId).get(0).bookId;
     if (java.util.Objects.equals(room.bookId,bookId)) room.bookId=room.currentBookId;
@@ -570,6 +577,7 @@ class RoomService {
     RoomMember next = remaining.get(0);
     AppUser nextOwner = users.findById(next.userId).orElseThrow();
     room.owner = nextOwner;
+    room.ownerId = next.userId;
     next.role = "OWNER";
     members.save(next);
     rooms.save(room);
@@ -680,6 +688,7 @@ class RoomService {
     }
     AppUser ownerUser = users.findById(ownerId).orElseThrow(
         () -> new ApiException(HttpStatus.CONFLICT, "ROOM_OWNER_NOT_FOUND", "This room has an invalid owner."));
+    ownerUser = org.hibernate.Hibernate.unproxy(ownerUser, AppUser.class);
     RoomMember currentMember = members.findByRoomIdAndUserId(room.id, current.id).orElse(null);
     boolean owner = isOwner(room, current, currentMember);
     List<RoomMemberResponse> participants = members.findByRoomIdOrderByJoinedAtAsc(room.id).stream()
@@ -700,7 +709,7 @@ class RoomService {
     return new RoomResponse(room.id, room.name, room.description, room.bookId,
         participants.size(), room.maxMembers, room.isPublic, ownerId,
         ownerUser.nickname, room.createdAt, joined, owner,
-        owner ? room.joinCode : null, currentMember != null && currentMember.spoilerLockEnabled, room.selectedAiFriendType, participants,
+        joined ? room.joinCode : null, currentMember != null && currentMember.spoilerLockEnabled, room.selectedAiFriendType, participants,
         book, coverBook, ownerUser.nickname, currentMember == null ? null : currentMember.role,
         participants.size(), room.isPublic ? "PUBLIC" : "PRIVATE", room.selectedAiFriendType,
         room.passwordHash != null, room.currentBookId, roomBooks, room.coverImageUrl);
@@ -709,6 +718,7 @@ class RoomService {
   private List<RoomBookItemResponse> roomBookResponses(ReadingRoom room) { return roomBooks.findByRoomIdOrderByDisplayOrderAsc(room.id).stream().map(item -> books.findById(item.bookId).map(book -> new RoomBookItemResponse(RoomBookResponse.from(book),item.displayOrder,java.util.Objects.equals(room.currentBookId,item.bookId))).orElse(null)).filter(java.util.Objects::nonNull).toList(); }
 
   private RoomMemberResponse memberResponse(RoomMember member, AppUser user, boolean currentUser) {
+    user = org.hibernate.Hibernate.unproxy(user, AppUser.class);
     if (member.userId == null) {
       throw new ApiException(HttpStatus.CONFLICT, "ROOM_MEMBER_USER_NOT_FOUND", "A room member has no user reference.");
     }

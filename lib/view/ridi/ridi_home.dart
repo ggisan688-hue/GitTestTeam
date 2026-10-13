@@ -25,7 +25,8 @@ import '../../viewmodel/book_viewmodel.dart';
 /// 좁은 화면(900 미만)에서는 오른쪽 칸이 위로 올라가 한 줄로 쌓인다.
 /// 서버: 통계 GET /api/me/stats, 추천 GET /api/books/recommended (명세서에 추가 예정)
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onOpenReadingRooms});
+  final VoidCallback? onOpenReadingRooms;
 
   @override
   Widget build(BuildContext context) => ScreenTag(
@@ -70,6 +71,10 @@ class HomeScreen extends StatelessWidget {
                 return;
               }
 
+              if (onOpenReadingRooms != null) {
+                onOpenReadingRooms!();
+                return;
+              }
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const ReadingRoomsScreen(),
@@ -119,52 +124,55 @@ class HomeScreen extends StatelessWidget {
           final main = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (!store.loggedIn) const _SectionTitle('전체 도서'),
               if (store.loggedIn) ...const [
                 _SectionTitle('최근 읽은 도서'),
                 RecentReadingSection(),
                 SizedBox(height: 24),
               ],
-              Row(
-                children: [
-                  // 왼쪽: 카테고리 버튼
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final category in ['전체', '한국', '외국', '시'])
-                            Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: ChoiceChip(
-                                label: Text(category),
-                                selected: category == '전체',
-                                showCheckmark: false,
-                                selectedColor: const Color(0xFF202020),
-                                backgroundColor: const Color(0xFFF2F2F2),
-                                labelStyle: TextStyle(
-                                  color: category == '전체'
-                                      ? Colors.white
-                                      : const Color(0xFF666666),
-                                  fontWeight: FontWeight.w500,
+              if (store.loggedIn) ...[
+                Row(
+                  children: [
+                    // 왼쪽: 카테고리 버튼
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final category in ['전체', '한국', '외국', '시'])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: ChoiceChip(
+                                  label: Text(category),
+                                  selected: category == '전체',
+                                  showCheckmark: false,
+                                  selectedColor: const Color(0xFF202020),
+                                  backgroundColor: const Color(0xFFF2F2F2),
+                                  labelStyle: TextStyle(
+                                    color: category == '전체'
+                                        ? Colors.white
+                                        : const Color(0xFF666666),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  side: BorderSide.none,
+                                  shape: const StadiumBorder(),
+                                  onSelected: (_) {},
                                 ),
-                                side: BorderSide.none,
-                                shape: const StadiumBorder(),
-                                onSelected: (_) {},
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
 
-                  // 오른쪽: 정렬 메뉴
-                  const _SortMenuButton(),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const SizedBox(height: 20),
+                    // 오른쪽: 정렬 메뉴
+                    const _SortMenuButton(),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const SizedBox(height: 20),
+              ],
               catalog,
             ],
           );
