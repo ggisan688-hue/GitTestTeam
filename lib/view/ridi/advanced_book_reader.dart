@@ -10,6 +10,8 @@ import '../../core/api_client.dart';
 import '../../model/book.dart';
 import '../../model/shared_room_note.dart';
 import '../../viewmodel/book_viewmodel.dart';
+import '../../viewmodel/favorite_viewmodel.dart';
+import '../../repository/book_repository.dart';
 import '../../repository/reading_room_repository.dart';
 import '../../repository/ai_reading_repository.dart';
 import 'reading_rooms_screen.dart' show showSharedNoteComments;
@@ -54,6 +56,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _sheetOpen = false,
       _twoColumns = false;
   bool _savingHighlight = false;
+  bool _favorite = false;
+  bool _favoriteLoading = true;
+  bool _favoriteSaving = false;
   List<ReadingNote> _sharedHighlights = const [];
   List<SharedRoomNote> _sharedMemos = const [];
   final Map<int, SharedRoomNote> _sharedHighlightSources =
@@ -115,6 +120,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     super.initState();
     _controller = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      unawaited(_loadFavorite());
       final vm = context.read<BookViewModel>();
       await vm.loadReader(widget.bookId);
       final p = vm.content?.paragraphs ?? const <BookParagraph>[];
@@ -885,6 +892,57 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     return space > best ~/ 2 ? space + 1 : best;
   }
 
+  Future<void> _loadFavorite() async {
+    if (!context.read<RidiStore>().loggedIn) {
+      setState(() => _favoriteLoading = false);
+      return;
+    }
+    try {
+      final repository = BookRepository(
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      );
+      final favorite = await repository.favoriteStatus(widget.bookId);
+      if (mounted) setState(() => _favorite = favorite);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('즐겨찾기 상태를 불러오지 못했습니다.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _favoriteLoading = false);
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (_favoriteLoading || _favoriteSaving) return;
+    if (!context.read<RidiStore>().loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인이 필요합니다.')),
+      );
+      return;
+    }
+    final before = _favorite;
+    setState(() {
+      _favorite = !before;
+      _favoriteSaving = true;
+    });
+    try {
+      await context.read<FavoriteViewModel>().setFavorite(widget.bookId, !before);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _favorite = before);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error is ApiException
+              ? error.message
+              : '즐겨찾기를 변경하지 못했습니다. 다시 시도해 주세요.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _favoriteSaving = false);
+    }
+  }
+
   Widget _top(BookViewModel vm) {
     final fg = _colors(vm.readerSettings).$2;
     final chapters = vm.readerChapters
@@ -915,6 +973,25 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                tooltip: _favorite ? '즐겨찾기 해제' : '즐겨찾기',
+                onPressed: _favoriteLoading || _favoriteSaving
+                    ? null
+                    : _toggleFavorite,
+                icon: _favoriteSaving
+                    ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: fg,
+                  ),
+                )
+                    : Icon(
+                  _favorite ? Icons.favorite : Icons.favorite_border,
+                  color: _favorite ? Colors.red : fg,
                 ),
               ),
               IconButton(

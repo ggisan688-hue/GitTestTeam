@@ -144,15 +144,22 @@ class _RidiShellState extends State<RidiShell> {
     // Keep a visited tab alive, but defer construction of the other heavy
     // lists and image trees until the user actually opens that tab.
     _pages = List<Widget?>.filled(_tabs.length, null);
-    _pages[_index] = const HomeScreen();
+    _pages[_index] = HomeScreen(onOpenReadingRooms: _openReadingRooms);
+  }
+
+  void _openReadingRooms() {
+    setState(() {
+      _index = 0;
+      _pages[0] = ShelvesScreen(initialSection: 1);
+    });
   }
 
   Widget _create(int i) => switch (i) {
-    // Do not use const here: a canonical const widget can retain the old
-    // Element/State even after IndexedStack's slot is replaced.
+  // Do not use const here: a canonical const widget can retain the old
+  // Element/State even after IndexedStack's slot is replaced.
     0 => ShelvesScreen(),
     1 => FriendsScreen(),
-    2 => HomeScreen(),
+    2 => HomeScreen(onOpenReadingRooms: _openReadingRooms),
     3 => const ServerNotificationsScreen(),
     _ => const AccountScreen(),
   };
@@ -211,21 +218,21 @@ class _RidiShellState extends State<RidiShell> {
                         children: [
                           i == 3
                               ? UnreadNotificationBadge(
-                                  child: Icon(
-                                    i == _index ? _tabs[i].$2 : _tabs[i].$1,
-                                    size: 28,
-                                    color: i == _index
-                                        ? RidiColors.ink
-                                        : RidiColors.gray,
-                                  ),
-                                )
+                            child: Icon(
+                              i == _index ? _tabs[i].$2 : _tabs[i].$1,
+                              size: 28,
+                              color: i == _index
+                                  ? RidiColors.ink
+                                  : RidiColors.gray,
+                            ),
+                          )
                               : Icon(
-                                  i == _index ? _tabs[i].$2 : _tabs[i].$1,
-                                  size: 28,
-                                  color: i == _index
-                                      ? RidiColors.ink
-                                      : RidiColors.gray,
-                                ),
+                            i == _index ? _tabs[i].$2 : _tabs[i].$1,
+                            size: 28,
+                            color: i == _index
+                                ? RidiColors.ink
+                                : RidiColors.gray,
+                          ),
                           const SizedBox(height: 6),
                           Text(
                             _tabs[i].$3,

@@ -16,7 +16,8 @@ import 'reading_rooms_screen.dart';
 import 'ridi_store.dart';
 
 class ShelvesScreen extends StatefulWidget {
-  const ShelvesScreen({super.key});
+  const ShelvesScreen({super.key, this.initialSection = 0});
+  final int initialSection;
 
   @override
   State<ShelvesScreen> createState() => _ShelvesScreenState();
@@ -30,6 +31,7 @@ class _ShelvesScreenState extends State<ShelvesScreen>
   List<Shelf> _shelfCache = const [];
   int _section = 0;
   late final TabController _tabs;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -42,7 +44,8 @@ class _ShelvesScreenState extends State<ShelvesScreen>
     );
     _shelves = _loadShelves();
     context.read<FavoriteViewModel>().load(clearFirst: true);
-    _tabs = TabController(length: 2, vsync: this)
+    _section = widget.initialSection;
+    _tabs = TabController(length: 2, vsync: this, initialIndex: _section)
       ..addListener(() {
         if (!_tabs.indexIsChanging && mounted && _section != _tabs.index) {
           setState(() => _section = _tabs.index);
@@ -52,6 +55,7 @@ class _ShelvesScreenState extends State<ShelvesScreen>
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -218,114 +222,121 @@ class _ShelvesScreenState extends State<ShelvesScreen>
         ? const ReadingRoomsScreen(embedded: true)
         : RefreshIndicator(
       onRefresh: _refresh,
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '최근 읽은 도서',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 12),
-                  const RecentReadingSection(),
-                ],
+      child: Scrollbar(
+        controller: _scrollController,
+        thumbVisibility: false,
+        scrollbarOrientation: ScrollbarOrientation.right,
+        notificationPredicate: (notification) => notification.depth == 0,
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '최근 읽은 도서',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    const RecentReadingSection(),
+                  ],
+                ),
               ),
             ),
-          ),
-          FutureBuilder<List<Shelf>>(
-            future: _shelves,
-            builder: (context, snapshot) {
-              return SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                  child: Row(
-                    children: [
-                      Text(
-                        '내 책장',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.add),
-                        label: const Text('새 책장'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          FutureBuilder<List<Shelf>>(
-            future: _shelves,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done)
-                return const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                );
-              if (snapshot.hasError)
+            FutureBuilder<List<Shelf>>(
+              future: _shelves,
+              builder: (context, snapshot) {
                 return SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 160,
-                    child: _ErrorState(
-                      error: snapshot.error,
-                      onRetry: _reloadShelves,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Row(
+                      children: [
+                        Text(
+                          '내 책장',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: _create,
+                          icon: const Icon(Icons.add),
+                          label: const Text('새 책장'),
+                        ),
+                      ],
                     ),
                   ),
                 );
-              final shelves = snapshot.data ?? const [];
+              },
+            ),
+            FutureBuilder<List<Shelf>>(
+              future: _shelves,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done)
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                if (snapshot.hasError)
+                  return SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 160,
+                      child: _ErrorState(
+                        error: snapshot.error,
+                        onRetry: _reloadShelves,
+                      ),
+                    ),
+                  );
+                final shelves = snapshot.data ?? const [];
 
-              // 책장을 세로 카드로 나란히 (필기 수정2-36)
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                sliver: SliverGrid.builder(
-                  gridDelegate:
-                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 190,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: .68,
-                  ),
-                  itemCount: shelves.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return const _FavoriteShelfTile();
-                    }
-                    final shelf = shelves[index - 1];
-                    return _ShelfTile(
-                      shelf: shelf,
-                      onTap: () async {
-                        final deletedShelfId = await Navigator.of(context)
-                            .push<int>(
-                          MaterialPageRoute(
-                            builder: (_) => ShelfDetailScreen(
-                              repository: _repository,
-                              shelfId: shelf.id,
+                // 책장을 세로 카드로 나란히 (필기 수정2-36)
+                return SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  sliver: SliverGrid.builder(
+                    gridDelegate:
+                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 190,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      childAspectRatio: .68,
+                    ),
+                    itemCount: shelves.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return const _FavoriteShelfTile();
+                      }
+                      final shelf = shelves[index - 1];
+                      return _ShelfTile(
+                        shelf: shelf,
+                        onTap: () async {
+                          final deletedShelfId = await Navigator.of(context)
+                              .push<int>(
+                            MaterialPageRoute(
+                              builder: (_) => ShelfDetailScreen(
+                                repository: _repository,
+                                shelfId: shelf.id,
+                              ),
                             ),
-                          ),
-                        );
-                        if (!mounted) return;
-                        if (deletedShelfId != null) {
-                          _removeShelfFromList(deletedShelfId);
-                        } else {
-                          _reloadShelves();
-                        }
-                      },
-                    );
-                  },
-                ),
-              );
-            },
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        ],
+                          );
+                          if (!mounted) return;
+                          if (deletedShelfId != null) {
+                            _removeShelfFromList(deletedShelfId);
+                          } else {
+                            _reloadShelves();
+                          }
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          ],
+        ),
       ),
     ),
   );
@@ -357,6 +368,20 @@ class _FavoriteBooksScreenState extends State<FavoriteBooksScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('즐겨찾기 도서')),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => _FavoriteBookPicker(
+            repository: _repository,
+            existingBookIds: context.read<FavoriteViewModel>()
+                .favorites.map((book) => book.id).toSet(),
+          )),
+        );
+        if (mounted) _reload();
+      },
+      icon: const Icon(Icons.add),
+      label: const Text('도서 추가'),
+    ),
     body: FutureBuilder<List<Book>>(
       future: _favorites,
       builder: (context, snapshot) {
@@ -365,39 +390,87 @@ class _FavoriteBooksScreenState extends State<FavoriteBooksScreen> {
         if (snapshot.hasError)
           return _ErrorState(error: snapshot.error, onRetry: _reload);
         final books = snapshot.data ?? const [];
-        if (books.isEmpty) {
-          return const Center(
+        return RefreshIndicator(
+          onRefresh: () async {
+            final future = _repository.favoriteBooks();
+            setState(() => _favorites = future);
+            await future;
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 96),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.favorite_border, size: 44),
-                SizedBox(height: 12),
-                Text('즐겨찾기한 도서가 없습니다.'),
+                Text('즐겨찾기',
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 8),
+                Text('${books.length}권'),
+                const Divider(height: 36),
+                if (books.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: Text('즐겨찾기한 도서가 없습니다.')),
+                  )
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: _coverGrid,
+                    itemCount: books.length,
+                    itemBuilder: (context, index) {
+                      final book = books[index];
+                      return _CoverTile(
+                        book: book,
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
+                            ),
+                          );
+                          if (mounted) _reload();
+                        },
+                        overlay: Material(
+                          color: Colors.white.withValues(alpha: .92),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: '즐겨찾기에서 제거',
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.remove_circle_outline, size: 20),
+                            onPressed: () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: const Text('삭제하시겠습니까?'),
+                                  content: Text('「${book.title}」을 즐겨찾기에서 삭제합니다.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                                      child: const Text('취소'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                                      child: const Text('확인'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true || !mounted) return;
+                              try {
+                                await context.read<FavoriteViewModel>()
+                                    .setFavorite(book.id, false);
+                                if (mounted) _reload();
+                              } on ApiException catch (error) {
+                                if (mounted) _showError(context, error);
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => _reload(),
-          // 표지가 큰 세로 카드 격자 (필기 수정2-33)
-          child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-            gridDelegate: _coverGrid,
-            itemCount: books.length,
-            itemBuilder: (context, index) {
-              final book = books[index];
-              return _CoverTile(
-                book: book,
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
-                    ),
-                  );
-                  if (mounted) _reload();
-                },
-              );
-            },
           ),
         );
       },
@@ -662,7 +735,6 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
   final Set<int> _selectedIds = <int>{};
   String _query = '';
   String? _nameError;
-  bool _isPublic = false;
   bool _saving = false;
 
   @override
@@ -697,7 +769,7 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
       final shelf = await widget.repository.create(
         name: name,
         description: description,
-        isPublic: _isPublic,
+        isPublic: false,
         bookIds: _selectedIds.toList(),
       );
       if (mounted) Navigator.of(context).pop(shelf);
@@ -729,7 +801,7 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
         ),
       ),
     ),
-    body: Column(
+    body: ListView(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -754,14 +826,6 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
                 maxLines: 2,
                 decoration: const InputDecoration(labelText: '설명 (선택)'),
               ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('공개 책장'),
-                value: _isPublic,
-                onChanged: _saving
-                    ? null
-                    : (value) => setState(() => _isPublic = value),
-              ),
               TextField(
                 onChanged: (value) =>
                     setState(() => _query = value.trim().toLowerCase()),
@@ -783,7 +847,8 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
             ],
           ),
         ),
-        Expanded(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: FutureBuilder<List<Book>>(
             future: _allBooks,
             builder: (context, snapshot) {
@@ -806,6 +871,9 @@ class _ShelfCreateScreenState extends State<ShelfCreateScreen> {
                 return const Center(child: Text('조건에 맞는 도서가 없습니다.'));
               // 표지 격자에서 눌러서 고르기 (필기 수정2-34). 고른 책은 표지에 파란 체크
               return GridView.builder(
+                shrinkWrap: true,
+                primary: false,
+                physics: const NeverScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(top: 8, bottom: 16),
                 gridDelegate: _coverGrid,
                 itemCount: books.length,
@@ -858,6 +926,21 @@ class _BookPicker extends StatefulWidget {
 }
 
 class _BookPickerState extends State<_BookPicker> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(Book book) {
+    final query = _query.trim().toLowerCase();
+    return query.isEmpty || book.title.toLowerCase().contains(query) ||
+        (book.author ?? '').toLowerCase().contains(query);
+  }
+
   late Future<List<Book>> _future;
   final Set<int> _pending = <int>{};
   final Set<int> _added = <int>{};
@@ -893,68 +976,96 @@ class _BookPickerState extends State<_BookPicker> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('도서 추가')),
-    body: FutureBuilder<List<Book>>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done)
-          return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError)
-          return _ErrorState(error: snapshot.error, onRetry: _retry);
-        final excluded = {...widget.existingBookIds, ..._added};
-        final books = (snapshot.data ?? const <Book>[])
-            .where((book) => !excluded.contains(book.id))
-            .toList();
-        if (books.isEmpty)
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.library_add_check_outlined, size: 42),
-                const SizedBox(height: 12),
-                const Text('추가할 수 있는 도서가 없습니다.'),
-                TextButton(onPressed: _retry, child: const Text('다시 조회')),
-              ],
-            ),
-          );
-        return Column(
-          children: [
-            if (_error != null)
-              MaterialBanner(
-                content: const Text('도서 추가에 실패했습니다.'),
-                actions: [
-                  TextButton(onPressed: _retry, child: const Text('재시도')),
-                ],
-              ),
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.all(16),
-                gridDelegate: _coverGrid,
-                itemCount: books.length,
-                itemBuilder: (context, index) {
-                  final book = books[index];
-                  final pending = _pending.contains(book.id);
-                  return _CoverTile(
-                    book: book,
-                    onTap: pending ? null : () => _add(book),
-                    overlay: pending
-                        ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                        : const Material(
-                      color: Colors.white70,
-                      shape: CircleBorder(),
-                      child: Padding(
-                        padding: EdgeInsets.all(5),
-                        child: Icon(Icons.add),
-                      ),
-                    ),
-                  );
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: '책 제목 또는 저자 검색',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty ? null : IconButton(
+                tooltip: '검색어 지우기',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
                 },
               ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+        Expanded(child: FutureBuilder<List<Book>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done)
+              return const Center(child: CircularProgressIndicator());
+            if (snapshot.hasError)
+              return _ErrorState(error: snapshot.error, onRetry: _retry);
+            final excluded = {...widget.existingBookIds, ..._added};
+            final books = (snapshot.data ?? const <Book>[])
+                .where((book) => !excluded.contains(book.id) && _matchesSearch(book))
+                .toList();
+            if (books.isEmpty)
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.library_add_check_outlined, size: 42),
+                    const SizedBox(height: 12),
+                    Text(_query.trim().isNotEmpty
+                        ? '검색 결과가 없습니다.'
+                        : '추가할 수 있는 도서가 없습니다.'),
+                    TextButton(onPressed: _retry, child: const Text('다시 조회')),
+                  ],
+                ),
+              );
+            return Column(
+              children: [
+                if (_error != null)
+                  MaterialBanner(
+                    content: const Text('도서 추가에 실패했습니다.'),
+                    actions: [
+                      TextButton(onPressed: _retry, child: const Text('재시도')),
+                    ],
+                  ),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: _coverGrid,
+                    itemCount: books.length,
+                    itemBuilder: (context, index) {
+                      final book = books[index];
+                      final pending = _pending.contains(book.id);
+                      return _CoverTile(
+                        book: book,
+                        onTap: pending ? null : () => _add(book),
+                        overlay: pending
+                            ? const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                            : const Material(
+                          color: Colors.white70,
+                          shape: CircleBorder(),
+                          child: Padding(
+                            padding: EdgeInsets.all(5),
+                            child: Icon(Icons.add),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        )),
+      ],
     ),
   );
 }
@@ -1119,9 +1230,10 @@ void _showError(BuildContext context, ApiException error) {
 
 /// 내 책장 한 칸 — 세로 카드 (위: 책장 그림, 아래: 이름 · 권수 · 공개 여부)
 class _ShelfTile extends StatelessWidget {
-  const _ShelfTile({required this.shelf, required this.onTap});
+  const _ShelfTile({required this.shelf, required this.onTap, this.subtitle});
   final Shelf shelf;
   final VoidCallback onTap;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -1180,6 +1292,9 @@ class _ShelfTile extends StatelessWidget {
                           url: shelf.coverImageUrl,
                           width: constraints.maxWidth,
                           height: constraints.maxHeight,
+                          fit: shelf.bookCount == 1
+                              ? BoxFit.contain
+                              : BoxFit.cover,
                         ),
                       ),
                     ),
@@ -1199,7 +1314,7 @@ class _ShelfTile extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          '${shelf.bookCount}권 · ${shelf.isPublic ? '공개' : '비공개'}',
+          subtitle ?? '${shelf.bookCount}권',
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: const Color(0xFF8A8A8A)),
         ),
@@ -1269,61 +1384,183 @@ class _FavoriteShelfTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final books = context.watch<FavoriteViewModel>().favorites;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
+    final covers = books
+        .map((book) => book.coverImageUrl)
+        .whereType<String>()
+        .where((url) => url.isNotEmpty)
+        .toList();
+    return _ShelfTile(
+      shelf: Shelf(
+        id: 0,
+        name: '즐겨찾기',
+        isPublic: false,
+        bookCount: books.length,
+        coverImageUrl: covers.isEmpty ? null : covers.first,
+        previewCoverImageUrls: covers.skip(1).take(2).toList(),
+      ),
+      subtitle: '${books.length}권',
       onTap: () async {
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const FavoriteBooksScreen()),
         );
         if (context.mounted) context.read<FavoriteViewModel>().load();
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F3F8),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE3E6EE)),
+    );
+  }
+}
+
+class _FavoriteBookPicker extends StatefulWidget {
+  const _FavoriteBookPicker({
+    required this.repository,
+    required this.existingBookIds,
+  });
+  final BookRepository repository;
+  final Set<int> existingBookIds;
+  @override
+  State<_FavoriteBookPicker> createState() => _FavoriteBookPickerState();
+}
+
+class _FavoriteBookPickerState extends State<_FavoriteBookPicker> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(Book book) {
+    final query = _query.trim().toLowerCase();
+    return query.isEmpty || book.title.toLowerCase().contains(query) ||
+        (book.author ?? '').toLowerCase().contains(query);
+  }
+
+  late Future<List<Book>> _future;
+  final Set<int> _pending = <int>{};
+  final Set<int> _added = <int>{};
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.repository.books();
+  }
+
+  void _retry() => setState(() {
+    _error = null;
+    _future = widget.repository.books();
+  });
+
+  Future<void> _add(Book book) async {
+    if (_pending.contains(book.id) || _added.contains(book.id)) return;
+    setState(() {
+      _pending.add(book.id);
+      _error = null;
+    });
+    try {
+      await context.read<FavoriteViewModel>().setFavorite(book.id, true);
+      if (mounted) setState(() => _added.add(book.id));
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _pending.remove(book.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('도서 추가')),
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: '책 제목 또는 저자 검색',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty ? null : IconButton(
+                tooltip: '검색어 지우기',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
               ),
-              child: books.isEmpty
-                  ? const Icon(Icons.star_rounded, size: 48,
-                  color: Color(0xFFE8B545))
-                  : LayoutBuilder(
-                builder: (context, constraints) => Stack(
-                  children: [
-                    Positioned.fill(
-                      child: BookCover(
-                        url: books.first.coverImageUrl,
-                        width: constraints.maxWidth,
-                        height: constraints.maxHeight,
-                      ),
-                    ),
-                    const Positioned(
-                      top: 8,
-                      right: 8,
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.star_rounded, size: 22,
-                            color: Color(0xFFE8B545)),
-                      ),
-                    ),
-                  ],
-                ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Text('즐겨찾기', style: Theme.of(context).textTheme.titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text('${books.length}권', style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: const Color(0xFF8A8A8A))),
-        ],
-      ),
-    );
-  }
+        ),
+        Expanded(child: FutureBuilder<List<Book>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done)
+              return const Center(child: CircularProgressIndicator());
+            if (snapshot.hasError)
+              return _ErrorState(error: snapshot.error, onRetry: _retry);
+            final excluded = {...widget.existingBookIds, ..._added};
+            final books = (snapshot.data ?? const <Book>[])
+                .where((book) => !excluded.contains(book.id) && _matchesSearch(book))
+                .toList();
+            if (books.isEmpty)
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.library_add_check_outlined, size: 42),
+                    const SizedBox(height: 12),
+                    Text(_query.trim().isNotEmpty
+                        ? '검색 결과가 없습니다.'
+                        : '추가할 수 있는 도서가 없습니다.'),
+                    TextButton(onPressed: _retry, child: const Text('다시 조회')),
+                  ],
+                ),
+              );
+            return Column(
+              children: [
+                if (_error != null)
+                  MaterialBanner(
+                    content: const Text('도서 추가에 실패했습니다.'),
+                    actions: [
+                      TextButton(onPressed: _retry, child: const Text('재시도')),
+                    ],
+                  ),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: _coverGrid,
+                    itemCount: books.length,
+                    itemBuilder: (context, index) {
+                      final book = books[index];
+                      final pending = _pending.contains(book.id);
+                      return _CoverTile(
+                        book: book,
+                        onTap: pending ? null : () => _add(book),
+                        overlay: pending
+                            ? const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                            : const Material(
+                          color: Colors.white70,
+                          shape: CircleBorder(),
+                          child: Padding(
+                            padding: EdgeInsets.all(5),
+                            child: Icon(Icons.add),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        )),
+      ],
+    ),
+  );
 }

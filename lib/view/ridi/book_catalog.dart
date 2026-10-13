@@ -321,53 +321,63 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
   }
 
-  void _openReader() {
-    if (!context.read<RidiStore>().loggedIn) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => Scaffold(
-            appBar: ridiAppBar(context, '읽기 시작'),
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '로그인이 필요한 서비스입니다.',
-                    style: TextStyle(
-                      fontFamily: RidiText.f,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: RidiColors.ink,
+  void _showCover(Book book) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (dialogContext) {
+        final size = MediaQuery.sizeOf(dialogContext);
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.all(24),
+          child: SizedBox(
+            width: size.width - 48,
+            height: size.height * .8,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  top: 48,
+                  child: Center(
+                    child: BookCover(
+                      url: book.coverImageUrl,
+                      width: size.width - 48,
+                      height: size.height * .8 - 48,
+                      fit: BoxFit.contain,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: () => showLoginDialog(context),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: RidiColors.ink,
-                      side: const BorderSide(color: RidiColors.grayLight),
-                      shape: const StadiumBorder(),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: const Text('로그인'),
+                ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton(
+                    tooltip: '닫기',
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openReader() async {
+    if (!context.read<RidiStore>().loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인이 필요합니다.')),
       );
       return;
     }
 
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AdvancedBookReaderScreen(bookId: widget.bookId),
       ),
     );
+    if (mounted) await _loadFavorite();
   }
 
   @override
@@ -417,7 +427,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           children: [
             Center(
               child: InkWell(
-                onTap: _openReader,
+                onTap: () => _showCover(book),
                 borderRadius: BorderRadius.circular(5),
                 child: BookCover(
                   url: book.coverImageUrl,
@@ -717,10 +727,12 @@ class BookCover extends StatelessWidget {
     required this.url,
     required this.width,
     required this.height,
+    this.fit = BoxFit.cover,
   });
   final String? url;
   final double width;
   final double height;
+  final BoxFit fit;
   @override
   Widget build(BuildContext context) {
     final fallback = Container(
@@ -748,7 +760,7 @@ class BookCover extends StatelessWidget {
         resolvedUrl,
         width: width,
         height: height,
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (_, _, _) => fallback,
       ),
     );
