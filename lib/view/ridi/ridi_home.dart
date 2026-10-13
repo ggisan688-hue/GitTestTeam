@@ -105,13 +105,13 @@ class HomeScreen extends StatelessWidget {
           // 게스트는 오른쪽 칸(프로필·통계) 없이 책 목록만 넓게
           final Widget? side = store.loggedIn
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ProfileCard(store: store),
-                    const SizedBox(height: 16),
-                    _StatsCard(key: ValueKey(statsRevision)),
-                  ],
-                )
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ProfileCard(store: store),
+              const SizedBox(height: 16),
+              _StatsCard(key: ValueKey(statsRevision)),
+            ],
+          )
               : null;
           // The shell, recent-reading strip and navigation stay fixed. Only
           // BookCatalogSection owns a bounded, independent scroll viewport.
@@ -194,10 +194,7 @@ class HomeScreen extends StatelessWidget {
                       }
                       return false;
                     },
-                    child: SingleChildScrollView(
-                      primary: false,
-                      child: serverMain,
-                    ),
+                    child: _HomeBookScrollView(child: serverMain),
                   ),
                 ),
                 const SizedBox(width: 40),
@@ -224,10 +221,7 @@ class HomeScreen extends StatelessWidget {
                       }
                       return false;
                     },
-                    child: SingleChildScrollView(
-                      primary: false,
-                      child: serverMain,
-                    ),
+                    child: _HomeBookScrollView(child: serverMain),
                   ),
                 ),
               ],
@@ -456,16 +450,16 @@ class _PickHero extends StatelessWidget {
                     const SizedBox(height: 20),
                     top.owned
                         ? RidiButton(
-                            '바로 읽기',
-                            height: 44,
-                            onTap: () => _openBook(context, top),
-                          )
+                      '바로 읽기',
+                      height: 44,
+                      onTap: () => _openBook(context, top),
+                    )
                         : RidiButton(
-                            '책장에 담기',
-                            icon: Icons.add_rounded,
-                            height: 44,
-                            onTap: () => _addToShelf(context, store, top),
-                          ),
+                      '책장에 담기',
+                      icon: Icons.add_rounded,
+                      height: 44,
+                      onTap: () => _addToShelf(context, store, top),
+                    ),
                   ],
                 ),
               ),
@@ -673,7 +667,7 @@ class _StatsCardState extends State<_StatsCard> {
       final stats = s.data!;
       final peak = stats.dailyReading.fold(
         1,
-        (a, b) => b.paragraphsRead > a ? b.paragraphsRead : a,
+            (a, b) => b.paragraphsRead > a ? b.paragraphsRead : a,
       );
       return InkWell(
         onTap: () => Navigator.of(context).push(
@@ -925,7 +919,7 @@ class _WeekBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxV = days.fold<int>(
       0,
-      (m, d) => d.paragraphsRead > m ? d.paragraphsRead : m,
+          (m, d) => d.paragraphsRead > m ? d.paragraphsRead : m,
     );
     const barMax = 220.0;
     return SizedBox(
@@ -1130,10 +1124,10 @@ class _SearchScreenState extends State<SearchScreen> {
     final hits = _query.isEmpty
         ? <RidiBook>[]
         : store.books
-              .where(
-                (b) => b.title.contains(_query) || b.author.contains(_query),
-              )
-              .toList();
+        .where(
+          (b) => b.title.contains(_query) || b.author.contains(_query),
+    )
+        .toList();
 
     return Scaffold(
       body: SafeArea(
@@ -1241,20 +1235,20 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: store.recentSearches.isEmpty
                     ? const Text('최근 검색어가 없어요', style: RidiText.sub)
                     : Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          for (final s in store.recentSearches)
-                            RidiChip(
-                              s,
-                              on: false,
-                              onTap: () {
-                                _q.text = s;
-                                _search(s);
-                              },
-                            ),
-                        ],
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final s in store.recentSearches)
+                      RidiChip(
+                        s,
+                        on: false,
+                        onTap: () {
+                          _q.text = s;
+                          _search(s);
+                        },
                       ),
+                  ],
+                ),
               ),
             ],
             // ----- 결과 -----
@@ -1262,22 +1256,22 @@ class _SearchScreenState extends State<SearchScreen> {
               Expanded(
                 child: hits.isEmpty
                     ? const RidiEmpty(
-                        icon: Icons.search_off_rounded,
-                        text: '검색 결과가 없어요',
-                      )
+                  icon: Icons.search_off_rounded,
+                  text: '검색 결과가 없어요',
+                )
                     : ListView(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              '검색 결과 ${hits.length}',
-                              style: RidiText.heading,
-                            ),
-                          ),
-                          for (final b in hits) _ResultRow(book: b),
-                        ],
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '검색 결과 ${hits.length}',
+                        style: RidiText.heading,
                       ),
+                    ),
+                    for (final b in hits) _ResultRow(book: b),
+                  ],
+                ),
               )
             else
               const Spacer(),
@@ -1461,6 +1455,42 @@ class _SortMenuButtonState extends State<_SortMenuButton> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HomeBookScrollView extends StatefulWidget {
+  const _HomeBookScrollView({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_HomeBookScrollView> createState() => _HomeBookScrollViewState();
+}
+
+class _HomeBookScrollViewState extends State<_HomeBookScrollView> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      controller: _controller,
+      thumbVisibility: false,
+      interactive: true,
+      notificationPredicate: (notification) =>
+      notification.depth == 0 && notification.metrics.axis == Axis.vertical,
+      child: SingleChildScrollView(
+        controller: _controller,
+        primary: false,
+        padding: const EdgeInsets.only(right: 12),
+        child: widget.child,
       ),
     );
   }

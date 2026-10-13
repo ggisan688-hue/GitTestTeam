@@ -90,9 +90,9 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
             itemCount: vm.books.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: columns,
-              mainAxisSpacing: 22,
-              crossAxisSpacing: 16,
-              childAspectRatio: 0.49,
+              mainAxisSpacing: 18,
+              crossAxisSpacing: 12,
+              mainAxisExtent: 284,
             ),
             itemBuilder: (_, index) {
               return BookCatalogCard(book: vm.books[index]);
@@ -153,8 +153,8 @@ class BookCatalogCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loggedIn = context.watch<RidiStore>().loggedIn;
-    final coverW = loggedIn ? 132.0 : 175.0;
-    final coverH = loggedIn ? 196.0 : 260.0;
+    final coverW = loggedIn ? 152.0 : 175.0;
+    final coverH = loggedIn ? 226.0 : 260.0;
     return InkWell(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
@@ -588,6 +588,14 @@ class RecentReadingSection extends StatefulWidget {
 }
 
 class _RecentReadingSectionState extends State<RecentReadingSection> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -606,12 +614,24 @@ class _RecentReadingSectionState extends State<RecentReadingSection> {
       );
     }
     return SizedBox(
-      height: 170,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: recent.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 14),
-        itemBuilder: (_, index) => _RecentCard(recent: recent[index]),
+      height: 204,
+      child: Scrollbar(
+        controller: _scrollController,
+        thumbVisibility: false,
+        interactive: true,
+        scrollbarOrientation: ScrollbarOrientation.bottom,
+        notificationPredicate: (notification) => notification.depth == 0,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: ListView.separated(
+            controller: _scrollController,
+            primary: false,
+            scrollDirection: Axis.horizontal,
+            itemCount: recent.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder: (_, index) => _RecentCard(recent: recent[index]),
+          ),
+        ),
       ),
     );
   }
@@ -635,7 +655,7 @@ class _RecentCard extends StatelessWidget {
       ),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 260,
+        width: 300,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           border: Border.all(color: RidiColors.grayLight),
@@ -643,7 +663,7 @@ class _RecentCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            BookCover(url: book.coverImageUrl, width: 64, height: 98),
+            BookCover(url: book.coverImageUrl, width: 96, height: 146),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -676,7 +696,10 @@ class _RecentCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '진행률 ${recent.progressPercent}%',
-                    style: RidiText.sub.copyWith(fontSize: 11),
+                    style: RidiText.sub.copyWith(
+                      fontSize: 11,
+                      color: Colors.black,
+                    ),
                   ),
                 ],
               ),
