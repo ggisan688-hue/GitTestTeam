@@ -253,6 +253,18 @@ class ReadingRoomRepository {
         SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
   )).data!;
 
+  Future<SharedRoomNoteComment> updateSharedNoteComment(
+    int roomId,
+    int noteId,
+    int commentId,
+    String content,
+  ) async => (await _api.patch<SharedRoomNoteComment>(
+    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',
+    body: {'content': content.trim()},
+    parse: (json) =>
+        SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
   Future<void> deleteSharedNoteComment(int roomId, int noteId, int commentId) =>
       _api.delete(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',

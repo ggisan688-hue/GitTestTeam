@@ -11,7 +11,6 @@ import '../../model/book.dart';
 import '../../model/shared_room_note.dart';
 import '../../viewmodel/book_viewmodel.dart';
 import '../../repository/reading_room_repository.dart';
-import '../../model/reading_room.dart';
 import '../../repository/ai_reading_repository.dart';
 import 'reading_rooms_screen.dart' show showSharedNoteComments;
 import 'ridi_store.dart';
@@ -57,6 +56,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   bool _savingHighlight = false;
   List<ReadingNote> _sharedHighlights = const [];
   List<SharedRoomNote> _sharedMemos = const [];
+  final Map<int, SharedRoomNote> _sharedHighlightSources =
+      <int, SharedRoomNote>{};
 
   List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
@@ -212,6 +213,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         final notes = await repository.generateNotes(
           bookId: widget.bookId,
           friendId: friendId,
+          roomId: widget.readerContext.roomId,
         );
         if (!mounted) return;
         // generateNotes는 파싱 실패 시 정상 반환할 수 있으므로 완료 상태를 검증한다.
@@ -302,6 +304,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         loadedNotes[friendId] = await repository.getNotes(
           bookId: widget.bookId,
           friendId: friendId,
+          roomId: widget.readerContext.roomId,
         );
       }
 
@@ -341,7 +344,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       ).sharedNotes(roomId, bookId: widget.bookId);
       if (!mounted) return;
       setState(() {
-        _sharedHighlights = notes
+        final highlights = notes
             .where(
               (note) =>
           !note.isSpoilerLocked &&
@@ -349,8 +352,13 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
               note.startOffset != null &&
               note.endOffset != null,
         )
-            .map(_asReaderHighlight)
             .toList();
+        _sharedHighlightSources
+          ..clear()
+          ..addEntries(
+            highlights.map((note) => MapEntry(-note.id, note)),
+          );
+        _sharedHighlights = highlights.map(_asReaderHighlight).toList();
         // Keep shared memos separate from private ReadingNote state. The
         // server has already applied room/book membership and spoiler policy.
         _sharedMemos = notes.where((note) => note.type == 'MEMO').toList();
@@ -391,8 +399,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         context.read<BookViewModel>().content?.paragraphs ??
             const <BookParagraph>[];
     if (p.isEmpty || !mounted) return;
+    // Entering a page means the reader has reached its final paragraph. This
+    // prevents a two-page book from stopping short of 100% on its last page.
+    final reachedOrder = _pages.isEmpty ? _order : _pages[_page].lastOrder;
     if (widget.readerContext.isReadingRoom) {
-      final percent = ((_order / p.last.order) * 100)
+      final percent = ((reachedOrder / p.last.order) * 100)
           .round()
           .clamp(0, 100)
           .toInt();
@@ -402,14 +413,15 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         widget.readerContext.roomId!,
         widget.bookId,
         progressPercent: percent,
-        lastReadPosition: _order,
+        lastReadPosition: reachedOrder,
       );
       return;
     }
     await context.read<BookViewModel>().saveReaderProgress(
       widget.bookId,
-      _order,
+      reachedOrder,
       p.last.order,
+      lastReadPage: _page + 1,
     );
   }
 
@@ -1292,6 +1304,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     String content,
     String quote,
     Color color,
+    SharedRoomNote? sharedNote,
     })>[];
 
     bool matches(int order, int? start, int? end) {
@@ -1321,6 +1334,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           content: note.memoContent ?? '메모 내용이 없습니다.',
           quote: note.selectedText ?? '',
           color: _highlightColor(note.highlightColor),
+          sharedNote: null,
           ));
         }
       }
@@ -1342,6 +1356,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           content: note.content ?? '메모 내용이 없습니다.',
           quote: note.selectedText ?? '',
           color: _highlightColor(note.highlightColor),
+          sharedNote: note,
           ));
         }
       }
@@ -1363,6 +1378,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           color: _highlightColor(
             _aiFriendHighlightColors[friendId] ?? 'YELLOW',
           ),
+          sharedNote: null,
           ));
         }
       }
@@ -1506,6 +1522,46 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                     ),
 
                     // 여러 메모일 때만 이동 버튼 표시
+                    if (item.sharedNote != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              Navigator.pop(dialogContext);
+                              await _openRoomNoteComments(item.sharedNote!);
+                            },
+                            icon: const Icon(Icons.chat_bubble_outline),
+                            label: const Text('댓글 보기 · 작성'),
+                          ),
+                        ),
+                      ),
+                    if (item.sharedNote?.mine == true)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              onPressed: () async {
+                                Navigator.pop(dialogContext);
+                                await _editMyRoomMemo(item.sharedNote!);
+                              },
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('메모 수정'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                Navigator.pop(dialogContext);
+                                await _deleteMyRoomMemo(item.sharedNote!);
+                              },
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('메모 삭제'),
+                            ),
+                          ],
+                        ),
+                      ),
                     if (items.length > 1)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -1561,6 +1617,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   Future<void> _openHighlightMenu(ReadingNote note) async {
     _annotationTapHandled = true;
     if (!mounted) return;
+
+    final roomHighlight = _sharedHighlightSources[note.id];
+    if (widget.readerContext.isReadingRoom && roomHighlight?.mine == true) {
+      await _manageMyRoomAnnotation(roomHighlight!);
+      return;
+    }
 
     final opened = await _showAllMatchingMemos(
       note.paragraphOrder,
@@ -1779,9 +1841,14 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       return;
     }
     // Shared room highlights keep their server id encoded as a negative local
-    // id.  They deliberately never enter the private edit menu.  Showing an
-    // explicit read-only sheet makes that distinction visible to readers.
+    // id.  Other members' highlights are read-only, while the author's own
+    // highlight keeps its room-specific color/delete controls.
     if (note.readOnly || note.id < 0) {
+      final source = _sharedHighlightSources[note.id];
+      if (widget.readerContext.isReadingRoom && source?.mine == true) {
+        await _manageMyRoomHighlight(source!);
+        return;
+      }
       await showModalBottomSheet<void>(
         context: context,
         builder: (sheetContext) => SafeArea(
@@ -1944,6 +2011,223 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _TextSelection(note.paragraphOrder, start, end, text),
     );
   }
+
+  Future<void> _manageMyRoomAnnotation(SharedRoomNote highlight) async {
+    SharedRoomNote? memo;
+    for (final candidate in _sharedMemos) {
+      if (candidate.mine &&
+          candidate.type == 'MEMO' &&
+          candidate.paragraphOrder == highlight.paragraphOrder &&
+          candidate.startOffset == highlight.startOffset &&
+          candidate.endOffset == highlight.endOffset) {
+        memo = candidate;
+        break;
+      }
+    }
+
+    final action = await showModalBottomSheet<_RoomAnnotationAction>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('형광펜 색상 변경'),
+              onTap: () => Navigator.pop(sheetContext, _RoomAnnotationAction.color),
+            ),
+            if (memo != null)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('메모 수정'),
+                onTap: () => Navigator.pop(sheetContext, _RoomAnnotationAction.editMemo),
+              ),
+            if (memo != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('메모 삭제'),
+                onTap: () => Navigator.pop(sheetContext, _RoomAnnotationAction.deleteMemo),
+              ),
+            ListTile(
+              leading: const Icon(Icons.format_clear),
+              title: const Text('형광펜 삭제'),
+              onTap: () => Navigator.pop(sheetContext, _RoomAnnotationAction.deleteHighlight),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null) return;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    try {
+      if (action == _RoomAnnotationAction.color) {
+        final selected = await _pickHighlightColor();
+        if (selected == null) return;
+        await repository.updateSharedNote(roomId, highlight.id, {
+          'highlightColor': selected,
+        });
+      } else if (action == _RoomAnnotationAction.deleteHighlight) {
+        await repository.deleteSharedNote(roomId, highlight.id);
+      } else if (action == _RoomAnnotationAction.deleteMemo && memo != null) {
+        await repository.deleteSharedNote(roomId, memo.id);
+      } else if (action == _RoomAnnotationAction.editMemo && memo != null) {
+        final saved = await showDialog<bool>(
+          context: context,
+          builder: (_) => _MemoEditorDialog(
+            selectedText: memo!.selectedText,
+            initialMemo: memo!.content ?? '',
+            onSave: (value) async {
+              await repository.updateSharedNote(roomId, memo!.id, {
+                'content': value,
+              });
+            },
+          ),
+        );
+        if (saved != true) return;
+      }
+      if (mounted) await _loadSharedHighlights();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_sharedNoteError(error))));
+      }
+    }
+  }
+
+  Future<void> _manageMyRoomHighlight(SharedRoomNote note) async {
+    final action = await showModalBottomSheet<_HighlightAction>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('내 형광펜 색상 변경'),
+              onTap: () => Navigator.pop(sheetContext, _HighlightAction.color),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('내 형광펜 삭제'),
+              onTap: () => Navigator.pop(sheetContext, _HighlightAction.delete),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null) return;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    try {
+      if (action == _HighlightAction.delete) {
+        await repository.deleteSharedNote(roomId, note.id);
+      } else if (action == _HighlightAction.color) {
+        final selected = await _pickHighlightColor();
+        if (selected == null) return;
+        await repository.updateSharedNote(roomId, note.id, {
+          'highlightColor': selected,
+        });
+      }
+      if (mounted) await _loadSharedHighlights();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_sharedNoteError(error))));
+      }
+    }
+  }
+
+  Future<void> _editMyRoomMemo(SharedRoomNote note) async {
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null || !note.mine) return;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _MemoEditorDialog(
+        selectedText: note.selectedText,
+        initialMemo: note.content ?? '',
+        onSave: (value) async {
+          await repository.updateSharedNote(roomId, note.id, {
+            'content': value,
+          });
+        },
+      ),
+    );
+    if (saved == true && mounted) await _loadSharedHighlights();
+  }
+
+  Future<void> _deleteMyRoomMemo(SharedRoomNote note) async {
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null || !note.mine) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('메모 삭제'),
+        content: const Text('이 메모를 삭제할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ReadingRoomRepository(
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      ).deleteSharedNote(roomId, note.id);
+      if (mounted) await _loadSharedHighlights();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_sharedNoteError(error))));
+      }
+    }
+  }
+
+  Future<void> _openRoomNoteComments(SharedRoomNote note) async {
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null) return;
+    await showSharedNoteComments(
+      context,
+      ReadingRoomRepository(
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      ),
+      roomId,
+      note,
+    );
+    if (mounted) await _loadSharedHighlights();
+  }
+
+  Future<String?> _pickHighlightColor() => showModalBottomSheet<String>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Wrap(
+        children: ['#FFF59D', '#A5D6A7', '#90CAF9', '#FFCCBC', '#CE93D8']
+            .map(
+              (value) => ListTile(
+                leading: CircleAvatar(backgroundColor: _highlightColor(value)),
+                title: Text(value),
+                onTap: () => Navigator.pop(sheetContext, value),
+              ),
+            )
+            .toList(),
+      ),
+    ),
+  );
 
   Future<void> _saveHighlight(_TextSelection selection) async {
     if (selection.start < 0 ||
@@ -2200,6 +2484,7 @@ class _Page {
   const _Page(this.columns);
   final List<List<_Slice>> columns;
   int get firstOrder => columns.expand((e) => e).first.order;
+  int get lastOrder => columns.expand((e) => e).last.order;
   bool contains(int order) =>
       columns.expand((e) => e).any((s) => s.order == order);
 }
@@ -2218,6 +2503,8 @@ Color _highlightColor(String? value) {
 }
 
 enum _HighlightAction { delete, color, memo }
+
+enum _RoomAnnotationAction { color, editMemo, deleteMemo, deleteHighlight }
 
 class _ReaderPage extends StatelessWidget {
   const _ReaderPage({
@@ -2473,6 +2760,24 @@ class _SelectableParagraphSliceState extends State<_SelectableParagraphSlice> {
     );
     recognizer.onTap = () {
       if (note.id <= -3000000000) {
+        ReadingNote? linkedHighlight;
+        for (final candidate in widget.highlights) {
+          if (candidate.id > -3000000000 &&
+              candidate.type == ReaderNoteType.highlight &&
+              candidate.paragraphOrder == note.paragraphOrder &&
+              candidate.startOffset == note.startOffset &&
+              candidate.endOffset == note.endOffset) {
+            linkedHighlight = candidate;
+            break;
+          }
+        }
+        // A room memo at the exact same text range is painted above its
+        // highlight.  Keep the highlight tap actionable so the author can
+        // still change its color or edit/delete the linked memo.
+        if (linkedHighlight != null) {
+          widget.onHighlightTap(linkedHighlight);
+          return;
+        }
         widget.onShowMemos(
           note.paragraphOrder,
           context,
@@ -2959,16 +3264,46 @@ class _Sheet extends StatelessWidget {
   }
 }
 
+/// Orders notes by the current reader page first, then by their exact text
+/// position.  When reading page 3, notes on page 3 stay at the top, followed
+/// by later pages and finally earlier pages; this makes the note sheet match
+/// what the reader is looking at instead of a raw paragraph-number list.
+int _notePositionCompare(
+  int leftOrder,
+  int? leftOffset,
+  int rightOrder,
+  int? rightOffset, {
+  required int? Function(int order, int? offset) pageOf,
+  required int? currentPage,
+}) {
+  final leftPage = pageOf(leftOrder, leftOffset);
+  final rightPage = pageOf(rightOrder, rightOffset);
+  int rank(int? page) {
+    if (page == null || currentPage == null) return 1000000;
+    return page >= currentPage ? page - currentPage : 500000 + page;
+  }
+
+  final pageOrder = rank(leftPage).compareTo(rank(rightPage));
+  if (pageOrder != 0) return pageOrder;
+  final paragraphOrder = leftOrder.compareTo(rightOrder);
+  if (paragraphOrder != 0) return paragraphOrder;
+  return (leftOffset ?? 0).compareTo(rightOffset ?? 0);
+}
+
 class _SharedRoomNotesTab extends StatefulWidget {
   const _SharedRoomNotesTab({
     required this.roomId,
     required this.bookId,
+    required this.currentPage,
+    required this.pageOf,
     required this.type,
     required this.onGo,
   });
 
   final int roomId;
   final int bookId;
+  final int? currentPage;
+  final int? Function(int order, int? offset) pageOf;
   final String? type;
   final ValueChanged<int> onGo;
 
@@ -3061,6 +3396,71 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
     }
   }
 
+  Future<void> _manageSharedMemo(SharedRoomNote note, String action) async {
+    final roomId = widget.roomId;
+    if (roomId == null) return;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    try {
+      if (action == 'edit') {
+        if (!note.mine) return;
+        final saved = await showDialog<bool>(
+          context: context,
+          builder: (_) => _MemoEditorDialog(
+            selectedText: note.selectedText,
+            initialMemo: note.content ?? '',
+            onSave: (value) async {
+              await repository.updateSharedNote(roomId, note.id, {
+                'content': value,
+              });
+            },
+          ),
+        );
+        if (saved != true) return;
+      } else {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('공유 메모 삭제'),
+            content: Text(
+              note.mine ? '내 메모를 삭제할까요?' : '이 방 메모를 삭제할까요?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('삭제'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        await repository.deleteSharedNote(roomId, note.id);
+      }
+      if (mounted) setState(_reload);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  Future<void> _openComments(SharedRoomNote note) async {
+    final token = context.read<RidiStore>().accessToken;
+    await showSharedNoteComments(
+      context,
+      ReadingRoomRepository(ApiClient(tokenProvider: () => token)),
+      widget.roomId,
+      note,
+    );
+    if (mounted) setState(_reload);
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<List<SharedRoomNote>>(
     future: _notes,
@@ -3078,7 +3478,15 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
       }
       final notes = (snapshot.data ?? const <SharedRoomNote>[])
           .where((note) => widget.type == null || note.type == widget.type)
-          .toList();
+          .toList()
+        ..sort((a, b) => _notePositionCompare(
+          a.paragraphOrder,
+          a.startOffset,
+          b.paragraphOrder,
+          b.startOffset,
+          pageOf: widget.pageOf,
+          currentPage: widget.currentPage,
+        ));
       if (notes.isEmpty) return const Center(child: Text('공유 독서노트가 없습니다.'));
       return RefreshIndicator(
         onRefresh: () async => setState(_reload),
@@ -3122,12 +3530,24 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
                 '${note.nickname} · $label · 문단 ${note.paragraphOrder}',
               ),
               onTap: () => widget.onGo(note.paragraphOrder),
-              trailing: note.mine || _roomOwner
-                  ? IconButton(
-                tooltip: '독서노트 삭제',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => _delete(note),
-              )
+              trailing: note.type == 'MEMO' || note.mine || _roomOwner
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (note.type == 'MEMO')
+                          IconButton(
+                            tooltip: '댓글',
+                            icon: const Icon(Icons.chat_bubble_outline),
+                            onPressed: () => _openComments(note),
+                          ),
+                        if (note.mine || _roomOwner)
+                          IconButton(
+                            tooltip: '독서노트 삭제',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => _delete(note),
+                          ),
+                      ],
+                    )
                   : null,
             );
           },
@@ -3247,10 +3667,12 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
             child: TabBarView(
               controller: _tabs,
               children: List.generate(4, (index) {
-                if (widget.roomId != null) {
+                if (widget.roomId != null && index != 0 && index != 2) {
                   return _SharedRoomNotesTab(
                     roomId: widget.roomId!,
                     bookId: widget.bookId,
+                    currentPage: widget.pageOf(widget.order, null),
+                    pageOf: widget.pageOf,
                     type: switch (index) {
                       1 => 'HIGHLIGHT',
                       2 => 'MEMO',
@@ -3268,10 +3690,11 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                   return _MemoTab(
                     allNotesMode: index == 0,
                     pageOf: widget.pageOf,
-                    otherNotes: index == 0
-                        ? vm.readingNotes.where(
-                          (n) => n.type != ReaderNoteType.memo,
-                    ).toList()
+                    currentPage: widget.pageOf(widget.order, null),
+                    otherNotes: index == 0 && widget.roomId == null
+                        ? vm.readingNotes
+                              .where((n) => n.type != ReaderNoteType.memo)
+                              .toList()
                         : const <ReadingNote>[],
                     noteBuilder: (note) => _noteCard(
                       note,
@@ -3311,13 +3734,14 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                     .where((note) => note.type == filters[index])
                     .toList())
                   ..sort((a, b) {
-                    final order =
-                    a.paragraphOrder.compareTo(b.paragraphOrder);
-
-                    if (order != 0) return order;
-
-                    return (a.startOffset ?? 0)
-                        .compareTo(b.startOffset ?? 0);
+                    return _notePositionCompare(
+                      a.paragraphOrder,
+                      a.startOffset,
+                      b.paragraphOrder,
+                      b.startOffset,
+                      pageOf: widget.pageOf,
+                      currentPage: widget.pageOf(widget.order, null),
+                    );
                   });
                 if (notes.isEmpty)
                   return Center(
@@ -4631,6 +5055,7 @@ class _MemoTab extends StatefulWidget {
     this.otherNotes = const <ReadingNote>[],
     this.noteBuilder,
     required this.pageOf,
+    required this.currentPage,
     required this.bookId,
     required this.roomId,
     required this.myMemos,
@@ -4649,6 +5074,7 @@ class _MemoTab extends StatefulWidget {
   final List<ReadingNote> otherNotes;
   final Widget Function(ReadingNote)? noteBuilder;
   final int? Function(int order, int? offset) pageOf;
+  final int? currentPage;
   final int bookId;
   final int? roomId;
   final List<ReadingNote> myMemos;
@@ -4697,6 +5123,7 @@ class _MemoItem {
 
 class _MemoTabState extends State<_MemoTab> {
   Future<List<SharedRoomNote>>? _room;
+  bool _roomOwner = false;
   String _who = '전체';
   bool _shareSelecting = false;
   final Set<int> _selectedMemoIds = <int>{};
@@ -4705,6 +5132,22 @@ class _MemoTabState extends State<_MemoTab> {
   void initState() {
     super.initState();
     _load();
+    unawaited(_loadRoomOwner());
+  }
+
+  Future<void> _loadRoomOwner() async {
+    final roomId = widget.roomId;
+    if (roomId == null) return;
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      final room = await ReadingRoomRepository(
+        ApiClient(tokenProvider: () => token),
+      ).detail(roomId);
+      if (mounted) setState(() => _roomOwner = room.isOwner);
+    } on ApiException {
+      // The server authorizes deletion again, so a transient UI lookup must
+      // not change the note list itself.
+    }
   }
 
   void _toggleShareSelection() {
@@ -5044,10 +5487,15 @@ class _MemoTabState extends State<_MemoTab> {
         ));
       }
       entries.sort((a, b) {
-        final order = a.order.compareTo(b.order);
-        if (order != 0) return order;
-        final offset = a.offset.compareTo(b.offset);
-        return offset != 0 ? offset : a.sequence.compareTo(b.sequence);
+        final position = _notePositionCompare(
+          a.order,
+          a.offset,
+          b.order,
+          b.offset,
+          pageOf: widget.pageOf,
+          currentPage: widget.currentPage,
+        );
+        return position != 0 ? position : a.sequence.compareTo(b.sequence);
       });
       if (entries.isEmpty) {
         return const Center(child: Text('저장한 독서노트가 없습니다.'));
@@ -5078,7 +5526,16 @@ class _MemoTabState extends State<_MemoTab> {
           (m) => _who == '전체' || (_who == '나' ? m.mine : m.author == _who),
     )
         .toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
+      ..sort(
+        (a, b) => _notePositionCompare(
+          a.order,
+          a.startOffset,
+          b.order,
+          b.startOffset,
+          pageOf: widget.pageOf,
+          currentPage: widget.currentPage,
+        ),
+      );
     final rows = <Widget>[];
     String? lastChapter;
     for (final m in shown) {
@@ -5421,6 +5878,33 @@ class _MemoTabState extends State<_MemoTab> {
                                   ),
                                 ],
                               ),
+                            if (!_shareSelecting &&
+                                m.shared != null &&
+                                (m.mine || _roomOwner))
+                              PopupMenuButton<String>(
+                                tooltip: '공유 메모 메뉴',
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.more_horiz,
+                                  color: gray,
+                                ),
+                                onSelected: (action) =>
+                                    _manageSharedMemo(m.shared!, action),
+                                itemBuilder: (_) => [
+                                  if (m.mine)
+                                    const PopupMenuItem<String>(
+                                      value: 'edit',
+                                      child: Text('수정'),
+                                    ),
+                                  const PopupMenuItem<String>(
+                                    value: 'delete',
+                                    child: Text(
+                                      '삭제',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ),
@@ -5477,6 +5961,58 @@ class _MemoTabState extends State<_MemoTab> {
         ],
       ),
     );
+  }
+
+  Future<void> _manageSharedMemo(SharedRoomNote note, String action) async {
+    final roomId = widget.roomId;
+    if (roomId == null) return;
+    final repository = ReadingRoomRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    try {
+      if (action == 'edit') {
+        if (!note.mine) return;
+        final saved = await showDialog<bool>(
+          context: context,
+          builder: (_) => _MemoEditorDialog(
+            selectedText: note.selectedText,
+            initialMemo: note.content ?? '',
+            onSave: (value) async {
+              await repository.updateSharedNote(roomId, note.id, {
+                'content': value,
+              });
+            },
+          ),
+        );
+        if (saved != true) return;
+      } else {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('공유 메모 삭제'),
+            content: Text(note.mine ? '내 메모를 삭제할까요?' : '이 방 메모를 삭제할까요?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('삭제'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        await repository.deleteSharedNote(roomId, note.id);
+      }
+      if (mounted) setState(_load);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   Future<void> _openComments(SharedRoomNote note) async {

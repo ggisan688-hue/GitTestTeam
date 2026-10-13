@@ -224,9 +224,10 @@ class AiReadingRepository {
   Future<List<AiReadingNote>> generateNotes({
     required int bookId,
     required int friendId,
+    int? roomId,
   }) async {
     final res = await _api.post<List<AiReadingNote>>(
-      '/api/books/$bookId/ai-reading-friends/$friendId/generate',
+      '/api/books/$bookId/ai-reading-friends/$friendId/generate${roomId == null ? '' : '?roomId=$roomId'}',
       body: const {},
       parse: _parseNotes,
       timeout: const Duration(seconds: 120),
@@ -251,9 +252,11 @@ class AiReadingRepository {
   Future<List<AiReadingNote>> getNotes({
     required int bookId,
     required int friendId,
+    int? roomId,
   }) async {
     final res = await _api.get<List<AiReadingNote>>(
       '/api/books/$bookId/ai-reading-friends/$friendId/notes',
+      query: {if (roomId != null) 'roomId': '$roomId'},
       parse: _parseNotes,
     );
 

@@ -116,12 +116,14 @@ class BookRepository {
     int bookId, {
     int? progressPercent,
     int? lastReadPosition,
+    int? lastReadPage,
   }) async {
     await _api.post<Object>(
       '/api/books/$bookId/reading-progress',
       body: {
         if (progressPercent != null) 'progressPercent': progressPercent,
         if (lastReadPosition != null) 'lastReadPosition': lastReadPosition,
+        if (lastReadPage != null) 'lastReadPage': lastReadPage,
       },
     );
   }

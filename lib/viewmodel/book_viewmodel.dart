@@ -257,7 +257,12 @@ class BookViewModel extends ChangeNotifier {
     await operation;
   }
 
-  Future<void> saveReaderProgress(int bookId, int position, int total) async {
+  Future<void> saveReaderProgress(
+    int bookId,
+    int position,
+    int total, {
+    int? lastReadPage,
+  }) async {
     if (total <= 0) return;
     // Reader positions are paragraph_order values (1..N), not transient page
     // indexes, so progress survives pagination and typography changes.
@@ -267,6 +272,7 @@ class BookViewModel extends ChangeNotifier {
         bookId,
         progressPercent: percent,
         lastReadPosition: position,
+        lastReadPage: lastReadPage,
       );
       readingProgress = ReadingProgress(
         bookId: bookId,
@@ -274,6 +280,10 @@ class BookViewModel extends ChangeNotifier {
         lastReadPosition: position,
       );
       statsRevision++;
+      // Notify immediately after the progress write succeeds.  Previously the
+      // visible home/stat screens waited for the subsequent recent-books GET,
+      // so leaving the reader could temporarily show stale progress.
+      notifyListeners();
       await loadRecentBooks();
     } on ApiException catch (e) {
       readerErrorMessage = e.message;

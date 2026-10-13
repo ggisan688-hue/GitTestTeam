@@ -28,7 +28,6 @@ class NotificationRepository {
   ) async => (await _api.put<NotificationSettings>(
     '/api/me/notification-settings',
     body: {
-      'friendEnabled': settings.friendEnabled,
       'roomEnabled': settings.roomEnabled,
       'activityEnabled': settings.activityEnabled,
     },

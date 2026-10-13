@@ -76,7 +76,7 @@ class ReadingRoomNoteService {
   private ReadingRoomNote note(Long roomId,Long noteId){return notes.findById(noteId).filter(n->n.roomId.equals(roomId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_NOT_FOUND","Shared note not found."));}
   private boolean spoiler(ReadingRoom room,AppUser current,ReadingRoomNote note){
     // Never use personal or another member's position: absence/other-book data is locked.
-    int position=progress.findByRoomIdAndUserIdAndBookId(room.id,current.id,note.bookId).map(p->p.lastReadPosition).orElse(0);
+    int position=progress.findByRoomIdAndUserIdAndBookId(room.id,current.id,note.bookId).map(p->p.maxReadPosition).orElse(0);
     boolean enabled=members.findByRoomIdAndUserId(room.id,current.id).map(member->member.spoilerLockEnabled).orElse(false);
     return enabled&&!note.userId.equals(current.id)&&note.paragraphOrder>position;
   }

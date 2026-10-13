@@ -117,6 +117,7 @@ class RoomMemberProgress {
   @Id @Column(name="room_id") Long roomId; @Id @Column(name="user_id") Long userId; @Id @Column(name="book_id") Long bookId;
   @Column(name="progress_percent", nullable=false) int progressPercent;
   @Column(name="last_read_position", nullable=false) int lastReadPosition;
+  @Column(name="max_read_position", nullable=false) int maxReadPosition;
   @Column(name="updated_at", nullable=false) Instant updatedAt;
 }
 class RoomMemberProgressId implements java.io.Serializable { Long roomId; Long userId; Long bookId; public RoomMemberProgressId() {} @Override public boolean equals(Object o) { return o instanceof RoomMemberProgressId x && java.util.Objects.equals(roomId,x.roomId)&&java.util.Objects.equals(userId,x.userId)&&java.util.Objects.equals(bookId,x.bookId); } @Override public int hashCode() { return java.util.Objects.hash(roomId,userId,bookId); } }
@@ -516,7 +517,10 @@ class RoomService {
     // independent so "continue reading" can deliberately resume where the
     // member last stopped.
     if(request.progressPercent()!=null) p.progressPercent=Math.max(p.progressPercent,request.progressPercent());
-    if(request.lastReadPosition()!=null) p.lastReadPosition=request.lastReadPosition();
+    if(request.lastReadPosition()!=null) {
+      p.lastReadPosition=request.lastReadPosition();
+      p.maxReadPosition=Math.max(p.maxReadPosition,request.lastReadPosition());
+    }
     p.updatedAt=Instant.now();
     p=roomProgress.save(p);
     return progressResponse(p);

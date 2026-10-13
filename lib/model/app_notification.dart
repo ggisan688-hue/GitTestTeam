@@ -34,16 +34,13 @@ class AppNotification {
 
 class NotificationSettings {
   const NotificationSettings({
-    required this.friendEnabled,
     required this.roomEnabled,
     required this.activityEnabled,
   });
-  final bool friendEnabled;
   final bool roomEnabled;
   final bool activityEnabled;
   factory NotificationSettings.fromJson(Map<String, dynamic> json) =>
       NotificationSettings(
-        friendEnabled: json['friendEnabled'] != false,
         roomEnabled: json['roomEnabled'] != false,
         activityEnabled: json['activityEnabled'] != false,
       );

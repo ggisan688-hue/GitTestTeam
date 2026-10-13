@@ -667,7 +667,7 @@ class _StatsCardState extends State<_StatsCard> {
       final stats = s.data!;
       final peak = stats.dailyReading.fold(
         1,
-            (a, b) => b.paragraphsRead > a ? b.paragraphsRead : a,
+            (a, b) => b.pagesRead > a ? b.pagesRead : a,
       );
       return InkWell(
         onTap: () => Navigator.of(context).push(
@@ -687,7 +687,7 @@ class _StatsCardState extends State<_StatsCard> {
                 ],
               ),
               Text(
-                '${stats.periodParagraphsRead}문단',
+                '${stats.periodPagesRead}페이지',
                 style: RidiText.title.copyWith(fontSize: 24),
               ),
               const SizedBox(height: 16),
@@ -703,9 +703,9 @@ class _StatsCardState extends State<_StatsCard> {
                           children: [
                             Container(
                               width: 18,
-                              height: day.paragraphsRead == 0
+                              height: day.pagesRead == 0
                                   ? 3
-                                  : 52 * day.paragraphsRead / peak,
+                                  : 52 * day.pagesRead / peak,
                               decoration: BoxDecoration(
                                 color: RidiColors.blue.withValues(alpha: .7),
                                 borderRadius: BorderRadius.circular(4),
@@ -897,7 +897,7 @@ class _MonthlyStats {
     final now = DateTime.now();
     final per = List<int>.filled(12, 0);
     for (final d in x.dailyReading) {
-      if (d.date.year == now.year) per[d.date.month - 1] += d.paragraphsRead;
+      if (d.date.year == now.year) per[d.date.month - 1] += d.pagesRead;
     }
     return _MonthlyStats(
       year: now.year,
@@ -919,7 +919,7 @@ class _WeekBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxV = days.fold<int>(
       0,
-          (m, d) => d.paragraphsRead > m ? d.paragraphsRead : m,
+          (m, d) => d.pagesRead > m ? d.pagesRead : m,
     );
     const barMax = 220.0;
     return SizedBox(
@@ -933,11 +933,11 @@ class _WeekBars extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(
-                    '${d.paragraphsRead}문단',
+                    '${d.pagesRead}페이지',
                     maxLines: 1,
                     style: RidiText.sub.copyWith(
                       fontSize: 12,
-                      color: d.paragraphsRead > 0
+                      color: d.pagesRead > 0
                           ? RidiColors.ink
                           : RidiColors.gray,
                     ),
@@ -945,11 +945,11 @@ class _WeekBars extends StatelessWidget {
                   const SizedBox(height: 6),
                   Container(
                     width: 36,
-                    height: maxV == 0 || d.paragraphsRead == 0
+                    height: maxV == 0 || d.pagesRead == 0
                         ? 4
-                        : (barMax * d.paragraphsRead / maxV).clamp(4.0, barMax),
+                        : (barMax * d.pagesRead / maxV).clamp(4.0, barMax),
                     decoration: BoxDecoration(
-                      color: d.paragraphsRead > 0
+                      color: d.pagesRead > 0
                           ? RidiColors.blue
                           : RidiColors.grayLight,
                       borderRadius: BorderRadius.circular(6),

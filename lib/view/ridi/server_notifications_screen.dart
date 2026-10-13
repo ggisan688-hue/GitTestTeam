@@ -5,7 +5,6 @@ import '../../core/api_client.dart';
 import '../../model/app_notification.dart';
 import '../../repository/notification_repository.dart';
 import '../../repository/reading_room_repository.dart';
-import 'friends_screen.dart';
 import 'reading_rooms_screen.dart';
 import 'ridi_store.dart';
 
@@ -91,9 +90,6 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
           ),
         ),
       );
-    } else if (notification.type.startsWith('FRIEND') && mounted) {
-      await Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const FriendsScreen()));
     }
   }
 
@@ -159,11 +155,7 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
             itemBuilder: (context, index) {
               final item = items[index];
               return ListTile(
-                leading: Icon(
-                  item.type.startsWith('FRIEND')
-                      ? Icons.person_add_alt_1_outlined
-                      : Icons.groups_outlined,
-                ),
+                leading: const Icon(Icons.groups_outlined),
                 title: Text(
                   item.title,
                   style: item.read
@@ -201,12 +193,10 @@ class _NotificationSettingsScreenState
 
   Future<void> _save(
     NotificationSettings current, {
-    bool? friend,
     bool? room,
     bool? activity,
   }) async {
     final next = NotificationSettings(
-      friendEnabled: friend ?? current.friendEnabled,
       roomEnabled: room ?? current.roomEnabled,
       activityEnabled: activity ?? current.activityEnabled,
     );
@@ -231,11 +221,6 @@ class _NotificationSettingsScreenState
         final settings = snapshot.data!;
         return ListView(
           children: [
-            SwitchListTile(
-              title: const Text('친구 요청 알림'),
-              value: settings.friendEnabled,
-              onChanged: (value) => _save(settings, friend: value),
-            ),
             SwitchListTile(
               title: const Text('교환독서 방 알림'),
               value: settings.roomEnabled,

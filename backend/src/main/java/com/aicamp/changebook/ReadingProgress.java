@@ -38,6 +38,10 @@ class UserBookProgress {
   @ManyToOne(fetch = FetchType.EAGER) @JoinColumn(name = "book_id", nullable = false) Book book;
   @Column(name = "progress_percent", nullable = false) int progressPercent;
   @Column(name = "last_read_position", nullable = false) int lastReadPosition;
+  // The resume cursor may move backwards, but spoiler visibility must never
+  // hide text the reader has already reached.
+  @Column(name = "max_read_position", nullable = false) int maxReadPosition;
+  @Column(name = "last_read_page", nullable = false) int lastReadPage;
   @Column(name = "last_read_at", nullable = false) Instant lastReadAt;
   @Column(name = "created_at", nullable = false) Instant createdAt;
   @Column(name = "updated_at", nullable = false) Instant updatedAt;
@@ -52,8 +56,10 @@ interface UserBookProgressRepository extends JpaRepository<UserBookProgress, Lon
   int countByUserIdAndProgressPercentGreaterThanEqual(Long userId, int progressPercent);
 }
 
-record ReadingProgressRequest(@Min(0) @Max(100) Integer progressPercent, @Min(0) Integer lastReadPosition) {}
-record ReadingProgressResponse(Long bookId, int progressPercent, int lastReadPosition, Instant lastReadAt) {}
+record ReadingProgressRequest(@Min(0) @Max(100) Integer progressPercent, @Min(0) Integer lastReadPosition,
+                              @Min(0) Integer lastReadPage) {}
+record ReadingProgressResponse(Long bookId, int progressPercent, int lastReadPosition, int lastReadPage,
+                               Instant lastReadAt) {}
 record RecentBookResponse(Long id, String title, String author, String description, String coverImageUrl,
                           String category, int progressPercent, int lastReadPosition, Instant lastReadAt) {
   static RecentBookResponse from(UserBookProgress progress) {
@@ -80,13 +86,18 @@ class ReadingProgressService {
     UserBookProgress progress = progressRepository.findByUserIdAndBookId(user.id, book.id).orElseGet(() -> {
       UserBookProgress created = new UserBookProgress(); created.user = user; created.book = book; return created;
     });
-    int before=progress.id==null?0:progress.lastReadPosition;
-    if (request.progressPercent() != null) progress.progressPercent = request.progressPercent();
+    int beforePosition=progress.id==null?0:progress.lastReadPosition;
+    int beforePage=progress.id==null?0:progress.lastReadPage;
+    if (request.progressPercent() != null) progress.progressPercent = Math.max(progress.progressPercent, request.progressPercent());
     if (request.lastReadPosition() != null) progress.lastReadPosition = request.lastReadPosition();
+    if (request.lastReadPosition() != null) progress.maxReadPosition = Math.max(progress.maxReadPosition, request.lastReadPosition());
+    if (request.lastReadPage() != null) progress.lastReadPage = request.lastReadPage();
     progress.lastReadAt = Instant.now();
     UserBookProgress saved = progressRepository.save(progress);
-    if(request.lastReadPosition()!=null&&saved.lastReadPosition>before){var date=LocalDate.now(ReadingStatisticsService.ZONE);var log=activities.findByUserIdAndBookIdAndActivityDate(user.id,book.id,date).orElseGet(()->{var x=new ReadingActivityLog();x.user=user;x.book=book;x.activityDate=date;return x;});log.paragraphsRead+=saved.lastReadPosition-before;log.lastPositionBefore=before;log.lastPositionAfter=saved.lastReadPosition;activities.save(log);}
-    return new ReadingProgressResponse(book.id, saved.progressPercent, saved.lastReadPosition, saved.lastReadAt);
+    boolean advancedPosition = request.lastReadPosition()!=null && saved.lastReadPosition>beforePosition;
+    boolean advancedPage = request.lastReadPage()!=null && saved.lastReadPage>beforePage;
+    if(advancedPosition || advancedPage){var date=LocalDate.now(ReadingStatisticsService.ZONE);var log=activities.findByUserIdAndBookIdAndActivityDate(user.id,book.id,date).orElseGet(()->{var x=new ReadingActivityLog();x.user=user;x.book=book;x.activityDate=date;return x;});if(advancedPosition){log.paragraphsRead+=saved.lastReadPosition-beforePosition;log.lastPositionBefore=beforePosition;log.lastPositionAfter=saved.lastReadPosition;}if(advancedPage){log.pagesRead+=saved.lastReadPage-beforePage;log.lastPageBefore=beforePage;log.lastPageAfter=saved.lastReadPage;}activities.save(log);}
+    return new ReadingProgressResponse(book.id, saved.progressPercent, saved.lastReadPosition, saved.lastReadPage, saved.lastReadAt);
   }
 
   List<RecentBookResponse> recent(String username) {
@@ -101,8 +112,8 @@ class ReadingProgressService {
     books.findById(bookId)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BOOK_NOT_FOUND", "책을 찾을 수 없습니다."));
     return progressRepository.findByUserIdAndBookId(user.id, bookId)
-        .map(progress -> new ReadingProgressResponse(bookId, progress.progressPercent, progress.lastReadPosition, progress.lastReadAt))
-        .orElse(new ReadingProgressResponse(bookId, 0, 0, null));
+        .map(progress -> new ReadingProgressResponse(bookId, progress.progressPercent, progress.lastReadPosition, progress.lastReadPage, progress.lastReadAt))
+        .orElse(new ReadingProgressResponse(bookId, 0, 0, 0, null));
   }
 }
 
@@ -120,7 +131,7 @@ class ReadingProgressController {
   @PostMapping("/{bookId}/reading-progress")
   ReadingProgressResponse record(@PathVariable Long bookId, @Valid @RequestBody(required = false) ReadingProgressRequest request,
                                  org.springframework.security.core.Authentication authentication) {
-    return service.record(authentication.getName(), bookId, request == null ? new ReadingProgressRequest(null, null) : request);
+    return service.record(authentication.getName(), bookId, request == null ? new ReadingProgressRequest(null, null, null) : request);
   }
 
   @GetMapping("/{bookId}/reading-progress")
