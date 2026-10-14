@@ -186,6 +186,20 @@ class AiReadingRepository {
   }
 
 
+  // AI 친구 상세 페르소나 저장
+  Future<void> updateFriendPersona({
+    required int friendId,
+    required String persona,
+  }) async {
+    await _api.patch(
+      '/api/ai-reading-friends/$friendId/persona',
+      body: {
+        'persona': persona,
+      },
+    );
+  }
+
+
   Future<void> deleteFriend(int friendId) =>
       _api.delete('/api/ai-reading-friends/$friendId');
 

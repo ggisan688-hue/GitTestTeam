@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../repository/ai_reading_repository.dart';
 import 'ridi_theme.dart';
 import 'ridi_store.dart';
+import 'persona_detail_dialog.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -257,6 +258,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
       speech: friend.inputSpeechStyle ?? '',
       feature: friend.inputTraits ?? '',
       isDefault: friend.isDefault,
+
+      // DB에 저장된 전체 페르소나
+      persona: friend.persona ?? '',
     );
 
   }
@@ -495,7 +499,26 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                     // 기본 AI 친구는 수정 및 삭제 불가
                     // 사용자가 생성한 AI 친구만 수정 및 삭제 가능
+
                     if (!friend.isDefault) ...[
+                      // 상세 보기
+                      OutlinedButton(
+                        onPressed: friend.id == null
+                            ? null
+                            : () {
+                          showDialog<void>(
+                            context: context,
+                            builder: (dialogContext) => PersonaDetailDialog(
+                              persona: friend.persona,
+                            ),
+                          );
+                        },
+                        child: const Text('상세 보기'),
+                      ),
+
+                      const SizedBox(width: 8),
+
+// 수정
                       OutlinedButton(
                         onPressed: friend.id == null
                             ? null
@@ -505,6 +528,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                       const SizedBox(width: 8),
 
+// 삭제
                       OutlinedButton(
                         onPressed: friend.id == null
                             ? null
@@ -512,6 +536,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         child: const Text('삭제'),
                       ),
                     ],
+
 
                   ],
                 ),
@@ -872,19 +897,49 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
           const SizedBox(height: 28),
 
+
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
-
               onPressed: _submitting
                   ? null
-                  : (_editingFriend == null ? _createFriend : _updateFriend),
+                  : _editingFriend == null
+                  ? _createFriend
+                  : () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('AI 친구 수정 안내'),
+                    content: const Text(
+                      'AI 친구의 정보를 수정하면 AI 페르소나가 다시 생성되어 '
+                          '기존 캐릭터의 성격, 말투, 대화 방식 등이 달라질 수 있습니다.\n\n'
+                          '계속 수정하시겠습니까?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, false),
+                        child: const Text('취소'),
+                      ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, true),
+                        child: const Text('수정 저장'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (!mounted || confirmed != true) return;
+
+                await _updateFriend();
+              },
               child: Text(
                 _editingFriend == null ? 'AI 친구 만들기' : '수정 저장',
               ),
-
             ),
           ),
+
         ],
       ),
     );
@@ -1065,6 +1120,7 @@ InputDecoration _inputDecoration({String? hint}) {
   );
 }
 
+
 class _AiFriend {
   const _AiFriend({
     this.id,
@@ -1076,6 +1132,7 @@ class _AiFriend {
     required this.speech,
     required this.feature,
     required this.isDefault,
+    this.persona = '',
   });
 
   final int? id;
@@ -1087,4 +1144,8 @@ class _AiFriend {
   final String speech;
   final String feature;
   final bool isDefault;
+
+  // AI가 생성한 전체 페르소나
+  final String persona;
 }
+
