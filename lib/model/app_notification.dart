@@ -8,6 +8,8 @@ class AppNotification {
     required this.createdAt,
     this.relatedRoomId,
     this.relatedUserId,
+    this.relatedBookId,
+    this.relatedNoteId,
   });
   final int id;
   final String type;
@@ -17,6 +19,8 @@ class AppNotification {
   final DateTime? createdAt;
   final int? relatedRoomId;
   final int? relatedUserId;
+  final int? relatedBookId;
+  final int? relatedNoteId;
   factory AppNotification.fromJson(Map<String, dynamic> json) =>
       AppNotification(
         id: (json['id'] as num).toInt(),
@@ -29,6 +33,8 @@ class AppNotification {
             : null,
         relatedRoomId: (json['relatedRoomId'] as num?)?.toInt(),
         relatedUserId: (json['relatedUserId'] as num?)?.toInt(),
+        relatedBookId: (json['relatedBookId'] as num?)?.toInt(),
+        relatedNoteId: (json['relatedNoteId'] as num?)?.toInt(),
       );
 }
 

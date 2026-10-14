@@ -72,7 +72,7 @@ record ProfileUpdateRequest(@NotBlank @Size(max = 50) String nickname,
                             @Size(max = 16) String avatar) {}
 
 record NotificationResponse(Long id, String type, String title, String body,
-                            Long relatedRoomId, Long relatedUserId, boolean read,
+                            Long relatedRoomId, Long relatedUserId, Long relatedBookId, Long relatedNoteId, boolean read,
                             Instant createdAt) {}
 
 record NotificationSettingsResponse(boolean friendEnabled, boolean roomEnabled,
@@ -99,6 +99,10 @@ class AppNotification {
   Long relatedRoomId;
   @Column(name = "related_user_id")
   Long relatedUserId;
+  @Column(name = "related_book_id")
+  Long relatedBookId;
+  @Column(name = "related_note_id")
+  Long relatedNoteId;
   @Column(name = "is_read", nullable = false)
   boolean read;
   @Column(name = "created_at", nullable = false)
@@ -127,6 +131,14 @@ class NotificationSettings {
 
 interface AppNotificationRepository extends JpaRepository<AppNotification, Long> {
   List<AppNotification> findByUserIdOrderByCreatedAtDesc(Long userId);
+  @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+  @org.springframework.data.jpa.repository.Query("update AppNotification n set n.read = true where n.userId = :userId and n.id = :notificationId")
+  int markReadForUser(@org.springframework.data.repository.query.Param("userId") Long userId,
+      @org.springframework.data.repository.query.Param("notificationId") Long notificationId);
+  @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+  @org.springframework.data.jpa.repository.Query("update AppNotification n set n.read = true where n.userId = :userId and n.read = false")
+  int markAllReadForUser(@org.springframework.data.repository.query.Param("userId") Long userId);
+
 }
 
 interface NotificationSettingsRepository extends JpaRepository<NotificationSettings, Long> {}
@@ -151,13 +163,21 @@ class UserFeatureService {
   }
 
   AppUser me(String username) {
-    return users.findByUsername(username).orElseThrow(
+    AppUser user = users.findByUsername(username).orElseThrow(
         () -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication is required."));
+    // A room loaded first may already reference this user through a lazy owner
+    // proxy. Direct field access (user.id) on that proxy can read null even
+    // after the username query initializes its underlying entity.
+    return org.hibernate.Hibernate.unproxy(user, AppUser.class);
   }
 
   ProfileResponse profile(String username) { return profileFor(me(username)); }
 
   ProfileResponse profileFor(AppUser user) {
+    // Repository lookups may return the room owner's managed lazy proxy.
+    // Unwrap it before reading fields; initialization alone does not make
+    // direct field access on the proxy safe.
+    user = org.hibernate.Hibernate.unproxy(user, AppUser.class);
     UserProfile profile = profiles.findById(user.id).orElse(null);
     return new ProfileResponse(user.id, user.username, user.nickname,
         profile == null ? null : profile.bio,
@@ -221,19 +241,16 @@ class UserFeatureService {
         .map(this::notificationResponse).toList();
   }
 
+  @Transactional
   void markRead(String username, Long notificationId) {
-    AppUser user = me(username);
-    AppNotification notification = notifications.findById(notificationId)
-        .filter(value -> value.userId.equals(user.id))
-        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOTIFICATION_NOT_FOUND", "Notification not found."));
-    notification.read = true;
-    notifications.save(notification);
+    if (notifications.markReadForUser(me(username).id, notificationId) == 0) {
+      throw new ApiException(HttpStatus.NOT_FOUND,"NOTIFICATION_NOT_FOUND","알림을 찾을 수 없습니다.");
+    }
   }
 
+  @Transactional
   void markAllRead(String username) {
-    List<AppNotification> items = notifications.findByUserIdOrderByCreatedAtDesc(me(username).id);
-    items.forEach(item -> item.read = true);
-    notifications.saveAll(items);
+    notifications.markAllReadForUser(me(username).id);
   }
 
   NotificationSettingsResponse notificationSettings(String username) {
@@ -261,6 +278,10 @@ class UserFeatureService {
   }
 
   void notify(Long userId, String type, String title, String body, Long roomId, Long actorId, boolean includeActor) {
+    notify(userId,type,title,body,roomId,actorId,includeActor,null,null);
+  }
+
+  void notify(Long userId, String type, String title, String body, Long roomId, Long actorId, boolean includeActor, Long bookId, Long noteId) {
     if (userId == null || type.startsWith("FRIEND") || (!includeActor && userId.equals(actorId))) return;
     NotificationSettings preference = settings.findById(userId).orElse(null);
     boolean activity = "ROOM_MEMO_CREATED".equals(type) || "ROOM_MEMO_COMMENT".equals(type);
@@ -271,6 +292,8 @@ class UserFeatureService {
     notification.type = type;
     notification.title = notificationText(title,160);
     notification.body = notificationText(body,500);
+    notification.relatedBookId = bookId;
+    notification.relatedNoteId = noteId;
     notification.relatedRoomId = roomId;
     notification.relatedUserId = actorId;
     notifications.save(notification);
@@ -282,6 +305,11 @@ class UserFeatureService {
         .forEach(userId -> notify(userId, type, title, body, roomId, actorId, includeActor));
   }
 
+  void notifyRoomMemo(Long roomId, String title, String body, Long actorId, Long bookId, Long noteId) {
+    roomMembers.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(m -> m.userId).distinct()
+        .forEach(id -> notify(id,"ROOM_MEMO_CREATED",title,body,roomId,actorId,false,bookId,noteId));
+  }
+
   private String notificationText(String value,int limit){
     if(value==null)return "";
     return value.codePointCount(0,value.length())<=limit?value:value.substring(0,value.offsetByCodePoints(0,limit-1))+"…";
@@ -289,7 +317,7 @@ class UserFeatureService {
 
   private NotificationResponse notificationResponse(AppNotification value) {
     return new NotificationResponse(value.id, value.type, value.title, value.body,
-        value.relatedRoomId, value.relatedUserId, value.read, value.createdAt);
+        value.relatedRoomId, value.relatedUserId, value.relatedBookId, value.relatedNoteId, value.read, value.createdAt);
   }
 
   private String trimToNull(String value) {

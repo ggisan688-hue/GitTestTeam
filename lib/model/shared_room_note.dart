@@ -17,8 +17,10 @@ class SharedRoomNote {
     required this.commentCount,
     this.mine = false,
     this.createdAt,
+    this.version = 0,
   });
   final int id, userId, paragraphOrder, commentCount;
+  final int version;
   final String nickname, type;
   final String? profileImageUrl;
   final int? startOffset, endOffset;
@@ -28,6 +30,7 @@ class SharedRoomNote {
   final bool mine;
   final DateTime? createdAt;
   factory SharedRoomNote.fromJson(Map<String, dynamic> json) => SharedRoomNote(
+    version: (json['version'] as num?)?.toInt() ?? 0,
     id: (json['id'] as num).toInt(),
     userId: (json['userId'] as num).toInt(),
     nickname: json['nickname'] as String? ?? '알 수 없음',

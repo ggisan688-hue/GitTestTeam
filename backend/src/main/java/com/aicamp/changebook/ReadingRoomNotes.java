@@ -82,11 +82,12 @@ class ReadingRoomNoteService {
   private AppUser member(String username,Long roomId){AppUser user=users.me(username);if(!members.existsByRoomIdAndUserId(roomId,user.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","Join this room first.");return user;}
   private ReadingRoom room(Long roomId){return rooms.findById(roomId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","Room not found."));}
   private ReadingRoomNote note(Long roomId,Long noteId){return notes.findById(noteId).filter(n->n.roomId.equals(roomId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_NOT_FOUND","Shared note not found."));}
+  @org.springframework.beans.factory.annotation.Autowired private UserSpoilerSettingRepository spoilerSettings;
   private boolean spoiler(ReadingRoom room,AppUser current,ReadingRoomNote note){
     if(!"MEMO".equals(note.type))return false;
     // Only another member's memo can be a spoiler.
     int position=globalProgress.findByUserIdAndBookId(current.id,note.bookId).map(p->Math.max(p.maxReadPosition,p.lastReadPosition)).orElse(0);
-    boolean enabled=members.findByRoomIdAndUserId(room.id,current.id).map(member->member.spoilerLockEnabled).orElse(false);
+    boolean enabled=spoilerSettings.findById(current.id).map(setting->setting.enabled).orElse(true);
     var ranges=NoteRangeSupport.decode(note.selectionRanges);
     int last=ranges.isEmpty()?note.paragraphOrder:ranges.get(ranges.size()-1).paragraphOrder();
     return enabled&&!note.userId.equals(current.id)&&last>position;
@@ -145,8 +146,8 @@ class ReadingRoomNoteService {
   private void notifyNewMemo(ReadingRoom room,ReadingRoomNote memo){
     if(!"MEMO".equals(memo.type))return;
     // Do not include memo text or its quotation, which may contain spoilers.
-    users.notifyRoomMembers(room.id,"ROOM_MEMO_CREATED","새 메모",
-        name(room.id,memo.userId)+"님이 "+room.name+" 방에 새 메모를 남겼습니다.",memo.userId,false);
+    users.notifyRoomMemo(room.id,"새 메모",
+        name(room.id,memo.userId)+"님이 "+room.name+" 방에 새 메모를 남겼습니다.",memo.userId,memo.bookId,memo.id);
   }
   private String memberMemoColor(Long roomId,Long userId) {
     return members.findByRoomIdAndUserId(roomId,userId).map(m->m.memoHighlightColor)
@@ -266,7 +267,7 @@ class ReadingRoomNoteService {
     return response(room,current,n);
   }
   List<RoomNoteCommentResponse> comments(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);return comments.findByRoomNoteIdOrderByCreatedAtAsc(noteId).stream().map(c->commentResponse(roomId,current,c)).toList();}
-  @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse addComment(String username,Long roomId,Long noteId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);ReadingRoomNoteComment c=new ReadingRoomNoteComment();c.roomNoteId=noteId;c.userId=current.id;c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.created",c.id);if(members.existsByRoomIdAndUserId(roomId,n.userId))users.notify(n.userId,"ROOM_MEMO_COMMENT","내 메모에 새 댓글",name(roomId,current.id)+"님이 "+room.name+" 방의 내 메모에 댓글을 남겼습니다.",roomId,current.id);return commentResponse(roomId,current,c);}
+  @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse addComment(String username,Long roomId,Long noteId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);ReadingRoomNoteComment c=new ReadingRoomNoteComment();c.roomNoteId=noteId;c.userId=current.id;c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.created",c.id);if(members.existsByRoomIdAndUserId(roomId,n.userId))users.notify(n.userId,"ROOM_MEMO_COMMENT","내 메모에 새 댓글",name(roomId,current.id)+"님이 "+room.name+" 방의 내 메모에 댓글을 남겼습니다.",roomId,current.id,false,n.bookId,n.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse updateComment(String username,Long roomId,Long noteId,Long commentId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_EDIT_FORBIDDEN","Only the author can edit this comment.");c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.updated",c.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional void deleteComment(String username,Long roomId,Long noteId,Long commentId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_DELETE_FORBIDDEN","Only the author can delete this comment.");comments.delete(c);sync.publish(roomId,n.bookId,"shared_comment.deleted",commentId);}
   private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n){return response(room,current,n,true);}

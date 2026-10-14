@@ -3442,14 +3442,6 @@ Future<Map<String, dynamic>?> showRoomEditor(
                     onChanged: (value) =>
                         setDialogState(() => isPublic = value),
                   ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('스포일러 잠금'),
-                    subtitle: const Text('내 읽기 위치 이후의 공유 노트를 숨깁니다.'),
-                    value: spoilerLock,
-                    onChanged: (value) =>
-                        setDialogState(() => spoilerLock = value),
-                  ),
                   DropdownButtonFormField<String?>(
                     value: aiFriend,
                     decoration: const InputDecoration(labelText: 'AI 독서친구'),

@@ -42,15 +42,21 @@ class AdvancedBookReaderScreen extends StatefulWidget {
     super.key,
     required this.bookId,
     this.readerContext = const ReaderContext.personal(),
+    this.initialNoteId,
+    this.openInitialComments = false,
   });
   final int bookId;
   final ReaderContext readerContext;
+  final int? initialNoteId;
+  final bool openInitialComments;
   @override
   State<AdvancedBookReaderScreen> createState() =>
       _AdvancedBookReaderScreenState();
 }
 
 class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
+  bool _initialNotebookOpened = false;
+  late bool _notificationOnly = widget.initialNoteId != null;
   static Future<void>? _referenceFontReady;
   static Future<void> _loadReferenceFont() async {
     final loader = FontLoader('NotoSerifKR')
@@ -187,7 +193,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       unawaited(_loadFavorite());
-      await _ViewSettingsState._loadSpoilerPreference();
+      await _ViewSettingsState._loadSpoilerPreference(context);
       if (!mounted) return;
       final vm = context.read<BookViewModel>();
       await vm.loadReader(widget.bookId);
@@ -481,7 +487,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   );
   void _scheduleStandardPageRead() {
     _standardPageTimer?.cancel();
-    if (_pages.isEmpty || !context.read<RidiStore>().loggedIn) return;
+    if (_notificationOnly || _sheetOpen || _pages.isEmpty || !context.read<RidiStore>().loggedIn) return;
     final visible = _pages[_page];
     _standardPageTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
@@ -521,6 +527,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   }
 
   Future<void> _save() async {
+    if (_notificationOnly) return;
     _timer?.cancel();
     final p =
         context.read<BookViewModel>().content?.paragraphs ??
@@ -697,6 +704,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                         _order = _pages[i].firstOrder;
                       });
                       _scheduleStandardPageRead();
+                      if (!_sheetOpen && _initialNotebookOpened) _notificationOnly = false;
                       _debounceSave();
                       _expandWindowIfNeeded();
                     },
@@ -969,6 +977,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             _controller.hasClients &&
             pages.isNotEmpty)
           _controller.jumpToPage(targetPage);
+        if (mounted && pages.isNotEmpty && widget.initialNoteId != null && !_initialNotebookOpened) {
+          _initialNotebookOpened = true;
+          _notes(targetNoteId: widget.initialNoteId, openComments: widget.openInitialComments);
+        }
       });
     });
   }
@@ -1483,9 +1495,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
  void _chapters()=>_open(_Sheet(title:'목차',child:ListView(children:context.read<BookViewModel>().readerChapters.map((c)=>ListTile(title:Text(c.title),subtitle:Text('문단 ${c.startParagraphOrder}'),onTap:(){Navigator.pop(context);_go(c.startParagraphOrder);}).toList()))));
  */
   void _chapters() => _chaptersFixed();
-  void _notes() => _open(
+  void _notes({int? targetNoteId, bool openComments = false}) => _open(
     _Notes(
       bookId: widget.bookId,
+      targetNoteId: targetNoteId,
+      openInitialComments: openComments,
       order: _order,
       currentPage: _page + 1,
       spoilerReadOrder: _furthestReadOrder,
@@ -1622,6 +1636,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   );
 
   void _go(int order, [int? offset]) {
+    _notificationOnly = false;
     // A paragraph can span several pages. Match the saved character offset
     // instead of always selecting the paragraph's first page.
     var i = offset == null ? -1 : _pages.indexWhere((page) =>
@@ -3582,6 +3597,7 @@ class _Sheet extends StatelessWidget {
 
 class _SharedRoomNotesTab extends StatefulWidget {
   const _SharedRoomNotesTab({
+    this.targetNoteId,
     required this.roomId,
     required this.bookId,
     required this.type,
@@ -3593,6 +3609,7 @@ class _SharedRoomNotesTab extends StatefulWidget {
     required this.onOpenComments,
   });
 
+  final int? targetNoteId;
   final int roomId;
   final int bookId;
   final String? type;
@@ -3773,6 +3790,7 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
         currentPage: widget.currentPage, pageOf: widget.pageOf,
         bookId: widget.bookId, roomId: widget.roomId,
         suppliedSharedNotes: allNotes,
+        targetNoteId: widget.targetNoteId,
         onSharedAction: _action,
         onOpenComments: widget.onOpenComments,
         onSharedRefresh: () { if (mounted) setState(_reload); },
@@ -3809,11 +3827,15 @@ class _Notes extends StatefulWidget {
     required this.aiNotesByFriend,
     required this.aiFriendHighlightColors,
 
+    this.targetNoteId,
+    this.openInitialComments = false,
     this.roomId,
     this.initialRoomBookmarks,
     this.onRoomNotesLoaded,
   });
 
+  final int? targetNoteId;
+  final bool openInitialComments;
   final int? roomId;
   final ValueChanged<List<SharedRoomNote>>? onRoomNotesLoaded;
   final List<SharedRoomNote>? initialRoomBookmarks;
@@ -3838,6 +3860,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 4, vsync: this);
   final Set<int> _deletingIds = <int>{};
 
+  bool _initialTargetHandled = false;
   SharedRoomNote? _commentNote;
   List<SharedRoomNote>? _cachedRoomNotes;
   Object? _roomLoadError;
@@ -3859,6 +3882,15 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
       if (mounted) {
         setState(() { _cachedRoomNotes = loaded; _roomLoadError = null; });
         widget.onRoomNotesLoaded?.call(loaded);
+        if (!_initialTargetHandled && widget.targetNoteId != null) {
+          _initialTargetHandled = true;
+          final matches = loaded.where((n) => n.id == widget.targetNoteId && n.type == 'MEMO');
+          if (matches.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('삭제되었거나 더 이상 볼 수 없는 메모입니다.')));
+          } else if (widget.openInitialComments && !matches.first.isSpoilerLocked) {
+            setState(() => _commentNote = matches.first);
+          }
+        }
       }
     } catch(e) {
       if (mounted) setState(() => _roomLoadError = e);
@@ -4045,6 +4077,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                         return const Center(child: CircularProgressIndicator());
                       }
                       return _SharedRoomNotesTab(
+                        targetNoteId: widget.targetNoteId,
                         cachedNotes: roomNotes,
                         onRefresh: () => unawaited(_refreshRoomNotes()),
                         onOpenComments: (note) => setState(() => _commentNote = note),
@@ -4103,9 +4136,9 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                         aiNotesByFriend: widget.aiNotesByFriend,
                         aiFriendHighlightColors: widget.aiFriendHighlightColors,
 
-                        onGo: (order) {
+                        onGo: (order, [offset]) {
                           Navigator.of(context).pop();
-                          widget.onGo(order);
+                          widget.onGo(order, offset);
                         },
                         onEdit: _edit,
                         onColor: _changeNoteColor,
@@ -4754,38 +4787,64 @@ class _ViewSettingsState extends State<_ViewSettings> {
   static const _lineLabels = ['좁게', '보통', '넓게'];
 
   static final _spoiler = ValueNotifier<bool>(true);
-  static const _spoilerPreferenceKey = 'reader_ai_spoiler_enabled';
-  static Future<void>? _spoilerLoad;
-  static Future<void> _spoilerWrite = Future<void>.value();
+  static String? _spoilerAccount;
+  static String _spoilerKey(String account) => 'reader_spoiler_enabled:$account';
+  bool _savingSpoiler = false;
 
-  static Future<void> _loadSpoilerPreference() =>
-      _spoilerLoad ??= _readSpoilerPreference();
-
-  static Future<void> _readSpoilerPreference() async {
+  static Future<void> _loadSpoilerPreference(BuildContext context) async {
+    final store = context.read<RidiStore>();
+    final account = store.loggedIn ? store.username : '';
+    if (_spoilerAccount != account) {
+      _spoilerAccount = account;
+      _spoiler.value = true;
+    }
+    if (account.isEmpty) return;
+    final token = store.accessToken;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _spoiler.value = prefs.getBool(_spoilerPreferenceKey) ?? true;
-    } catch (e) {
-      debugPrint('스포일러 설정 조회 실패: $e');
+      final response = await ApiClient(tokenProvider: () => token).get<Map<String,dynamic>>(
+          '/api/me/spoiler-setting', parse: (json) => json as Map<String,dynamic>);
+      if (!store.loggedIn || store.username != account || _spoilerAccount != account) return;
+      _spoiler.value = response.data?['enabled'] != false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_spoilerKey(account), _spoiler.value);
+      } catch (_) { /* The server is authoritative. */ }
+    } catch (error) {
+      if (!store.loggedIn || store.username != account || _spoilerAccount != account) return;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (store.loggedIn && store.username == account && _spoilerAccount == account) {
+          _spoiler.value = prefs.getBool(_spoilerKey(account)) ?? true;
+        }
+      } catch (_) { /* Keep the protected default if cache access also fails. */ }
+      debugPrint('스포일러 설정 조회 실패: ${error.runtimeType}');
     }
   }
 
   Future<void> _setSpoilerPreference(bool value) async {
-    await _loadSpoilerPreference();
-    _spoiler.value = value;
-    _spoilerWrite = _spoilerWrite.then((_) async {
+    if (_savingSpoiler) return;
+    final store = context.read<RidiStore>();
+    final account = store.username;
+    final token = store.accessToken;
+    setState(() => _savingSpoiler = true);
+    try {
+      final response = await ApiClient(tokenProvider: () => token).patch<Map<String,dynamic>>(
+          '/api/me/spoiler-setting', body: {'enabled': value},
+          parse: (json) => json as Map<String,dynamic>);
+      if (!mounted || !store.loggedIn || store.username != account) return;
+      final saved = response.data?['enabled'] != false;
+      _spoilerAccount = account;
+      _spoiler.value = saved;
       try {
         final prefs = await SharedPreferences.getInstance();
-        final saved = await prefs.setBool(_spoilerPreferenceKey, value);
-        if (!saved) throw StateError('설정 저장 실패');
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('스포일러 설정을 저장하지 못했습니다.')),
-        );
-      }
-    });
-    await _spoilerWrite;
+        await prefs.setBool(_spoilerKey(account), saved);
+      } catch (_) { /* A local cache failure must not undo a saved setting. */ }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error is ApiException ? error.message : '스포일러 설정을 저장하지 못했습니다.')));
+    } finally {
+      if (mounted) setState(() => _savingSpoiler = false);
+    }
   }
 
   bool _showAiFriends = false;
@@ -5000,7 +5059,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                     const SizedBox(width: 10),
                     const Text('스포일러', style: TextStyle(fontSize: 15)),
                     const Spacer(),
-                    Switch(value: on, onChanged: _setSpoilerPreference),
+                    Switch(value: on, onChanged: _savingSpoiler ? null : _setSpoilerPreference),
                   ],
                 ),
               ),
@@ -5387,6 +5446,7 @@ class _ToggleRow extends StatelessWidget {
 /// 방에서 읽으면 방에 공유된 메모 전부(서버), 혼자 읽으면 내 메모만.
 class _MemoTab extends StatefulWidget {
   const _MemoTab({
+    this.targetNoteId,
     this.allNotesMode = false,
     this.suppliedSharedNotes,
     this.onSharedAction,
@@ -5416,6 +5476,7 @@ class _MemoTab extends StatefulWidget {
   final VoidCallback? onSharedRefresh;
   final List<SharedRoomNote>? suppliedSharedNotes;
   final Future<void> Function(SharedRoomNote note, String action)? onSharedAction;
+  final int? targetNoteId;
   final bool allNotesMode;
   final int currentPage;
   final int spoilerReadOrder;
@@ -5433,7 +5494,7 @@ class _MemoTab extends StatefulWidget {
   final Map<int, List<AiReadingNote>> aiNotesByFriend;
   final Map<int, String> aiFriendHighlightColors;
 
-  final ValueChanged<int> onGo;
+  final void Function(int order, [int? offset]) onGo;
   final Future<void> Function(ReadingNote) onEdit;
   final Future<void> Function(ReadingNote) onColor;
   final Future<void> Function(ReadingNote) onDelete;
@@ -5456,6 +5517,8 @@ class _MemoItem {
     this.shared,
     this.own,
     this.locked = false,
+    this.revealKey,
+    this.onReveal,
   });
   final String author;
   final bool mine;
@@ -5467,6 +5530,8 @@ class _MemoItem {
   final SharedRoomNote? shared;
   final ReadingNote? own;
   final bool locked;
+  final String? revealKey;
+  final Future<void> Function()? onReveal;
 
   // Sharing always copies the author's memo; room ids never enter personal CRUD.
   ReadingNote? get shareSource {
@@ -5486,6 +5551,9 @@ class _MemoItem {
 }
 
 class _MemoTabState extends State<_MemoTab> {
+  final Map<int, SharedRoomNote> _revealedRoomNotes = {};
+  final Set<String> _revealedAiNotes = {};
+  final Set<int> _revealingRoomNotes = {};
   Future<List<SharedRoomNote>>? _room;
   String _who = '전체';
   bool _shareSelecting = false;
@@ -5757,7 +5825,9 @@ class _MemoTabState extends State<_MemoTab> {
       }
     } else {
       // 교환독서 방: 공유된 사람 메모
-      for (final n in shared.where((n) => n.type == 'MEMO')) {
+      for (final original in shared.where((n) => n.type == 'MEMO')) {
+        final revealed = _revealedRoomNotes[original.id];
+        final n = revealed != null && revealed.version == original.version ? revealed : original;
         items.add(
           _MemoItem(
             author: n.nickname,
@@ -5771,6 +5841,19 @@ class _MemoTabState extends State<_MemoTab> {
             comments: n.commentCount,
             shared: n,
             locked: n.isSpoilerLocked,
+            revealKey: 'room:${n.id}',
+            onReveal: () async {
+              if (!_revealingRoomNotes.add(n.id)) return;
+              try {
+                final token = context.read<RidiStore>().accessToken;
+                final full = await ReadingRoomRepository(ApiClient(tokenProvider: () => token))
+                    .revealSharedNote(widget.roomId!, n.id);
+                if (mounted) setState(() => _revealedRoomNotes[n.id] = full);
+              } catch (error) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error is ApiException ? error.message : '메모를 불러오지 못했습니다. 다시 시도해주세요.')));
+              } finally { _revealingRoomNotes.remove(n.id); }
+            },
           ),
         );
       }
@@ -5785,7 +5868,8 @@ class _MemoTabState extends State<_MemoTab> {
       }
 
       for (final note in notes) {
-        final locked = widget.roomId == null && _ViewSettingsState._spoiler.value &&
+        final revealKey = 'ai:${friend.id}:${note.id}';
+        final locked = !_revealedAiNotes.contains(revealKey) && widget.roomId == null && _ViewSettingsState._spoiler.value &&
             _isUnreadChapter(note.paragraphOrder, widget.spoilerReadOrder, widget.chapters);
         items.add(
           _MemoItem(
@@ -5793,6 +5877,8 @@ class _MemoTabState extends State<_MemoTab> {
             mine: false,
             order: note.paragraphOrder,
             startOffset: note.startOffset,
+            revealKey: revealKey,
+            onReveal: () async { if (mounted) setState(() => _revealedAiNotes.add(revealKey)); },
             quote: locked ? null : note.selectedText,
             memo: locked ? null : note.content,
             locked: locked,
@@ -5875,12 +5961,13 @@ class _MemoTabState extends State<_MemoTab> {
     _shareSources = all.map((item) => item.shareSource)
         .whereType<ReadingNote>().toList(growable: false);
     if (widget.allNotesMode) {
-      final entries = <({int order, int offset, int sequence, Widget card})>[];
+      final entries = <({int order, int offset, int sequence, int? memoId, Widget card})>[];
       for (final note in widget.otherNotes) {
         entries.add((
         order: note.paragraphOrder,
         offset: note.startOffset ?? 0,
         sequence: entries.length,
+        memoId: null,
         card: widget.noteBuilder!(note),
         ));
       }
@@ -5889,6 +5976,7 @@ class _MemoTabState extends State<_MemoTab> {
         order: memo.order,
         offset: memo.startOffset,
         sequence: entries.length,
+        memoId: memo.shared?.id,
         card: _card(memo),
         ));
       }
@@ -5901,7 +5989,8 @@ class _MemoTabState extends State<_MemoTab> {
       if (entries.isEmpty) {
         return const Center(child: Text('저장한 독서노트가 없습니다.'));
       }
-      var target = entries.indexWhere((entry) =>
+      var target = widget.targetNoteId == null ? -1 : entries.indexWhere((e) => e.memoId == widget.targetNoteId);
+      if (target < 0) target = entries.indexWhere((entry) =>
       (widget.pageOf(entry.order, entry.offset) ?? -1) >= widget.currentPage);
       if (target < 0) target = entries.length - 1;
       return _InitiallyPositionedNotes(
@@ -6168,12 +6257,13 @@ class _MemoTabState extends State<_MemoTab> {
           ),
           const SizedBox(height: 8),
           if (m.locked)
-            const Padding(
-              padding: EdgeInsets.only(left: 36),
-              child: Text(
-                '아직 안 읽은 부분이라 가려 뒀어요',
-                style: TextStyle(fontSize: 13, color: gray),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(left: 36),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('아직 읽지 않은 부분의 메모입니다.',
+                    style: TextStyle(fontSize: 13, color: gray)),
+                TextButton(onPressed: m.onReveal, child: const Text('메모 보기')),
+              ]),
             )
           else
             InkWell(
@@ -6181,7 +6271,7 @@ class _MemoTabState extends State<_MemoTab> {
                 if (_shareSelecting && m.shareSource != null) {
                   _toggleSelectedMemo(m.shareSource!.id);
                 } else if (!m.locked) {
-                  widget.onGo(m.order);
+                  widget.onGo(m.order, m.startOffset);
                 }
               },
               child: SizedBox(
@@ -6296,7 +6386,8 @@ class _MemoTabState extends State<_MemoTab> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
-                    onPressed: m.locked ? null : () => _openComments(m.shared!),
+                    onPressed: m.locked || (widget.suppliedSharedNotes?.any((n) => n.id == m.shared!.id && n.isSpoilerLocked) ?? false)
+                        ? null : () => _openComments(m.shared!),
                     icon: const Icon(Icons.chat_bubble_outline, size: 14, color: gray),
                     label: Text(
                       (m.comments ?? 0) > 0 ? '댓글 ${m.comments}' : '댓글 쓰기',
