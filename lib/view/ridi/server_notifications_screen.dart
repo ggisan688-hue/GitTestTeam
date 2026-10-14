@@ -5,7 +5,6 @@ import '../../core/api_client.dart';
 import '../../model/app_notification.dart';
 import '../../repository/notification_repository.dart';
 import '../../repository/reading_room_repository.dart';
-import 'friends_screen.dart';
 import 'reading_rooms_screen.dart';
 import 'ridi_store.dart';
 
@@ -39,7 +38,7 @@ class _UnreadNotificationBadgeState extends State<UnreadNotificationBadge> {
         final notifications = await repository.list();
         if (mounted)
           setState(
-            () => _unread = notifications.where((item) => !item.read).length,
+                () => _unread = notifications.where((item) => !item.read).length,
           );
       } catch (_) {
         // A badge must not prevent the shell from rendering when offline.
@@ -79,6 +78,8 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
         return;
       }
     }
+    // The removed member can read the notice but cannot re-open the room.
+    if (notification.type == 'ROOM_REMOVED') return;
     if (notification.relatedRoomId != null && mounted) {
       final rooms = ReadingRoomRepository(
         ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
@@ -91,9 +92,6 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
           ),
         ),
       );
-    } else if (notification.type.startsWith('FRIEND') && mounted) {
-      await Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const FriendsScreen()));
     }
   }
 
@@ -160,9 +158,12 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
               final item = items[index];
               return ListTile(
                 leading: Icon(
-                  item.type.startsWith('FRIEND')
-                      ? Icons.person_add_alt_1_outlined
-                      : Icons.groups_outlined,
+                  switch (item.type) {
+                    'ROOM_MEMO_CREATED' => Icons.edit_note_outlined,
+                    'ROOM_MEMO_COMMENT' => Icons.chat_bubble_outline,
+                    'ROOM_BOOK_ADDED' || 'ROOM_BOOK_REMOVED' => Icons.menu_book_outlined,
+                    _ => Icons.groups_outlined,
+                  },
                 ),
                 title: Text(
                   item.title,
@@ -200,11 +201,11 @@ class _NotificationSettingsScreenState
   }
 
   Future<void> _save(
-    NotificationSettings current, {
-    bool? friend,
-    bool? room,
-    bool? activity,
-  }) async {
+      NotificationSettings current, {
+        bool? friend,
+        bool? room,
+        bool? activity,
+      }) async {
     final next = NotificationSettings(
       friendEnabled: friend ?? current.friendEnabled,
       roomEnabled: room ?? current.roomEnabled,
@@ -231,18 +232,16 @@ class _NotificationSettingsScreenState
         final settings = snapshot.data!;
         return ListView(
           children: [
+
             SwitchListTile(
-              title: const Text('친구 요청 알림'),
-              value: settings.friendEnabled,
-              onChanged: (value) => _save(settings, friend: value),
-            ),
-            SwitchListTile(
-              title: const Text('교환독서 방 알림'),
+              title: const Text('독서방 알림'),
+              subtitle: const Text('입장, 퇴장, 방장 위임, 도서 추가·삭제'),
               value: settings.roomEnabled,
               onChanged: (value) => _save(settings, room: value),
             ),
             SwitchListTile(
-              title: const Text('활동 알림'),
+              title: const Text('메모·댓글 알림'),
+              subtitle: const Text('방 멤버의 새 메모, 내 메모에 달린 댓글'),
               value: settings.activityEnabled,
               onChanged: (value) => _save(settings, activity: value),
             ),

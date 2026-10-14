@@ -4,334 +4,280 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
-import '../../repository/book_repository.dart';
-import '../../viewmodel/book_viewmodel.dart';
-import '../../viewmodel/favorite_viewmodel.dart';
-
-import 'friends_screen.dart';
-import 'ridi_home.dart';
-import 'shelves_screen.dart';
-import 'account_screen.dart';
-import 'server_notifications_screen.dart';
+import '../../model/app_notification.dart';
+import '../../repository/notification_repository.dart';
+import '../../repository/reading_room_repository.dart';
+import 'reading_rooms_screen.dart';
 import 'ridi_store.dart';
-import 'ridi_theme.dart';
-import 'ridi_auth.dart';
 
-/// 북체인 앱의 시작점 (main.dart → RidiApp).
-///
-/// 흐름: RidiGate → 로그인 전이면 LoginScreen, 로그인 후면 RidiShell(하단 탭 5개).
-/// RidiStore 하나를 Provider 로 앱 전체에 넣어 두고, 모든 화면이 context.watch / read 로 쓴다.
-/// 화면 이동·버튼 위치는 리디북스를 따르고, 데이터는 서버 연결 전까지 메모리(RidiStore)에만 둔다.
-class RidiApp extends StatefulWidget {
-  const RidiApp({super.key});
-
+class ServerNotificationsScreen extends StatefulWidget {
+  const ServerNotificationsScreen({super.key});
   @override
-  State<RidiApp> createState() => _RidiAppState();
+  State<ServerNotificationsScreen> createState() =>
+      _ServerNotificationsScreenState();
 }
 
-class _RidiAppState extends State<RidiApp> {
-  late final RidiStore _store;
-  late final BookViewModel _books;
-  late final FavoriteViewModel _favorites;
+class UnreadNotificationBadge extends StatefulWidget {
+  const UnreadNotificationBadge({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<UnreadNotificationBadge> createState() =>
+      _UnreadNotificationBadgeState();
+}
+
+class _UnreadNotificationBadgeState extends State<UnreadNotificationBadge> {
+  var _unread = 0;
 
   @override
   void initState() {
     super.initState();
-    _store = RidiStore();
-    _books = BookViewModel(
-      BookRepository(ApiClient(tokenProvider: () => _store.accessToken)),
-    );
-    _favorites = FavoriteViewModel(
-      BookRepository(ApiClient(tokenProvider: () => _store.accessToken)),
-    );
-    ApiClient.onUnauthorized = () => unawaited(_store.logout());
-    _store.addListener(_clearBookCacheAfterLogout);
-  }
-
-  void _clearBookCacheAfterLogout() {
-    if (!_store.loggedIn) {
-      _books.clearReaderSession();
-      _favorites.clear();
-    }
-  }
-
-  @override
-  void dispose() {
-    _store.removeListener(_clearBookCacheAfterLogout);
-    ApiClient.onUnauthorized = null;
-    _books.dispose();
-    _favorites.dispose();
-    _store.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        // These two instances are owned only by RidiAppState.  Descendant
-        // dialogs and bottom sheets read the same instances; none may create
-        // or dispose a second BookViewModel for the reader.
-        ChangeNotifierProvider.value(value: _store),
-        ChangeNotifierProvider.value(value: _books),
-        ChangeNotifierProvider.value(value: _favorites),
-      ],
-      child: MaterialApp(
-        title: RidiBrand.appName,
-        debugShowCheckedModeBanner: false,
-        theme: ridiTheme(),
-        onGenerateRoute: (settings) {
-          final uri = Uri.tryParse(settings.name ?? '');
-          if (uri?.path == '/reset-password') {
-            return MaterialPageRoute(
-              settings: settings,
-              builder: (_) => PasswordResetConfirmScreen(
-                token: uri?.queryParameters['token'],
-              ),
-            );
-          }
-          return null;
-        },
-        home: const RidiGate(), // 스플래시 없이 바로 시작
-      ),
-    );
-  }
-}
-
-/// 로그인 전이면 로그인 화면, 로그인하면 하단 탭 셸. RidiStore.loggedIn 만 보고 바꾼다
-/// (로그인·가입·로그아웃이 따로 화면을 이동하지 않아도 여기서 알아서 바뀐다).
-class RidiGate extends StatelessWidget {
-  const RidiGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final authReady = context.select<RidiStore, bool>((s) => s.authReady);
-    if (!authReady) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    // Public catalog browsing is available to guests.  Authentication-gated
-    // actions lead to LoginScreen from their own entry point instead of
-    // replacing the entire app with a forced-login wall.
-    return const RidiShell();
-  }
-}
-
-// ---------------- 하단 탭 셸 ----------------
-/// 하단 탭 5개: 내 서재(0) · AI 친구(1) · 홈(2, 시작 탭) · 알림(3, 안 읽은 알림이 있으면 빨간 점) · MY(4).
-/// IndexedStack 이라 탭을 오가도 각 화면의 상태(스크롤·고른 탭)가 유지된다.
-class RidiShell extends StatefulWidget {
-  const RidiShell({super.key});
-
-  @override
-  State<RidiShell> createState() => _RidiShellState();
-}
-
-class _RidiShellState extends State<RidiShell> {
-  late final List<Widget?> _pages;
-  int _index = 2; // 리디처럼 홈에서 시작
-
-  static const _tabs = [
-    (Icons.collections_bookmark_outlined, Icons.collections_bookmark, '내 서재'),
-    (Icons.smart_toy_outlined, Icons.smart_toy, 'AI 친구'),
-    (Icons.home_outlined, Icons.home, '홈'),
-    (Icons.notifications_none_rounded, Icons.notifications, '알림'),
-    (Icons.person_outline_rounded, Icons.person, '마이'),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // Keep a visited tab alive, but defer construction of the other heavy
-    // lists and image trees until the user actually opens that tab.
-    _pages = List<Widget?>.filled(_tabs.length, null);
-    _pages[_index] = HomeScreen(onOpenReadingRooms: _openReadingRooms);
-  }
-
-  void _openReadingRooms() {
-    setState(() {
-      _index = 0;
-      _pages[0] = ShelvesScreen(initialSection: 1);
-    });
-  }
-
-  Widget _create(int i) => switch (i) {
-  // Do not use const here: a canonical const widget can retain the old
-  // Element/State even after IndexedStack's slot is replaced.
-    0 => ShelvesScreen(),
-    1 => FriendsScreen(),
-    2 => HomeScreen(onOpenReadingRooms: _openReadingRooms),
-    3 => const ServerNotificationsScreen(),
-    _ => const AccountScreen(),
-  };
-
-  /// 탭 바꾸기. 게스트는 홈 말고는 서버 화면을 만들지 않고 "로그인이 필요" 화면을 보여 준다(build 참고).
-  void select(int i) {
-    final loggedIn = context.read<RidiStore>().loggedIn;
-    setState(() {
-      _index = i;
-      if (!loggedIn && i != 2) return;
-      // IndexedStack keeps visited tabs alive, so their initState fetches do
-      // not run again. Recreate only server-backed tabs on selection; reader
-      // routes themselves stay outside this shell and are unaffected.
-      if (i == 0 || i == 1 || i == 2) _pages[i] = null;
-      _pages[i] ??= _create(i);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Builder(
-        builder: (context) {
-          final loggedIn = context.select<RidiStore, bool>((s) => s.loggedIn);
-          // 게스트 → 로그인 팝업으로 로그인하면, 보던 탭의 실제 화면을 그때 만든다
-          if (loggedIn && _pages[_index] == null)
-            _pages[_index] = _create(_index);
-          return IndexedStack(
-            index: _index,
-            children: [
-              for (var i = 0; i < _pages.length; i++)
-                if (!loggedIn && i != 2)
-                  _GuestTab(title: _tabs[i].$3)
-                else
-                  _pages[i] ?? const SizedBox.shrink(),
-            ],
+    Future.microtask(() async {
+      try {
+        final repository = NotificationRepository(
+          ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+        );
+        final notifications = await repository.list();
+        if (mounted)
+          setState(
+                () => _unread = notifications.where((item) => !item.read).length,
           );
-        },
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: RidiColors.grayLight)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 72,
-            child: Row(
-              children: [
-                for (var i = 0; i < _tabs.length; i++)
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => select(i),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          i == 3
-                              ? UnreadNotificationBadge(
-                            child: Icon(
-                              i == _index ? _tabs[i].$2 : _tabs[i].$1,
-                              size: 28,
-                              color: i == _index
-                                  ? RidiColors.ink
-                                  : RidiColors.gray,
-                            ),
-                          )
-                              : Icon(
-                            i == _index ? _tabs[i].$2 : _tabs[i].$1,
-                            size: 28,
-                            color: i == _index
-                                ? RidiColors.ink
-                                : RidiColors.gray,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _tabs[i].$3,
-                            style: i == _index ? RidiText.navOn : RidiText.nav,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+      } catch (_) {
+        // A badge must not prevent the shell from rendering when offline.
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Badge(
+    isLabelVisible: _unread > 0,
+    smallSize: 8,
+    backgroundColor: Colors.red,
+    child: widget.child,
+  );
+}
+
+class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
+  late final NotificationRepository _repository;
+  late Future<List<AppNotification>> _notifications;
+  @override
+  void initState() {
+    super.initState();
+    _repository = NotificationRepository(
+      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+    );
+    _notifications = _repository.list();
+  }
+
+  void _reload() => setState(() => _notifications = _repository.list());
+  bool _opening = false;
+
+  Future<void> _markRead(AppNotification notification) async {
+    if (notification.read) return;
+    try {
+      await _repository.markRead(notification.id);
+      if (mounted) _reload();
+    } catch (error) {
+      // Reading status must never prevent opening the related room.
+      debugPrint('[Notifications] markRead failed: ${error.runtimeType}');
+    }
+  }
+
+  Future<void> _open(AppNotification notification) async {
+    if (_opening) return;
+    unawaited(_markRead(notification));
+    if (notification.type == 'ROOM_REMOVED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('퇴장한 방에는 들어갈 수 없습니다.')),
+      );
+      return;
+    }
+    final roomId = notification.relatedRoomId;
+    if (roomId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이 알림에 연결된 독서방 정보가 없습니다.')),
+      );
+      return;
+    }
+    _opening = true;
+    try {
+      final rooms = ReadingRoomRepository(
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      );
+      await Navigator.of(context).push<Object?>(
+        MaterialPageRoute<Object?>(
+          builder: (_) => ReadingRoomDetailScreen(
+            repository: rooms,
+            roomId: roomId,
           ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error is ApiException
+              ? error.message
+              : '독서방을 열지 못했습니다. 다시 시도해주세요.')),
+        );
+      }
+    } finally {
+      _opening = false;
+    }
   }
-}
 
-// ---------------- 게스트(로그인 전) 탭 화면 ----------------
-/// 내 서재 · AI 친구 · 알림 — 가운데 "로그인이 필요한 서비스입니다." + [로그인] (누르면 가운데 로그인 창)
-class _GuestTab extends StatelessWidget {
-  const _GuestTab({required this.title});
-
-  final String title;
-
+  void _error(ApiException error) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(title)),
-    body: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            '로그인이 필요한 서비스입니다.',
-            style: TextStyle(
-              fontFamily: RidiText.f,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: RidiColors.ink,
+    appBar: AppBar(
+      title: const Text('알림'),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            try {
+              await _repository.markAllRead();
+              _reload();
+            } on ApiException catch (error) {
+              _error(error);
+            }
+          },
+          child: const Text('모두 읽음'),
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  NotificationSettingsScreen(repository: _repository),
             ),
           ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () => showLoginDialog(context),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: RidiColors.ink,
-              side: const BorderSide(color: RidiColors.grayLight),
-              shape: const StadiumBorder(),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+        ),
+      ],
+    ),
+    body: FutureBuilder<List<AppNotification>>(
+      future: _notifications,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done)
+          return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasError)
+          return Center(
+            child: OutlinedButton(
+              onPressed: _reload,
+              child: const Text('다시 시도'),
             ),
-            child: const Text('로그인'),
+          );
+        final items = snapshot.data ?? const [];
+        if (items.isEmpty)
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.notifications_none_outlined, size: 44),
+                SizedBox(height: 12),
+                Text('새 알림이 없습니다.'),
+              ],
+            ),
+          );
+        return RefreshIndicator(
+          onRefresh: () async => _reload(),
+          child: ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return ListTile(
+                leading: Icon(
+                  switch (item.type) {
+                    'ROOM_MEMO_CREATED' => Icons.edit_note_outlined,
+                    'ROOM_MEMO_COMMENT' => Icons.chat_bubble_outline,
+                    'ROOM_BOOK_ADDED' || 'ROOM_BOOK_REMOVED' => Icons.menu_book_outlined,
+                    _ => Icons.groups_outlined,
+                  },
+                ),
+                title: Text(
+                  item.title,
+                  style: item.read
+                      ? null
+                      : const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(item.body),
+                trailing: item.read ? null : const CircleAvatar(radius: 4),
+                onTap: () => _open(item),
+              );
+            },
           ),
-        ],
-      ),
+        );
+      },
     ),
   );
 }
 
-/// 마이 — 게스트: 위에 "로그인이 필요합니다." + 오른쪽 [로그인] 버튼만 (리디 MY 처럼)
-class _GuestMy extends StatelessWidget {
-  const _GuestMy();
+class NotificationSettingsScreen extends StatefulWidget {
+  const NotificationSettingsScreen({super.key, required this.repository});
+  final NotificationRepository repository;
+  @override
+  State<NotificationSettingsScreen> createState() =>
+      _NotificationSettingsScreenState();
+}
+
+class _NotificationSettingsScreenState
+    extends State<NotificationSettingsScreen> {
+  late Future<NotificationSettings> _settings;
+  @override
+  void initState() {
+    super.initState();
+    _settings = widget.repository.settings();
+  }
+
+  Future<void> _save(
+      NotificationSettings current, {
+        bool? friend,
+        bool? room,
+        bool? activity,
+      }) async {
+    final next = NotificationSettings(
+      friendEnabled: friend ?? current.friendEnabled,
+      roomEnabled: room ?? current.roomEnabled,
+      activityEnabled: activity ?? current.activityEnabled,
+    );
+    try {
+      final saved = await widget.repository.saveSettings(next);
+      if (mounted) setState(() => _settings = Future.value(saved));
+    } on ApiException catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: RidiColors.panel,
-    appBar: AppBar(title: const Text('마이')),
-    body: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '로그인이 필요합니다.',
-                  style: TextStyle(
-                    fontFamily: RidiText.f,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: RidiColors.ink,
-                  ),
-                ),
-              ),
-              FilledButton(
-                onPressed: () => showLoginDialog(context),
-                style: FilledButton.styleFrom(
-                  backgroundColor: RidiColors.blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: const Text('로그인'),
-              ),
-            ],
-          ),
-        ),
-      ],
+    appBar: AppBar(title: const Text('알림 설정')),
+    body: FutureBuilder<NotificationSettings>(
+      future: _settings,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
+        final settings = snapshot.data!;
+        return ListView(
+          children: [
+
+            SwitchListTile(
+              title: const Text('독서방 알림'),
+              subtitle: const Text('입장, 퇴장, 방장 위임, 도서 추가·삭제'),
+              value: settings.roomEnabled,
+              onChanged: (value) => _save(settings, room: value),
+            ),
+            SwitchListTile(
+              title: const Text('메모·댓글 알림'),
+              subtitle: const Text('방 멤버의 새 메모, 내 메모에 달린 댓글'),
+              value: settings.activityEnabled,
+              onChanged: (value) => _save(settings, activity: value),
+            ),
+          ],
+        );
+      },
     ),
   );
 }

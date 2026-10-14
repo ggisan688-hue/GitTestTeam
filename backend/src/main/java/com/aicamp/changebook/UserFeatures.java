@@ -133,6 +133,7 @@ interface NotificationSettingsRepository extends JpaRepository<NotificationSetti
 
 @org.springframework.stereotype.Service
 class UserFeatureService {
+  @org.springframework.beans.factory.annotation.Autowired private RoomMemberRepo roomMembers;
   @org.springframework.beans.factory.annotation.Autowired
   private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
   private final UserRepository users;
@@ -216,6 +217,7 @@ class UserFeatureService {
 
   List<NotificationResponse> notifications(String username) {
     return notifications.findByUserIdOrderByCreatedAtDesc(me(username).id).stream()
+        .filter(value -> !value.type.startsWith("FRIEND"))
         .map(this::notificationResponse).toList();
   }
 
@@ -254,21 +256,35 @@ class UserFeatureService {
     return new NotificationSettingsResponse(value.friendEnabled, value.roomEnabled, value.activityEnabled);
   }
 
-  void notify(Long userId, String type, String title, String body, Long roomId, Long relatedUserId) {
-    if (userId == null || userId.equals(relatedUserId)) return;
+  void notify(Long userId, String type, String title, String body, Long roomId, Long actorId) {
+    notify(userId, type, title, body, roomId, actorId, false);
+  }
+
+  void notify(Long userId, String type, String title, String body, Long roomId, Long actorId, boolean includeActor) {
+    if (userId == null || type.startsWith("FRIEND") || (!includeActor && userId.equals(actorId))) return;
     NotificationSettings preference = settings.findById(userId).orElse(null);
-    boolean enabled = type.startsWith("FRIEND")
-        ? preference == null || preference.friendEnabled
-        : preference == null || preference.roomEnabled;
+    boolean activity = "ROOM_MEMO_CREATED".equals(type) || "ROOM_MEMO_COMMENT".equals(type);
+    boolean enabled = preference == null || (activity ? preference.activityEnabled : preference.roomEnabled);
     if (!enabled) return;
     AppNotification notification = new AppNotification();
     notification.userId = userId;
     notification.type = type;
-    notification.title = title;
-    notification.body = body;
+    notification.title = notificationText(title,160);
+    notification.body = notificationText(body,500);
     notification.relatedRoomId = roomId;
-    notification.relatedUserId = relatedUserId;
+    notification.relatedUserId = actorId;
     notifications.save(notification);
+  }
+
+  void notifyRoomMembers(Long roomId, String type, String title, String body, Long actorId, boolean includeActor) {
+    // One event per recipient, regardless of the number of selected paragraphs.
+    roomMembers.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member -> member.userId).distinct()
+        .forEach(userId -> notify(userId, type, title, body, roomId, actorId, includeActor));
+  }
+
+  private String notificationText(String value,int limit){
+    if(value==null)return "";
+    return value.codePointCount(0,value.length())<=limit?value:value.substring(0,value.offsetByCodePoints(0,limit-1))+"…";
   }
 
   private NotificationResponse notificationResponse(AppNotification value) {

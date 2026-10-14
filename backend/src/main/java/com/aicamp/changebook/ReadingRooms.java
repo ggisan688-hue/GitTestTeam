@@ -480,6 +480,8 @@ class RoomService {
     AppUser current=userFeatures.me(username); ReadingRoom room=roomForUpdate(roomId); requireOwner(room,current); validateBook(bookId);
     if (roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_ROOM_BOOK","이미 방에 추가된 도서입니다.");
     RoomBook item=new RoomBook(); item.roomId=roomId; item.bookId=bookId; item.displayOrder=(int)roomBooks.countByRoomId(roomId); item.addedBy=current.id; roomBooks.saveAndFlush(item);
+    userFeatures.notifyRoomMembers(roomId,"ROOM_BOOK_ADDED","도서 추가",
+        roomNotificationName(roomId,current.id) + "님이 " + room.name + " 방에 「" + roomNotificationBook(bookId) + "」 도서를 추가했습니다.",current.id,false);
     return response(room,current);
   }
   @org.springframework.transaction.annotation.Transactional
@@ -490,7 +492,10 @@ class RoomService {
     if (roomBooks.countHumanMemos(roomId, bookId) > 0)
       throw new ApiException(HttpStatus.CONFLICT, "ROOM_BOOK_HAS_MEMOS",
           "이 방에서 나 또는 친구가 남긴 메모가 있어 도서를 삭제할 수 없습니다.");
+    String removedBookTitle=roomNotificationBook(bookId);
     roomBooks.delete(item); roomBooks.flush(); normalizeBookOrder(roomId); roomBooks.flush();
+    userFeatures.notifyRoomMembers(roomId,"ROOM_BOOK_REMOVED","도서 삭제",
+        roomNotificationName(roomId,current.id) + "님이 " + room.name + " 방에서 「" + removedBookTitle + "」 도서를 삭제했습니다.",current.id,false);
     if (java.util.Objects.equals(room.currentBookId,bookId)) room.currentBookId=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId).get(0).bookId;
     if (java.util.Objects.equals(room.bookId,bookId)) room.bookId=room.currentBookId;
     return response(rooms.save(room),current);
@@ -555,6 +560,14 @@ class RoomService {
     }).toList();
   }
 
+  private String roomNotificationName(Long roomId,Long userId){
+    return members.findByRoomIdAndUserId(roomId,userId).map(m->trimToNull(m.roomNickname))
+        .orElseGet(()->users.findById(userId).map(u->u.nickname).orElse("멤버"));
+  }
+  private String roomNotificationBook(Long bookId){
+    return books.findById(bookId).map(book->book.title).orElse("도서");
+  }
+
   private void normalizeBookOrder(Long roomId){List<RoomBook> list=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId);for(int i=0;i<list.size();i++)list.get(i).displayOrder=i;roomBooks.saveAll(list);}
 
   @org.springframework.transaction.annotation.Transactional
@@ -567,8 +580,16 @@ class RoomService {
     }
     RoomMember member = members.findByRoomIdAndUserId(roomId, memberId)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_MEMBER_NOT_FOUND", "Room member not found."));
+    String removedName=roomNotificationName(roomId,memberId);
+    // Snapshot before removal so the removed member also receives one notice.
+    var recipients=members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(m->m.userId).distinct().toList();
     members.delete(member);
-    userFeatures.notify(memberId, "ROOM_REMOVED", "방에서 나갔습니다.", room.name + " 방에서 퇴장되었습니다.", room.id, current.id);
+    for(Long recipient:recipients){
+      boolean removed=recipient.equals(memberId);
+      userFeatures.notify(recipient,removed?"ROOM_REMOVED":"ROOM_MEMBER_REMOVED",
+          removed?"독서방 퇴장":"멤버 퇴장",
+          removed?room.name+" 방에서 퇴장되었습니다.":removedName+"님이 "+room.name+" 방에서 퇴장되었습니다.",room.id,current.id,true);
+    }
   }
 
   @org.springframework.transaction.annotation.Transactional
@@ -577,7 +598,11 @@ class RoomService {
     ReadingRoom room = room(roomId);
     RoomMember currentMember = members.findByRoomIdAndUserId(roomId, current.id)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_MEMBER_NOT_FOUND", "You are not in this room."));
+    String leavingName=roomNotificationName(roomId,current.id);
     members.delete(currentMember);
+    members.flush();
+    userFeatures.notifyRoomMembers(roomId,"ROOM_LEFT","멤버 나가기",
+        leavingName+"님이 "+room.name+" 방을 나갔습니다.",current.id,false);
     if (!ownerIdOf(room).equals(current.id)) return;
     List<RoomMember> remaining = members.findByRoomIdOrderByJoinedAtAsc(room.id);
     if (remaining.isEmpty()) {
@@ -759,7 +784,8 @@ class RoomService {
     member.roomNickname = trimToNull(roomNickname);
     member.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(member);
-    userFeatures.notify(ownerIdOf(room), "ROOM_JOINED", "새 참여자", user.nickname + "님이 " + room.name + " 방에 참여했습니다.", room.id, user.id);
+    userFeatures.notifyRoomMembers(room.id,"ROOM_JOINED","새 참여자",
+        roomNotificationName(room.id,user.id)+"님이 "+room.name+" 방에 참여했습니다.",user.id,true);
   }
 
   private void requireOwner(ReadingRoom room, AppUser user) {
