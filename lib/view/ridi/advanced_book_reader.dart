@@ -119,6 +119,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   bool _favoriteSaving = false;
   List<ReadingNote> _sharedHighlights = const [];
   List<SharedRoomNote> _sharedMemos = const [];
+  List<SharedRoomNote> _roomBookmarks = const [];
+  bool _bookmarkSaving = false;
+  bool _roomBookmarksLoaded = false;
+  bool? _bookmarkPreview;
+  ({int order, int offset})? _bookmarkPreviewAnchor;
   int _roomLoadGeneration = 0;
   RoomSyncClient? _readerRoomSync;
   Timer? _roomBodyRefreshTimer;
@@ -417,6 +422,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           n.type == 'HIGHLIGHT' && n.startOffset != null && n.endOffset != null)
           .map(_asReaderHighlight).toList();
       _sharedMemos = notes.where((n) => n.type == 'MEMO').toList();
+      _roomBookmarks = notes.where((n) => n.mine && n.type == 'BOOKMARK').toList();
+      _roomBookmarksLoaded = true;
     });
   }
 
@@ -1147,9 +1154,15 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         .where((c) => c.startParagraphOrder <= _order)
         .toList();
     final title = chapters.isEmpty ? vm.content!.title : chapters.last.title;
-    final marked = vm.readingNotes.any(
-          (n) => n.type == ReaderNoteType.bookmark && n.paragraphOrder == _order,
-    );
+    final previewAnchor = _bookmarkPreviewAnchor;
+    final marked = widget.readerContext.isReadingRoom
+        ? (_bookmarkPreview != null && previewAnchor != null &&
+        _isBookmarkOnPage(previewAnchor.order, previewAnchor.offset)
+        ? _bookmarkPreview!
+        : _roomBookmarks.any((note) =>
+        _isBookmarkOnPage(note.paragraphOrder, note.startOffset)))
+        : vm.readingNotes.any((note) =>
+    note.type == ReaderNoteType.bookmark && note.paragraphOrder == _order);
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
@@ -1193,7 +1206,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                 ),
               ),
               IconButton(
-                onPressed: () => _bookmark(vm),
+                onPressed: _bookmarkSaving || (widget.readerContext.isReadingRoom && !_roomBookmarksLoaded)
+                    ? null : () => _bookmark(vm),
                 icon: Icon(
                   marked ? Icons.bookmark : Icons.bookmark_border,
                   color: fg,
@@ -1206,7 +1220,64 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     );
   }
 
+  bool _isBookmarkOnPage(int order, int? offset, {_Page? page}) {
+    final target = page ?? (_pages.isEmpty ? null : _pages[_page]);
+    if (target == null) return order == _order;
+    final position = offset ?? 0;
+    return target.columns.expand((column) => column).any((slice) =>
+    slice.order == order && position >= slice.start &&
+        position < slice.start + slice.text.length);
+  }
+
   Future<void> _bookmark(BookViewModel vm) async {
+    if (_bookmarkSaving) return;
+    if (widget.readerContext.isReadingRoom) {
+      final roomId = widget.readerContext.roomId!;
+      final visible = _pages.isEmpty ? null : _pages[_page];
+      final anchor = visible?.columns.expand((column) => column).first;
+      final order = anchor?.order ?? _order;
+      final offset = anchor?.start ?? 0;
+      if (!_roomBookmarksLoaded) return;
+      final hits = _roomBookmarks.where((note) =>
+          _isBookmarkOnPage(note.paragraphOrder, note.startOffset, page: visible)).toList();
+      setState(() {
+        _bookmarkSaving = true;
+        _bookmarkPreview = hits.isEmpty;
+        _bookmarkPreviewAnchor = (order: order, offset: offset);
+      });
+      try {
+        if (hits.isEmpty) {
+          final saved = await _readerRoomRepository.createSharedNote(roomId, {
+            'type': 'BOOKMARK',
+            'bookId': widget.bookId,
+            'paragraphOrder': order,
+            'startOffset': offset,
+          });
+          if (mounted) setState(() {
+            ++_roomLoadGeneration;
+            _roomBookmarks = [..._roomBookmarks.where((note) => note.id != saved.id), saved];
+          });
+        } else {
+          for (final note in hits) {
+            await _readerRoomRepository.deleteSharedNote(roomId, note.id);
+            if (mounted) setState(() {
+              ++_roomLoadGeneration;
+              _roomBookmarks = _roomBookmarks.where((value) => value.id != note.id).toList();
+            });
+          }
+        }
+      } catch (error) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('책갈피 저장 실패: $error')));
+      } finally {
+        if (mounted) setState(() {
+          _bookmarkSaving = false;
+          _bookmarkPreview = null;
+          _bookmarkPreviewAnchor = null;
+        });
+      }
+      return;
+    }
     final hits = vm.readingNotes
         .where(
           (n) =>
@@ -1436,6 +1507,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         return index < 0 ? null : index + 1;
       },
       roomId: widget.readerContext.roomId,
+      initialRoomBookmarks: _roomBookmarksLoaded ? List.of(_roomBookmarks) : null,
       onRoomNotesLoaded: (_) {
         // Notebook responses are masked; the body must use its unmasked view.
         unawaited(_loadSharedHighlights().catchError((Object error) {
@@ -1549,8 +1621,14 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     ),
   );
 
-  void _go(int order) {
-    final i = _pages.indexWhere((e) => e.contains(order));
+  void _go(int order, [int? offset]) {
+    // A paragraph can span several pages. Match the saved character offset
+    // instead of always selecting the paragraph's first page.
+    var i = offset == null ? -1 : _pages.indexWhere((page) =>
+        page.columns.expand((column) => column).any((slice) =>
+        slice.order == order && offset >= slice.start &&
+            offset < slice.start + slice.text.length));
+    if (i < 0) i = _pages.indexWhere((page) => page.contains(order));
     if (i >= 0) {
       _controller.jumpToPage(i);
       setState(() {
@@ -2678,6 +2756,55 @@ class _Page {
       columns.expand((e) => e).any((s) => s.order == order);
 }
 
+String _bookmarkChapterTitle(List<ReaderChapter> chapters, int order) {
+  final candidates = chapters.where((chapter) => chapter.startParagraphOrder <= order).toList()
+    ..sort((a, b) => a.startParagraphOrder.compareTo(b.startParagraphOrder));
+  if (candidates.isEmpty) return '목차 정보 없음';
+  final chapter = candidates.last;
+  final title = chapter.title.trim();
+  if (title.isEmpty) return '제 ${chapter.number}장';
+  return RegExp(r'^(제\s*)?\d+\s*장').hasMatch(title)
+      ? title : '제 ${chapter.number}장 : $title';
+}
+
+String _bookmarkDate(DateTime? value) {
+  final date = value?.toLocal();
+  return date == null ? '' : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}.';
+}
+
+class _BookmarkNoteTile extends StatelessWidget {
+  const _BookmarkNoteTile({required this.title, required this.location,
+    required this.date, required this.onTap, this.onDelete, this.busy = false});
+  final String title, location, date;
+  final VoidCallback? onTap, onDelete;
+  final bool busy;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.bookmark, size: 20, color: Color(0xFFD94A45)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title, style: const TextStyle(fontSize: 15, height: 1.5))),
+        ]),
+        Padding(padding: const EdgeInsets.only(left: 32), child: Row(children: [
+          Expanded(child: Text(date.isEmpty ? location : '$location  |  $date',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)))),
+          if (onDelete != null) PopupMenuButton<String>(
+            tooltip: '책갈피 메뉴', enabled: !busy,
+            icon: const Icon(Icons.more_horiz, color: Color(0xFF9E9E9E)),
+            onSelected: (action) { if (action == 'delete') onDelete!(); },
+            itemBuilder: (_) => const [PopupMenuItem<String>(value: 'delete',
+                child: Text('삭제', style: TextStyle(color: Colors.red)))],
+          ),
+        ])),
+      ]),
+    ),
+  );
+}
+
 Color _highlightColor(String? value) {
   final color = value?.trim().toUpperCase();
 
@@ -3469,7 +3596,7 @@ class _SharedRoomNotesTab extends StatefulWidget {
   final int roomId;
   final int bookId;
   final String? type;
-  final ValueChanged<int> onGo;
+  final void Function(int order, [int? offset]) onGo;
   final int? Function(int order, int? offset) pageOf;
   final int currentPage;
   final List<SharedRoomNote> cachedNotes;
@@ -3569,6 +3696,15 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
 
   Widget _recordCard(SharedRoomNote note) {
     final page = widget.pageOf(note.paragraphOrder, note.startOffset);
+    if (note.type == 'BOOKMARK') {
+      return _BookmarkNoteTile(
+        title: _bookmarkChapterTitle(context.read<BookViewModel>().readerChapters, note.paragraphOrder),
+        location: page == null ? '페이지 확인 불가' : '$page 페이지',
+        date: _bookmarkDate(note.createdAt),
+        onTap: () => widget.onGo(note.paragraphOrder, note.startOffset),
+        onDelete: note.mine ? () => _action(note, 'delete') : null,
+      );
+    }
     final date = note.createdAt?.toLocal();
     final location = page == null ? '페이지 확인 불가' : '$page 페이지';
     final dateText = date == null ? '' : '  |  ${date.year}.${date.month.toString().padLeft(2,'0')}.${date.day.toString().padLeft(2,'0')}.';
@@ -3577,32 +3713,34 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
     final title = note.type == 'BOOKMARK'
         ? (chapterIndex < 0 ? '책갈피' : chapters[chapterIndex].title)
         : (note.selectedText ?? '형광펜');
-    return Padding(padding: const EdgeInsets.fromLTRB(20,16,12,8), child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(onTap: note.isSpoilerLocked ? null : () => widget.onGo(note.paragraphOrder),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (note.type == 'BOOKMARK') const Icon(Icons.bookmark_outline, size: 20)
-            else Container(width: 12,height: 12,margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(color: _highlightColor(note.highlightColor),shape: BoxShape.circle)),
-            const SizedBox(width: 12),
-            Expanded(child: Text(note.isSpoilerLocked ? '아직 안 읽은 부분이라 가려 뒀어요' : title,
-                style: const TextStyle(fontSize: 15,height: 1.5))),
-          ]),
-        ),
-        Padding(padding: const EdgeInsets.only(left: 24),child: Row(children: [
-          Expanded(child: Text('$location$dateText',style: const TextStyle(fontSize: 12,color: Color(0xFF9E9E9E)))),
-          if (note.mine) PopupMenuButton<String>(
-            icon: const Icon(Icons.more_horiz,color: Color(0xFF9E9E9E)),
-            onSelected: (action) => _action(note,action),
-            itemBuilder: (_) => [
-              if (_canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
-              const PopupMenuItem(value:'delete',child:Text('삭제',style:TextStyle(color:Colors.red))),
-            ],
-          ),
-        ])),
-      ],
-    ));
+    return InkWell(
+        onTap: note.isSpoilerLocked ? null : () => widget.onGo(note.paragraphOrder, note.startOffset),
+        child: Padding(padding: const EdgeInsets.fromLTRB(20,16,12,8), child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(onTap: note.isSpoilerLocked ? null : () => widget.onGo(note.paragraphOrder, note.startOffset),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (note.type == 'BOOKMARK') const Icon(Icons.bookmark_outline, size: 20)
+                else Container(width: 12,height: 12,margin: const EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(color: _highlightColor(note.highlightColor),shape: BoxShape.circle)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(note.isSpoilerLocked ? '아직 안 읽은 부분이라 가려 뒀어요' : title,
+                    style: const TextStyle(fontSize: 15,height: 1.5))),
+              ]),
+            ),
+            Padding(padding: const EdgeInsets.only(left: 24),child: Row(children: [
+              Expanded(child: Text('$location$dateText',style: const TextStyle(fontSize: 12,color: Color(0xFF9E9E9E)))),
+              if (note.mine) PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz,color: Color(0xFF9E9E9E)),
+                onSelected: (action) => _action(note,action),
+                itemBuilder: (_) => [
+                  if (_canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
+                  const PopupMenuItem(value:'delete',child:Text('삭제',style:TextStyle(color:Colors.red))),
+                ],
+              ),
+            ])),
+          ],
+        )));
   }
 
   @override
@@ -3672,16 +3810,18 @@ class _Notes extends StatefulWidget {
     required this.aiFriendHighlightColors,
 
     this.roomId,
+    this.initialRoomBookmarks,
     this.onRoomNotesLoaded,
   });
 
   final int? roomId;
   final ValueChanged<List<SharedRoomNote>>? onRoomNotesLoaded;
+  final List<SharedRoomNote>? initialRoomBookmarks;
   final int currentPage;
   final int spoilerReadOrder;
   final int bookId;
   final int order;
-  final ValueChanged<int> onGo;
+  final void Function(int order, [int? offset]) onGo;
   final int? Function(int order, int? offset) pageOf;
 
   final List<AiReadingFriend> aiFriends;
@@ -3893,7 +4033,11 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                   controller: _tabs,
                   children: List.generate(4, (index) {
                     if (widget.roomId != null) {
-                      if (_cachedRoomNotes == null) {
+                      // Own bookmarks can render immediately from the reader cache.
+                      // Never seed memo tabs with the body's unmasked spoiler data.
+                      final roomNotes = _cachedRoomNotes ??
+                          (index == 3 ? widget.initialRoomBookmarks : null);
+                      if (roomNotes == null) {
                         if (_roomLoadError != null) return Center(child: TextButton(
                           onPressed: () => unawaited(_refreshRoomNotes()),
                           child: const Text('독서노트를 불러오지 못했습니다. 다시 시도'),
@@ -3901,7 +4045,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                         return const Center(child: CircularProgressIndicator());
                       }
                       return _SharedRoomNotesTab(
-                        cachedNotes: _cachedRoomNotes!,
+                        cachedNotes: roomNotes,
                         onRefresh: () => unawaited(_refreshRoomNotes()),
                         onOpenComments: (note) => setState(() => _commentNote = note),
                         roomId: widget.roomId!,
@@ -3914,9 +4058,9 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                           3 => 'BOOKMARK',
                           _ => null,
                         },
-                        onGo: (order) {
+                        onGo: (order, [offset]) {
                           Navigator.of(context).pop();
-                          widget.onGo(order);
+                          widget.onGo(order, offset);
                         },
                       );
                     }
@@ -4045,7 +4189,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
     return InkWell(
       onTap: () {
         Navigator.of(context).pop();
-        widget.onGo(note.paragraphOrder);
+        widget.onGo(note.paragraphOrder, note.startOffset);
       },
       child: _noteCardContent(note, index, vm),
     );
@@ -4080,7 +4224,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
             InkWell(
               onTap: () {
                 Navigator.of(context).pop();
-                widget.onGo(note.paragraphOrder);
+                widget.onGo(note.paragraphOrder, note.startOffset);
               },
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4162,131 +4306,17 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
       );
     }
     if (index == 3) {
-      final chapters = vm.readerChapters
-          .where(
-            (c) =>
-        c.startParagraphOrder <=
-            note.paragraphOrder,
-      )
-          .toList()
-        ..sort(
-              (a, b) => a.startParagraphOrder
-              .compareTo(b.startParagraphOrder),
-        );
-
-      final chapter =
-      chapters.isEmpty ? null : chapters.last;
-
-      String chapterTitle = '목차 정보 없음';
-
-      if (chapter != null) {
-        final title = chapter.title.trim();
-
-        if (title.isEmpty) {
-          chapterTitle = '제 ${chapter.number}장';
-        } else if (RegExp(
-          r'^(제\s*)?\d+\s*장',
-        ).hasMatch(title)) {
-          chapterTitle = title;
-        } else {
-          chapterTitle =
-          '제 ${chapter.number}장 : $title';
-        }
-      }
-
-      final d = note.createdAt?.toLocal();
-      final date = d == null
-          ? ''
-          : '${d.year}.'
-          '${d.month.toString().padLeft(2, '0')}.'
-          '${d.day.toString().padLeft(2, '0')}.';
-
-      final page = widget.pageOf(
-        note.paragraphOrder,
-        note.startOffset,
-      );
-      final location = page == null
-          ? '페이지 확인 불가'
-          : '$page 페이지';
-
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(
-          20, 16, 12, 8,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: () {
-                Navigator.of(context).pop();
-                widget.onGo(note.paragraphOrder);
-              },
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.bookmark,
-                    size: 20,
-                    color: Color(0xFFD94A45),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      chapterTitle,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 32),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      date.isEmpty
-                          ? location
-                          : '$location  |  $date',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF9E9E9E),
-                      ),
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: '책갈피 메뉴',
-                    enabled:
-                    !_deletingIds.contains(note.id),
-                    icon: const Icon(
-                      Icons.more_horiz,
-                      color: Color(0xFF9E9E9E),
-                    ),
-                    onSelected: (action) async {
-                      if (action == 'delete') {
-                        await _delete(note);
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem<String>(
-                        value: 'delete',
-                        child: Text(
-                          '삭제',
-                          style: TextStyle(
-                            color: Colors.red,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      final page = widget.pageOf(note.paragraphOrder, note.startOffset);
+      return _BookmarkNoteTile(
+        title: _bookmarkChapterTitle(vm.readerChapters, note.paragraphOrder),
+        location: page == null ? '페이지 확인 불가' : '$page 페이지',
+        date: _bookmarkDate(note.createdAt),
+        busy: _deletingIds.contains(note.id),
+        onTap: () {
+          Navigator.of(context).pop();
+          widget.onGo(note.paragraphOrder, note.startOffset);
+        },
+        onDelete: () => _delete(note),
       );
     }
     final busy = _deletingIds.contains(note.id);
@@ -4309,7 +4339,7 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
     return InkWell(
       onTap: () {
         Navigator.of(context).pop();
-        widget.onGo(note.paragraphOrder);
+        widget.onGo(note.paragraphOrder, note.startOffset);
       },
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 14, 12, 14),

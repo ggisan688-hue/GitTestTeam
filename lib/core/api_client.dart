@@ -32,8 +32,8 @@ class ApiException implements Exception {
 /// [tokenProvider] 가 토큰을 돌려주면 Authorization 헤더를 붙인다.
 class ApiClient {
   ApiClient({http.Client? client, String? baseUrl, this.tokenProvider})
-    : _client = client ?? http.Client(),
-      _baseUrl = baseUrl ?? AppConfig.baseUrl;
+      : _client = client ?? http.Client(),
+        _baseUrl = baseUrl ?? AppConfig.baseUrl;
 
   final http.Client _client;
   final String _baseUrl;
@@ -59,50 +59,51 @@ class ApiClient {
 
   String _newRequestId() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'
-      '${_requestIdRandom.nextInt(1 << 32).toRadixString(36)}';
+          '${_requestIdRandom.nextInt(1 << 32).toRadixString(36)}';
 
   Future<ApiResponse<T>> get<T>(
-    String path, {
-    Map<String, String>? query,
-    T Function(Object? json)? parse,
-  }) => _send('GET', path, query: query, parse: parse);
+      String path, {
+        Map<String, String>? query,
+        T Function(Object? json)? parse,
+      }) => _send('GET', path, query: query, parse: parse);
 
   Future<ApiResponse<T>> post<T>(
-    String path, {
-    Object? body,
-    T Function(Object? json)? parse,
-    Duration? timeout,
-  }) => _send('POST', path, body: body, parse: parse, timeout: timeout);
+      String path, {
+        Object? body,
+        T Function(Object? json)? parse,
+        Duration? timeout,
+      }) => _send('POST', path, body: body, parse: parse, timeout: timeout);
 
   Future<ApiResponse<T>> put<T>(
-    String path, {
-    Object? body,
-    T Function(Object? json)? parse,
-  }) => _send('PUT', path, body: body, parse: parse);
+      String path, {
+        Object? body,
+        T Function(Object? json)? parse,
+      }) => _send('PUT', path, body: body, parse: parse);
 
   Future<ApiResponse<T>> patch<T>(
-    String path, {
-    Object? body,
-    T Function(Object? json)? parse,
-  }) => _send('PATCH', path, body: body, parse: parse);
+      String path, {
+        Object? body,
+        T Function(Object? json)? parse,
+      }) => _send('PATCH', path, body: body, parse: parse);
 
   Future<ApiResponse<T>> delete<T>(
-    String path, {
-    Map<String, String>? query,
-    T Function(Object? json)? parse,
-  }) => _send<T>('DELETE', path, query: query, parse: parse);
+      String path, {
+        Map<String, String>? query,
+        Object? body,
+        T Function(Object? json)? parse,
+      }) => _send<T>('DELETE', path, query: query, body: body, parse: parse);
 
   /// multipart 파일 업로드 (필드명 file)
   Future<ApiResponse<T>> uploadFile<T>(
-    String path, {
-    String method = 'POST',
-    Uint8List? bytes,
-    String? filename,
-    String? fieldName,
-    String? contentType,
-    Map<String, String> fields = const {},
-    T Function(Object? json)? parse,
-  }) async {
+      String path, {
+        String method = 'POST',
+        Uint8List? bytes,
+        String? filename,
+        String? fieldName,
+        String? contentType,
+        Map<String, String> fields = const {},
+        T Function(Object? json)? parse,
+      }) async {
     final requestId = _newRequestId();
     final req = http.MultipartRequest(method, Uri.parse('$_baseUrl$path'));
     req.headers['X-Request-ID'] = requestId;
@@ -138,13 +139,13 @@ class ApiClient {
   }
 
   Future<ApiResponse<T>> _send<T>(
-    String method,
-    String path, {
-    Map<String, String>? query,
-    Object? body,
-    T Function(Object? json)? parse,
-    Duration? timeout,
-  }) async {
+      String method,
+      String path, {
+        Map<String, String>? query,
+        Object? body,
+        T Function(Object? json)? parse,
+        Duration? timeout,
+      }) async {
     final requestId = _newRequestId();
     final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
     final req = http.Request(method, uri)
@@ -160,7 +161,7 @@ class ApiClient {
         // logcat. The request ID links this event to the server log.
         debugPrint(
           '[ReadingRoom API] requestId=${res.headers['x-request-id'] ?? requestId} '
-          '$method $path -> HTTP ${res.statusCode} bytes=${res.contentLength}',
+              '$method $path -> HTTP ${res.statusCode} bytes=${res.contentLength}',
         );
       }
       if (kDebugMode && path.startsWith('/api/books')) {
@@ -196,10 +197,10 @@ class ApiClient {
       body.length <= 1000 ? body : '${body.substring(0, 1000)}…';
 
   ApiResponse<T> _handle<T>(
-    http.Response res,
-    T Function(Object? json)? parse,
-    String requestId,
-  ) {
+      http.Response res,
+      T Function(Object? json)? parse,
+      String requestId,
+      ) {
     final responseRequestId = res.headers['x-request-id'] ?? requestId;
     if (res.statusCode == 401) {
       onUnauthorized?.call();

@@ -143,10 +143,14 @@ interface UserRepository extends JpaRepository<AppUser, Long> {
 }
 
 record SignupRequest(
-    @NotBlank @Pattern(regexp = "^[A-Za-z0-9_]{4,20}$") String username,
-    @NotBlank @Size(min = 8, max = 72) String password,
-    @NotBlank @Size(max = 50) String nickname,
-    @jakarta.validation.constraints.Email @Size(max = 254) String email) {}
+    @NotBlank(message = "아이디를 입력해주세요.")
+    @Pattern(regexp = "^[A-Za-z0-9_]{4,20}$", message = "아이디는 영문, 숫자, 밑줄(_)을 사용해 4~20자로 입력해주세요.") String username,
+    @NotBlank(message = "비밀번호를 입력해주세요.")
+    @Size(min = 8, max = 72, message = "비밀번호는 8~72자로 입력해주세요.") String password,
+    @NotBlank(message = "닉네임을 입력해주세요.")
+    @Size(max = 50, message = "닉네임은 50자 이내로 입력해주세요.") String nickname,
+    @jakarta.validation.constraints.Email(message = "이메일 형식이 올바르지 않습니다. 예: name@example.com")
+    @Size(max = 254, message = "이메일은 254자 이내로 입력해주세요.") String email) {}
 record LoginRequest(@NotBlank String username, @NotBlank String password) {}
 record UserResponse(Long id, String username, String nickname) { static UserResponse from(AppUser u) { return new UserResponse(u.id, u.username, u.nickname); } }
 record LoginResponse(String accessToken, String tokenType, UserResponse user) {}
@@ -188,12 +192,18 @@ class AuthService {
   AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt) { this.users = users; this.encoder = encoder; this.jwt = jwt; }
 
   void signup(SignupRequest request) {
-    if (users.existsByUsername(request.username())) throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_USERNAME", "이미 사용 중인 아이디입니다.");
+    if (users.existsByUsername(request.username())) throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_USERNAME", "이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요.");
+    String email = request.email() == null || request.email().isBlank() ? null
+        : request.email().trim().toLowerCase(java.util.Locale.ROOT);
+    if (email != null && users.findByEmailIgnoreCase(email).isPresent())
+      throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_EMAIL", "이미 사용 중인 이메일입니다. 다른 이메일을 입력해주세요.");
+    if (request.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
+      throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD_LENGTH", "비밀번호가 너무 깁니다. 더 짧게 입력해주세요.");
     AppUser user = new AppUser();
     user.username = request.username();
     user.passwordHash = encoder.encode(request.password());
     user.nickname = request.nickname().trim();
-    user.email = request.email() == null || request.email().isBlank() ? null : request.email().trim().toLowerCase(java.util.Locale.ROOT);
+    user.email = email;
     users.save(user);
   }
 
@@ -323,12 +333,35 @@ class ApiErrorHandler {
   }
   @ExceptionHandler(MethodArgumentNotValidException.class)
   ResponseEntity<ErrorResponse> invalid(MethodArgumentNotValidException e) {
-    log.warn("API validation failed: {}", e.getMessage());
+    log.warn("API validation failed fields={}", e.getBindingResult().getFieldErrors().stream()
+        .map(org.springframework.validation.FieldError::getField).distinct().toList());
+    if (e.getBindingResult().getTarget() instanceof SignupRequest) {
+      // Show one actionable error in a stable order; never echo input values.
+      for (String field : java.util.List.of("email", "username", "password", "nickname")) {
+        var fields = e.getBindingResult().getFieldErrors(field);
+        if (fields.isEmpty()) continue;
+        var first = fields.stream().filter(value -> "NotBlank".equals(value.getCode()))
+            .findFirst().orElse(fields.get(0));
+        String message = first.getDefaultMessage();
+        return ResponseEntity.badRequest().body(error("INVALID_SIGNUP_" + field.toUpperCase(java.util.Locale.ROOT),
+            message == null ? "입력값을 확인해주세요." : message));
+      }
+    }
     return ResponseEntity.badRequest().body(error("INVALID_REQUEST", "입력값을 확인해주세요."));
   }
   @ExceptionHandler(DataIntegrityViolationException.class)
   ResponseEntity<ErrorResponse> integrity(DataIntegrityViolationException e) {
     log.warn("API data constraint failed", e);
+    // A concurrent signup can pass the checks above and still hit a unique key.
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      String detail = String.valueOf(cause.getMessage()).toLowerCase(java.util.Locale.ROOT);
+      if (detail.contains("uq_change_book_users_email_lower"))
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error("DUPLICATE_EMAIL",
+            "이미 사용 중인 이메일입니다. 다른 이메일을 입력해주세요."));
+      if (detail.contains("change_book_users_username_key"))
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error("DUPLICATE_USERNAME",
+            "이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요."));
+    }
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(error("DATA_CONFLICT", "요청이 이미 처리되었거나 현재 상태와 충돌합니다."));
   }

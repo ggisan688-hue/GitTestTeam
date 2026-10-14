@@ -67,7 +67,8 @@ class UserProfileRepository {
     },
     parse: (json) => UserProfile.fromJson(json as Map<String, dynamic>),
   )).data!;
-  Future<void> delete(String confirmation) => _api.delete(
-    '/api/users/me?confirmation=${Uri.encodeQueryComponent(confirmation)}',
+  Future<void> delete(String password) => _api.delete(
+    '/api/users/me',
+    body: {'password': password},
   );
 }

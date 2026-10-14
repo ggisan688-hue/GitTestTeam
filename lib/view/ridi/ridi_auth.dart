@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -138,52 +140,52 @@ class _PasswordResetConfirmScreenState
           padding: const EdgeInsets.all(24),
           child: _complete
               ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.check_circle_outline, size: 56),
-                    const SizedBox(height: 16),
-                    const Text('비밀번호가 변경되었습니다.'),
-                    const SizedBox(height: 20),
-                    RidiButton(
-                      '로그인으로 돌아가기',
-                      expand: true,
-                      onTap: () =>
-                          Navigator.of(context).popUntil((r) => r.isFirst),
-                    ),
-                  ],
-                )
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_outline, size: 56),
+              const SizedBox(height: 16),
+              const Text('비밀번호가 변경되었습니다.'),
+              const SizedBox(height: 20),
+              RidiButton(
+                '로그인으로 돌아가기',
+                expand: true,
+                onTap: () =>
+                    Navigator.of(context).popUntil((r) => r.isFirst),
+              ),
+            ],
+          )
               : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    RidiInput(
-                      controller: _password,
-                      hint: '새 비밀번호 (8자 이상)',
-                      obscure: true,
-                    ),
-                    const SizedBox(height: 12),
-                    RidiInput(
-                      controller: _confirmation,
-                      hint: '새 비밀번호 확인',
-                      obscure: true,
-                      onSubmitted: (_) => _submit(),
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          _error!,
-                          style: RidiText.sub.copyWith(color: RidiColors.red),
-                        ),
-                      ),
-                    const SizedBox(height: 24),
-                    RidiButton(
-                      _busy ? '변경 중…' : '비밀번호 변경',
-                      expand: true,
-                      onTap: _busy ? null : _submit,
-                    ),
-                  ],
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              RidiInput(
+                controller: _password,
+                hint: '새 비밀번호 (8자 이상)',
+                obscure: true,
+              ),
+              const SizedBox(height: 12),
+              RidiInput(
+                controller: _confirmation,
+                hint: '새 비밀번호 확인',
+                obscure: true,
+                onSubmitted: (_) => _submit(),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    _error!,
+                    style: RidiText.sub.copyWith(color: RidiColors.red),
+                  ),
                 ),
+              const SizedBox(height: 24),
+              RidiButton(
+                _busy ? '변경 중…' : '비밀번호 변경',
+                expand: true,
+                onTap: _busy ? null : _submit,
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -442,15 +444,31 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_busy) return;
     final username = _id.text.trim();
     final nickname = _name.text.trim();
+    final email = _email.text.trim();
     String? validationError;
-    if (!RegExp(r'^[A-Za-z0-9_]{4,20}$').hasMatch(username)) {
-      validationError = '아이디는 영문, 숫자, 밑줄 4~20자로 입력해주세요.';
+    if (email.length > 254) {
+      validationError = '이메일은 254자 이내로 입력해주세요.';
+    } else if (email.isNotEmpty &&
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      validationError = '이메일 형식이 올바르지 않습니다. 예: name@example.com';
+    } else if (username.isEmpty) {
+      validationError = '아이디를 입력해주세요.';
+    } else if (!RegExp(r'^[A-Za-z0-9_]{4,20}$').hasMatch(username)) {
+      validationError = '아이디는 영문, 숫자, 밑줄(_)을 사용해 4~20자로 입력해주세요.';
+    } else if (_pw.text.isEmpty) {
+      validationError = '비밀번호를 입력해주세요.';
     } else if (_pw.text.length < 8) {
       validationError = '비밀번호는 8자 이상이어야 합니다.';
+    } else if (_pw.text.length > 72 || utf8.encode(_pw.text).length > 72) {
+      validationError = '비밀번호가 너무 깁니다. 더 짧게 입력해주세요.';
+    } else if (_pw2.text.isEmpty) {
+      validationError = '비밀번호 확인을 입력해주세요.';
     } else if (_pw.text != _pw2.text) {
       validationError = '비밀번호 확인이 일치하지 않습니다.';
     } else if (nickname.isEmpty) {
       validationError = '닉네임을 입력해주세요.';
+    } else if (nickname.length > 50) {
+      validationError = '닉네임은 50자 이내로 입력해주세요.';
     } else if (!_agree) {
       validationError = '이용약관에 동의해주세요.';
     }
@@ -636,92 +654,92 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
               constraints: const BoxConstraints(maxWidth: 480),
               child: _sent
                   ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Icon(
-                          Icons.mark_email_read_outlined,
-                          size: 56,
-                          color: RidiColors.ink,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          '메일을 보냈어요',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: RidiText.f,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: RidiColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '${_email.text.trim()} 로 보낸 링크를 열어 새 비밀번호를 정해주세요.\n메일이 안 오면 스팸함도 확인해주세요.',
-                          textAlign: TextAlign.center,
-                          style: RidiText.sub.copyWith(fontSize: 14),
-                        ),
-                        const SizedBox(height: 32),
-                        RidiButton(
-                          '로그인으로 돌아가기',
-                          expand: true,
-                          onTap: () => Navigator.of(context).pop(),
-                        ),
-                        const SizedBox(height: 8),
-                        Center(
-                          child: TextButton(
-                            onPressed: () => ridiToast(context, '메일을 다시 보냈어요'),
-                            child: const Text(
-                              '메일 다시 보내기',
-                              style: TextStyle(
-                                fontFamily: RidiText.f,
-                                fontSize: 14,
-                                color: RidiColors.gray,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          '가입한 이메일을 적어주세요',
-                          style: TextStyle(
-                            fontFamily: RidiText.f,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: RidiColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '비밀번호를 다시 정할 수 있는 링크를 보내드려요',
-                          style: RidiText.sub,
-                        ),
-                        const SizedBox(height: 32),
-                        RidiInput(
-                          controller: _email,
-                          hint: '이메일',
-                          keyboard: TextInputType.emailAddress,
-                          autofocus: true,
-                          onSubmitted: (_) => _send(),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            _error!,
-                            style: RidiText.sub.copyWith(color: RidiColors.red),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-                        RidiButton(
-                          _busy ? '보내는 중…' : '재설정 메일 보내기',
-                          expand: true,
-                          onTap: _busy ? null : _send,
-                        ),
-                      ],
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(
+                    Icons.mark_email_read_outlined,
+                    size: 56,
+                    color: RidiColors.ink,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '메일을 보냈어요',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: RidiColors.ink,
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${_email.text.trim()} 로 보낸 링크를 열어 새 비밀번호를 정해주세요.\n메일이 안 오면 스팸함도 확인해주세요.',
+                    textAlign: TextAlign.center,
+                    style: RidiText.sub.copyWith(fontSize: 14),
+                  ),
+                  const SizedBox(height: 32),
+                  RidiButton(
+                    '로그인으로 돌아가기',
+                    expand: true,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => ridiToast(context, '메일을 다시 보냈어요'),
+                      child: const Text(
+                        '메일 다시 보내기',
+                        style: TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 14,
+                          color: RidiColors.gray,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+                  : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    '가입한 이메일을 적어주세요',
+                    style: TextStyle(
+                      fontFamily: RidiText.f,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: RidiColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '비밀번호를 다시 정할 수 있는 링크를 보내드려요',
+                    style: RidiText.sub,
+                  ),
+                  const SizedBox(height: 32),
+                  RidiInput(
+                    controller: _email,
+                    hint: '이메일',
+                    keyboard: TextInputType.emailAddress,
+                    autofocus: true,
+                    onSubmitted: (_) => _send(),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _error!,
+                      style: RidiText.sub.copyWith(color: RidiColors.red),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  RidiButton(
+                    _busy ? '보내는 중…' : '재설정 메일 보내기',
+                    expand: true,
+                    onTap: _busy ? null : _send,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

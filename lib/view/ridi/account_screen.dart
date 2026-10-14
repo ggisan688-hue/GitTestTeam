@@ -78,110 +78,98 @@ class AccountScreen extends StatelessWidget {
             iconColor: Colors.red,
             onTap: store.username.isEmpty
                 ? null
-                : () => _deleteAccount(context, store.username),
+                : () => _deleteAccount(context),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _deleteAccount(BuildContext context, String username) async {
-    final confirmation = TextEditingController();
+  Future<void> _deleteAccount(BuildContext context) async {
     final repository = UserProfileRepository(
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
     );
+    final deleted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DeleteAccountDialog(repository: repository),
+    );
+    if (deleted != true || !context.mounted) return;
+    await context.read<RidiStore>().logout();
+  }
+}
+
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog({required this.repository});
+  final UserProfileRepository repository;
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _password = TextEditingController();
+  bool _deleting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_deleting) return;
+    // Password whitespace is significant: never trim it before verification.
+    final password = _password.text;
+    if (password.isEmpty) {
+      setState(() => _error = '비밀번호를 입력해주세요.');
+      return;
+    }
+    setState(() { _deleting = true; _error = null; });
     try {
-      final deleted = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) {
-          var deleting = false;
-          String? error;
-          return StatefulBuilder(
-            builder: (dialogContext, setDialogState) => PopScope(
-              canPop: !deleting,
-              child: AlertDialog(
-                title: const Text('회원 탈퇴'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('탈퇴 후에는 되돌릴 수 없습니다. 계속하려면 아이디를 입력해주세요.'),
-                    TextField(
-                      controller: confirmation,
-                      enabled: !deleting,
-                      decoration: InputDecoration(labelText: username),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        error!,
-                        style: TextStyle(
-                          color: Theme.of(dialogContext).colorScheme.error,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: deleting
-                        ? null
-                        : () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('취소'),
-                  ),
-                  FilledButton(
-                    onPressed: deleting
-                        ? null
-                        : () async {
-                            final value = confirmation.text.trim();
-                            if (value.isEmpty) {
-                              setDialogState(() => error = '아이디를 입력해주세요.');
-                              return;
-                            }
-                            setDialogState(() {
-                              deleting = true;
-                              error = null;
-                            });
-                            try {
-                              await repository.delete(value);
-                              if (dialogContext.mounted) {
-                                Navigator.of(dialogContext).pop(true);
-                              }
-                            } on ApiException catch (exception) {
-                              if (dialogContext.mounted) {
-                                setDialogState(() {
-                                  deleting = false;
-                                  error = exception.message;
-                                });
-                              }
-                            } catch (_) {
-                              if (dialogContext.mounted) {
-                                setDialogState(() {
-                                  deleting = false;
-                                  error = '회원 탈퇴를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.';
-                                });
-                              }
-                            }
-                          },
-                    child: deleting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('탈퇴하기'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-      if (deleted != true || !context.mounted) return;
-      // RidiGate observes loggedIn. Its replacement of RidiShell removes every
-      // authenticated tab from the tree, so there is no protected route to pop back to.
-      await context.read<RidiStore>().logout();
-    } finally {
-      confirmation.dispose();
+      await widget.repository.delete(password);
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (exception) {
+      if (mounted) setState(() { _deleting = false; _error = exception.message; });
+    } catch (_) {
+      if (mounted) setState(() {
+        _deleting = false;
+        _error = '회원 탈퇴를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.';
+      });
     }
   }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_deleting,
+    child: AlertDialog(
+      title: const Text('회원 탈퇴'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('탈퇴 후에는 되돌릴 수 없습니다. 계속하려면 현재 비밀번호를 입력해주세요.'),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _password,
+          enabled: !_deleting,
+          obscureText: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(labelText: '비밀번호'),
+          onSubmitted: (_) => _submit(),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+      ]),
+      actions: [
+        TextButton(onPressed: _deleting ? null : () => Navigator.of(context).pop(false),
+            child: const Text('취소')),
+        FilledButton(
+          onPressed: _deleting ? null : _submit,
+          child: _deleting
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('탈퇴하기'),
+        ),
+      ],
+    ),
+  );
 }

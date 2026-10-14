@@ -65,6 +65,8 @@ interface UserProfileRepository extends JpaRepository<UserProfile, Long> {}
 record ProfileResponse(Long id, String username, String nickname, String bio,
                        String avatar, String profileImageUrl, Instant createdAt, Instant updatedAt) {}
 
+record AccountDeleteRequest(@NotBlank @Size(max = 72) String password) {}
+
 record ProfileUpdateRequest(@NotBlank @Size(max = 50) String nickname,
                             @Size(max = 300) String bio,
                             @Size(max = 16) String avatar) {}
@@ -131,6 +133,8 @@ interface NotificationSettingsRepository extends JpaRepository<NotificationSetti
 
 @org.springframework.stereotype.Service
 class UserFeatureService {
+  @org.springframework.beans.factory.annotation.Autowired
+  private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
   private final UserRepository users;
   private final UserProfileRepository profiles;
   private final AppNotificationRepository notifications;
@@ -201,10 +205,11 @@ class UserFeatureService {
     return profileFor(user);
   }
 
-  void deleteAccount(String username, String confirmation) {
+  @Transactional
+  void deleteAccount(String username, String password) {
     AppUser user = me(username);
-    if (!user.username.equals(confirmation)) {
-      throw new ApiException(HttpStatus.BAD_REQUEST, "ACCOUNT_DELETE_CONFIRMATION_REQUIRED", "Enter your username to confirm account deletion.");
+    if (password == null || !passwordEncoder.matches(password, user.passwordHash)) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ACCOUNT_DELETE_PASSWORD_MISMATCH", "비밀번호가 일치하지 않습니다.");
     }
     users.delete(user);
   }
@@ -400,9 +405,10 @@ class UserFeatureController {
   }
 
   @DeleteMapping
-  void deleteAccount(@RequestParam String confirmation,
+  @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
+  void deleteAccount(@Valid @RequestBody AccountDeleteRequest request,
                      org.springframework.security.core.Authentication authentication) {
-    service.deleteAccount(authentication.getName(), confirmation);
+    service.deleteAccount(authentication.getName(), request.password());
   }
 }
 
