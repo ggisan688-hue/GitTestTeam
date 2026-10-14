@@ -55,11 +55,11 @@ AiReadingController(
 
     @GetMapping("/ai-reading-friends/defaults")
     List<AiReadingFriendResponse> getDefaultFriends() {
-
-        return friendRepository
-                .findByIsDefaultTrue()
-                .stream()
-                .map(AiReadingFriendResponse::from)
+        return friendRepository.findByIsDefaultTrue().stream()
+                .map(friend -> AiReadingFriendResponse.from(
+                        friend,
+                        BuiltinAiFriendKey.wireValueFor(friend.id)
+                ))
                 .toList();
     }
 
@@ -382,6 +382,7 @@ record AiReadingFriendResponse(
         Long id,
         String name,
         boolean isDefault,
+        String builtinKey,
         String persona,
         String inputAge,
         String inputGender,
@@ -391,10 +392,15 @@ record AiReadingFriendResponse(
         String inputTraits
 ) {
     static AiReadingFriendResponse from(AiReadingFriend friend) {
+        return from(friend, null);
+    }
+
+    static AiReadingFriendResponse from(AiReadingFriend friend, String builtinKey) {
         return new AiReadingFriendResponse(
                 friend.id,
                 friend.name,
                 friend.isDefault,
+                builtinKey,
                 friend.persona,
                 friend.inputAge,
                 friend.inputGender,
@@ -403,6 +409,32 @@ record AiReadingFriendResponse(
                 friend.inputSpeechStyle,
                 friend.inputTraits
         );
+    }
+}
+
+/**
+ * Stable API keys for the three globally seeded friends. The IDs are the
+ * existing global-default records' primary keys; custom friends never receive
+ * one of these values.
+ */
+enum BuiltinAiFriendKey {
+    MORU(5L, "moru"),
+    POPO(1L, "popo"),
+    ONYOU(4L, "onyou");
+
+    final Long friendId;
+    final String wireValue;
+
+    BuiltinAiFriendKey(Long friendId, String wireValue) {
+        this.friendId = friendId;
+        this.wireValue = wireValue;
+    }
+
+    static String wireValueFor(Long friendId) {
+        for (var key : values()) {
+            if (key.friendId.equals(friendId)) return key.wireValue;
+        }
+        return null;
     }
 }
 

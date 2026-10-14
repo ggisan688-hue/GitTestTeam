@@ -2,5 +2,6 @@
 build/
 .env
 application-local.yml
+/.gradle-user-home/
 
 run-backend.ps1

@@ -6,6 +6,7 @@ class AiReadingFriend {
     required this.id,
     required this.name,
     required this.isDefault,
+    this.builtinKey,
     this.persona,
     this.inputAge,
     this.inputGender,
@@ -18,6 +19,7 @@ class AiReadingFriend {
   final int id;
   final String name;
   final bool isDefault;
+  final String? builtinKey;
   final String? persona;
 
   // 사용자가 직접 입력한 정보
@@ -33,6 +35,7 @@ class AiReadingFriend {
       id: (json['id'] as num).toInt(),
       name: json['name']?.toString() ?? '',
       isDefault: json['isDefault'] == true,
+      builtinKey: json['builtinKey']?.toString(),
       persona: json['persona'] as String?,
 
       // DB에 저장된 사용자 입력값
