@@ -18,9 +18,11 @@ class SharedRoomNote {
     this.mine = false,
     this.createdAt,
     this.version = 0,
+    this.explicitlyRevealed = false,
   });
   final int id, userId, paragraphOrder, commentCount;
   final int version;
+  final bool explicitlyRevealed;
   final String nickname, type;
   final String? profileImageUrl;
   final int? startOffset, endOffset;
@@ -30,6 +32,7 @@ class SharedRoomNote {
   final bool mine;
   final DateTime? createdAt;
   factory SharedRoomNote.fromJson(Map<String, dynamic> json) => SharedRoomNote(
+    explicitlyRevealed: json['explicitlyRevealed'] == true,
     version: (json['version'] as num?)?.toInt() ?? 0,
     id: (json['id'] as num).toInt(),
     userId: (json['userId'] as num).toInt(),

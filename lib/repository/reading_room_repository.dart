@@ -198,7 +198,7 @@ class ReadingRoomRepository {
   Future<SharedRoomNote> revealSharedNote(int roomId, int noteId) async =>
       (await _api.post<SharedRoomNote>(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/reveal',
-        parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
+        parse: (json) => SharedRoomNote.fromJson({...(json as Map<String, dynamic>), 'explicitlyRevealed': true}),
       )).data!;
 
   /// Event payloads contain metadata only. A caller must refetch shared notes
@@ -238,10 +238,11 @@ class ReadingRoomRepository {
 
   Future<List<SharedRoomNoteComment>> sharedNoteComments(
       int roomId,
-      int noteId,
+      int noteId, {bool revealed = false}
       ) async =>
       (await _api.get<List<SharedRoomNoteComment>>(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
+        query: {if (revealed) 'revealed': 'true'},
         parse: (json) => (json as List)
             .map(
               (e) => SharedRoomNoteComment.fromJson(e as Map<String, dynamic>),
@@ -253,9 +254,9 @@ class ReadingRoomRepository {
   Future<SharedRoomNoteComment> addSharedNoteComment(
       int roomId,
       int noteId,
-      String content,
+      String content, {bool revealed = false}
       ) async => (await _api.post<SharedRoomNoteComment>(
-    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
+    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments?revealed=$revealed',
     body: {'content': content.trim()},
     parse: (json) =>
         SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
@@ -265,17 +266,18 @@ class ReadingRoomRepository {
       int roomId,
       int noteId,
       int commentId,
-      String content,
+      String content, {bool revealed = false}
       ) async => (await _api.patch<SharedRoomNoteComment>(
-    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',
+    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId?revealed=$revealed',
     body: {'content': content.trim()},
     parse: (json) =>
         SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
   )).data!;
 
-  Future<void> deleteSharedNoteComment(int roomId, int noteId, int commentId) =>
+  Future<void> deleteSharedNoteComment(int roomId, int noteId, int commentId, {bool revealed = false}) =>
       _api.delete(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',
+        query: {if (revealed) 'revealed': 'true'},
       );
 
   Future<ReadingRoom> joinPublic(int roomId) async {

@@ -18,156 +18,209 @@ class ServerNotificationsScreen extends StatefulWidget {
       _ServerNotificationsScreenState();
 }
 
-final _notificationReadRevision = ValueNotifier<int>(0);
-final _notificationUnreadCounts = ValueNotifier<Map<String,int>>({});
-void _publishUnreadCount(String account, List<AppNotification> items) {
-  if (account.isEmpty) return;
-  _notificationUnreadCounts.value = {
-    ..._notificationUnreadCounts.value,
-    account: items.where((item) => !item.read).length,
-  };
+// The list and bottom-navigation dot render this same inbox instance.
+final _notificationInbox = _NotificationInbox();
+
+class _NotificationInbox extends ChangeNotifier {
+  String account = '';
+  String? _token;
+  List<AppNotification> items = const [];
+  Object? error;
+  bool loading = false;
+  bool saving = false;
+  int _session = 0;
+  int _request = 0;
+  int _revision = 0;
+  final Set<int> _pendingReadIds = {};
+  Future<void>? _activeWrite;
+
+  int get unreadCount => items.where((item) => !item.read).length;
+  NotificationRepository get repository => NotificationRepository(
+      ApiClient(tokenProvider: () => _token));
+
+  void bind(String username, String? token) {
+    final changed = username != account || token != _token;
+    if (!changed) return;
+    account = username;
+    _token = token;
+    _session++;
+    _request++;
+    _revision++;
+    items = const [];
+    error = null;
+    loading = false;
+    saving = false;
+    _pendingReadIds.clear();
+    _activeWrite = null;
+    notifyListeners();
+    if (account.isNotEmpty) unawaited(load());
+  }
+
+  Future<void> load() async {
+    if (account.isEmpty) return;
+    final session = _session;
+    final request = ++_request;
+    final revision = _revision;
+    final api = repository;
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      final loaded = await api.list();
+      if (session != _session || request != _request || revision != _revision) return;
+      items = loaded.map((n) => _pendingReadIds.contains(n.id) ? _asRead(n) : n).toList();
+    } catch (failure) {
+      if (session == _session && request == _request && revision == _revision) error = failure;
+    } finally {
+      if (session == _session && request == _request) {
+        loading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  static AppNotification _asRead(AppNotification n) => AppNotification(
+    id: n.id, type: n.type, title: n.title, body: n.body, read: true,
+    createdAt: n.createdAt, relatedRoomId: n.relatedRoomId,
+    relatedUserId: n.relatedUserId, relatedBookId: n.relatedBookId,
+    relatedNoteId: n.relatedNoteId,
+  );
+
+  Future<void> markRead(int id) => _write(id);
+  Future<void> markAllRead() => _write(null);
+
+  Future<void> _write(int? id) async {
+    final session = _session;
+    // Serialize writes so failure rollback cannot overwrite another read action.
+    if (_activeWrite != null) {
+      try { await _activeWrite; } catch (_) {}
+      if (session != _session) return;
+      return _write(id);
+    }
+    final before = <int,AppNotification>{
+      for (final n in items)
+        if (!n.read && (id == null || n.id == id)) n.id: n,
+    };
+    if (before.isEmpty) return;
+    final api = repository;
+    _revision++;
+    _pendingReadIds.addAll(before.keys);
+    items = items.map((n) => before.containsKey(n.id) ? _asRead(n) : n).toList();
+    saving = true;
+    notifyListeners(); // Blue dots and bottom red dot change in this frame.
+    final operation = id == null ? api.markAllRead() : api.markRead(id);
+    _activeWrite = operation;
+    try {
+      await operation;
+    } catch (_) {
+      if (session == _session) {
+        items = items.map((n) => before[n.id] ?? n).toList();
+      }
+      rethrow;
+    } finally {
+      if (session == _session) {
+        _revision++;
+        _pendingReadIds.removeAll(before.keys);
+        _activeWrite = null;
+        saving = false;
+        notifyListeners();
+      }
+    }
+  }
 }
 
 class UnreadNotificationBadge extends StatefulWidget {
   const UnreadNotificationBadge({super.key, required this.child});
   final Widget child;
-
   @override
-  State<UnreadNotificationBadge> createState() =>
-      _UnreadNotificationBadgeState();
+  State<UnreadNotificationBadge> createState() => _UnreadNotificationBadgeState();
 }
 
 class _UnreadNotificationBadgeState extends State<UnreadNotificationBadge>
     with WidgetsBindingObserver {
-  var _unread = 0;
   RidiStore? _store;
-  String _account = '';
   Timer? _timer;
-  bool _fetching = false;
-  bool _refreshPending = false;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _notificationReadRevision.addListener(_requestRefresh);
-    _notificationUnreadCounts.addListener(_countChanged);
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) _requestRefresh();
-    });
     Future.microtask(() {
       if (!mounted) return;
       _store = context.read<RidiStore>();
-      _store!.addListener(_sessionChanged);
-      _sessionChanged();
+      _store!.addListener(_bind);
+      _bind();
+    });
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+          !_notificationInbox.loading) unawaited(_notificationInbox.load());
     });
   }
-
-  void _countChanged() {
-    if (!mounted) return;
-    final count = _notificationUnreadCounts.value[_account] ?? 0;
-    if (_unread != count) setState(() => _unread = count);
-  }
-
-  void _sessionChanged() {
+  void _bind() {
     final store = _store;
-    final account = store != null && store.loggedIn ? store.username : '';
-    if (account != _account) {
-      _account = account;
-      if (mounted) setState(() => _unread = _notificationUnreadCounts.value[account] ?? 0);
-      _requestRefresh();
-    }
+    if (store == null) return;
+    _notificationInbox.bind(store.loggedIn ? store.username : '', store.accessToken);
   }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _requestRefresh();
+    if (state == AppLifecycleState.resumed) unawaited(_notificationInbox.load());
   }
-
-  void _requestRefresh() => unawaited(_refresh());
-
-  Future<void> _refresh() async {
-    if (!mounted || _account.isEmpty) return;
-    if (_fetching) { _refreshPending = true; return; }
-    _fetching = true;
-    final account = _account;
-    final revision = _notificationReadRevision.value;
-    final token = _store?.accessToken;
-    try {
-      final items = await NotificationRepository(ApiClient(tokenProvider: () => token)).list();
-      if (mounted && account == _account && revision == _notificationReadRevision.value) {
-        _publishUnreadCount(account, items);
-      }
-    } catch (_) {
-      // Keep the last known unread state during a temporary network failure.
-    } finally {
-      _fetching = false;
-      if (_refreshPending && mounted) {
-        _refreshPending = false;
-        _requestRefresh();
-      }
-    }
-  }
-
   @override
   void dispose() {
     _timer?.cancel();
-    _store?.removeListener(_sessionChanged);
-    _notificationReadRevision.removeListener(_requestRefresh);
-    _notificationUnreadCounts.removeListener(_countChanged);
+    _store?.removeListener(_bind);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-
   @override
-  Widget build(BuildContext context) => Stack(
-    clipBehavior: Clip.none,
-    children: [
-      widget.child,
-      if (_unread > 0)
-        Positioned(right: -4, top: -3,
-            child: Container(width: 9, height: 9,
-                decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1)))),
-    ],
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _notificationInbox,
+    builder: (_, __) => Stack(
+      clipBehavior: Clip.none,
+      children: [
+        widget.child,
+        if (_notificationInbox.unreadCount > 0)
+          Positioned(right: -4, top: -3,
+              child: Container(width: 9, height: 9,
+                  decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1)))),
+      ],
+    ),
   );
 }
 
 class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
   late final NotificationRepository _repository;
-  late Future<List<AppNotification>> _notifications;
   @override
   void initState() {
     super.initState();
     _repository = NotificationRepository(
-      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
-    );
-    _notifications = _loadNotifications();
+        ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken));
+    Future.microtask(() {
+      if (!mounted) return;
+      final store = context.read<RidiStore>();
+      _notificationInbox.bind(store.loggedIn ? store.username : '', store.accessToken);
+      if (!_notificationInbox.loading) unawaited(_notificationInbox.load());
+    });
   }
 
-  Future<List<AppNotification>> _loadNotifications() async {
-    final store = context.read<RidiStore>();
-    final account = store.username;
-    final items = await _repository.list();
-    if (mounted && store.loggedIn && store.username == account) _publishUnreadCount(account, items);
-    return items;
-  }
-
-  void _reload() {
-    if (mounted) setState(() => _notifications = _loadNotifications());
-  }
+  void _reload() => unawaited(_notificationInbox.load());
   int? _openingNotificationId;
 
   Future<void> _markReadQuietly(AppNotification notification) async {
-    if (notification.read) return;
     try {
-      await _repository.markRead(notification.id);
-      _notificationReadRevision.value++;
-      if (mounted) _reload();
+      await _notificationInbox.markRead(notification.id);
     } catch (error) {
-      debugPrint('[Notification navigation] read failed: ${error.runtimeType}');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          error is ApiException ? '읽음 처리 실패: ${error.message}' : '읽음 처리 중 오류가 발생했습니다.')));
+          error is ApiException ? '읽음 처리 실패: ${error.message}' : '읽음 처리를 저장하지 못했습니다.')));
+    }
+  }
+
+  Future<void> _markAllRead() async {
+    try {
+      await _notificationInbox.markAllRead();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          error is ApiException ? '모두 읽음 저장 실패: ${error.message}' : '모두 읽음을 저장하지 못해 이전 상태로 되돌렸습니다.')));
     }
   }
 
@@ -243,15 +296,7 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
       title: const Text('알림'),
       actions: [
         TextButton(
-          onPressed: () async {
-            try {
-              await _repository.markAllRead();
-              _notificationReadRevision.value++;
-              _reload();
-            } on ApiException catch (error) {
-              _error(error);
-            }
-          },
+          onPressed: _markAllRead,
           child: const Text('모두 읽음'),
         ),
         IconButton(
@@ -265,19 +310,19 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
         ),
       ],
     ),
-    body: FutureBuilder<List<AppNotification>>(
-      future: _notifications,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done)
+    body: AnimatedBuilder(
+      animation: _notificationInbox,
+      builder: (context, _) {
+        if (_notificationInbox.items.isEmpty && _notificationInbox.loading)
           return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError)
+        if (_notificationInbox.items.isEmpty && _notificationInbox.error != null)
           return Center(
             child: OutlinedButton(
               onPressed: _reload,
               child: const Text('다시 시도'),
             ),
           );
-        final items = snapshot.data ?? const [];
+        final items = _notificationInbox.items;
         if (items.isEmpty)
           return const Center(
             child: Column(
@@ -290,7 +335,7 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
             ),
           );
         return RefreshIndicator(
-          onRefresh: () async => _reload(),
+          onRefresh: _notificationInbox.load,
           child: ListView.separated(
             itemCount: items.length,
             separatorBuilder: (_, _) => const Divider(height: 1),

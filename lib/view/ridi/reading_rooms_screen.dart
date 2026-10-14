@@ -3977,6 +3977,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
     _comments = widget.repository.sharedNoteComments(
       widget.roomId,
       _note.id,
+      revealed: _note.explicitlyRevealed,
     );
   }
 
@@ -3990,6 +3991,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
         () => _comments = widget.repository.sharedNoteComments(
       widget.roomId,
       _note.id,
+      revealed: _note.explicitlyRevealed,
     ),
   );
   Future<void> _send() async {
@@ -4005,6 +4007,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
         widget.roomId,
         _note.id,
         text,
+        revealed: _note.explicitlyRevealed,
       );
       if (!mounted) return;
       _text.clear();
@@ -4081,7 +4084,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
                 if (text.isEmpty) { update(() => error = '댓글 내용을 입력해 주세요.'); return; }
                 update(() { saving = true; error = null; });
                 try {
-                  await widget.repository.updateSharedNoteComment(widget.roomId, _note.id, comment.id, text);
+                  await widget.repository.updateSharedNoteComment(widget.roomId, _note.id, comment.id, text, revealed: _note.explicitlyRevealed);
                   if (mounted) _reload();
                   if (dc.mounted) Navigator.pop(dc);
                 } catch(e) {
@@ -4274,6 +4277,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
         widget.roomId,
         _note.id,
         commentId,
+        revealed: _note.explicitlyRevealed,
       );
       if (mounted) _reload();
     } on ApiException catch (e) {

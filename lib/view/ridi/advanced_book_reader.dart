@@ -6386,8 +6386,7 @@ class _MemoTabState extends State<_MemoTab> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
-                    onPressed: m.locked || (widget.suppliedSharedNotes?.any((n) => n.id == m.shared!.id && n.isSpoilerLocked) ?? false)
-                        ? null : () => _openComments(m.shared!),
+                    onPressed: m.locked ? null : () => _openComments(m.shared!),
                     icon: const Icon(Icons.chat_bubble_outline, size: 14, color: gray),
                     label: Text(
                       (m.comments ?? 0) > 0 ? '댓글 ${m.comments}' : '댓글 쓰기',

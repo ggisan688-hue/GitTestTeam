@@ -470,100 +470,63 @@ class _FriendsScreenState extends State<FriendsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        friend.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: true,
-                        style: const TextStyle(
-                          fontFamily: RidiText.f,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: RidiColors.ink,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Tooltip(
-                      message: '형광펜 색상 변경',
-                      child: InkWell(
-                        onTap: friend.id == null
-                            ? null
-                            : () => _chooseFriendColor(friend.id!),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: _highlightColors[_friendColors[friend.id] ?? '#FFF59D'],
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.black26),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // 기본 AI 친구는 수정 및 삭제 불가
-                    // 사용자가 생성한 AI 친구만 수정 및 삭제 가능
-
-                    if (friend.isDefault && friend.id == null)
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Semantics(
-                        container: true,
-                        label: 'AI 친구 프로필 작업',
+                SizedBox(
+                  width: double.infinity,
+                  child: Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(right: friend.isDefault ? 0 : 290),
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                            children: [
-                      // 상세 보기
-                      OutlinedButton(
-                        onPressed: friend.id == null
-                            ? null
-                            : () {
-                          showDialog<void>(
-                            context: context,
-                            builder: (dialogContext) => PersonaDetailDialog(
-                              persona: friend.persona,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                friend.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: true,
+                                style: const TextStyle(
+                                  fontFamily: RidiText.f,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                  color: RidiColors.ink,
+                                ),
+                              ),
                             ),
-                          );
-                        },
-                        child: const Text('상세 보기'),
-                      ),
+                            const SizedBox(width: 8),
+                            Tooltip(
+                              message: '형광펜 색상 변경',
+                              child: InkWell(
+                                onTap: friend.id == null
+                                    ? null
+                                    : () => _chooseFriendColor(friend.id!),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      color: _highlightColors[_friendColors[friend.id] ?? '#FFF59D'],
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.black26),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
 
-                      const SizedBox(width: 8),
 
-// 수정
-                      OutlinedButton(
-                        onPressed: friend.id == null
-                            ? null
-                            : () => _editFriend(friend),
-                        child: const Text('수정'),
-                      ),
-
-                      const SizedBox(width: 8),
-
-// 삭제
-                      OutlinedButton(
-                        onPressed: friend.id == null
-                            ? null
-                            : () => _deleteFriend(friend),
-                        child: const Text('삭제'),
-                      ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
-                    ),
-
-
-                  ],
+                      if (!friend.isDefault)
+                        Positioned(
+                          right: 0,
+                          child: _profileActions(friend),
+                        ),
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 14),
@@ -615,44 +578,40 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ],
             ),
           ),
-          if (!friend.isDefault) ...[
-            const SizedBox(width: 24),
-            _profileActions(friend),
-          ],
         ],
       ),
     );
   }
 
   Widget _profileActions(_AiFriend friend) => Semantics(
-        container: true,
-        label: 'AI 친구 프로필 작업',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            OutlinedButton(
-              onPressed: friend.id == null
-                  ? null
-                  : () => showDialog<void>(
-                        context: context,
-                        builder: (_) => PersonaDetailDialog(persona: friend.persona),
-                      ),
-              child: const Text('상세 보기'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: friend.id == null ? null : () => _editFriend(friend),
-              child: const Text('수정'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed:
-                  friend.id == null ? null : () => _deleteFriend(friend),
-              child: const Text('삭제'),
-            ),
-          ],
+    container: true,
+    label: 'AI 친구 프로필 작업',
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton(
+          onPressed: friend.id == null
+              ? null
+              : () => showDialog<void>(
+            context: context,
+            builder: (_) => PersonaDetailDialog(persona: friend.persona),
+          ),
+          child: const Text('상세 보기'),
         ),
-      );
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: friend.id == null ? null : () => _editFriend(friend),
+          child: const Text('수정'),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed:
+          friend.id == null ? null : () => _deleteFriend(friend),
+          child: const Text('삭제'),
+        ),
+      ],
+    ),
+  );
 
   Widget _profileAvatar(_AiFriend friend) {
     final imagePath = friend.isDefault
@@ -665,29 +624,29 @@ class _FriendsScreenState extends State<FriendsScreen> {
       child: imagePath == null
           ? _profileAvatarFallback(friend)
           : ClipOval(
-              child: Image.asset(
-                imagePath,
-                width: 108,
-                height: 108,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _profileAvatarFallback(friend),
-              ),
-            ),
+        child: Image.asset(
+          imagePath,
+          width: 108,
+          height: 108,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _profileAvatarFallback(friend),
+        ),
+      ),
     );
   }
 
   Widget _profileAvatarFallback(_AiFriend friend) => Text(
-        friend.name.characters.take(2).toString(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontFamily: RidiText.f,
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
-          color: RidiColors.ink,
-        ),
-      );
+    friend.name.characters.take(2).toString(),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    textAlign: TextAlign.center,
+    style: const TextStyle(
+      fontFamily: RidiText.f,
+      fontSize: 32,
+      fontWeight: FontWeight.w700,
+      color: RidiColors.ink,
+    ),
+  );
 
   Future<void> _deleteFriend(_AiFriend friend) async {
     final confirmed = await showDialog<bool>(
@@ -1042,27 +1001,27 @@ class _FriendCard extends StatelessWidget {
               radius: 25,
               backgroundColor: RidiColors.panel,
               child: friend.isDefault &&
-                      _builtinAiFriendImagePaths.containsKey(friend.builtinKey)
+                  _builtinAiFriendImagePaths.containsKey(friend.builtinKey)
                   ? ClipOval(
-                      child: Image.asset(
-                        _builtinAiFriendImagePaths[friend.builtinKey]!,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Text(
-                          friend.name.characters.take(2).toString(),
-                          style: RidiText.heading,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
+                child: Image.asset(
+                  _builtinAiFriendImagePaths[friend.builtinKey]!,
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Text(
+                    friend.name.characters.take(2).toString(),
+                    style: RidiText.heading,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
                   : Text(
-                      friend.name.characters.take(2).toString(),
-                      style: RidiText.heading,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                friend.name.characters.take(2).toString(),
+                style: RidiText.heading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
 
             const SizedBox(height: 10),
