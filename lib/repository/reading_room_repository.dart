@@ -119,10 +119,10 @@ class ReadingRoomRepository {
   }
 
   Future<ReadingRoomJoinResult> join(
-    String code, {
-    String? password,
-    String? roomNickname,
-  }) async {
+      String code, {
+        String? password,
+        String? roomNickname,
+      }) async {
     final inviteCode = normalizeInviteCode(code);
 
     try {
@@ -175,7 +175,7 @@ class ReadingRoomRepository {
             .map((item) => ReadingRoom.fromJson(item as Map<String, dynamic>))
             .toList(),
       )).data ??
-      const [];
+          const [];
 
   Future<List<SharedRoomNote>> sharedNotes(int roomId, {int? bookId}) async =>
       (await _api.get<List<SharedRoomNote>>(
@@ -185,7 +185,7 @@ class ReadingRoomRepository {
             .map((e) => SharedRoomNote.fromJson(e as Map<String, dynamic>))
             .toList(),
       )).data ??
-      const [];
+          const [];
 
   Future<SharedRoomNote> revealSharedNote(int roomId, int noteId) async =>
       (await _api.post<SharedRoomNote>(
@@ -204,12 +204,12 @@ class ReadingRoomRepository {
             .map((id) => id.toInt())
             .toList(),
       )).data ??
-      const [];
+          const [];
 
   Future<SharedRoomNote> createSharedNote(
-    int roomId,
-    Map<String, dynamic> body,
-  ) async => (await _api.post<SharedRoomNote>(
+      int roomId,
+      Map<String, dynamic> body,
+      ) async => (await _api.post<SharedRoomNote>(
     '/api/reading-rooms/$roomId/shared-notes',
     body: body,
     parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
@@ -219,35 +219,47 @@ class ReadingRoomRepository {
       _api.delete('/api/reading-rooms/$roomId/shared-notes/$noteId');
 
   Future<SharedRoomNote> updateSharedNote(
-    int roomId,
-    int noteId,
-    Map<String, dynamic> body,
-  ) async => (await _api.patch<SharedRoomNote>(
+      int roomId,
+      int noteId,
+      Map<String, dynamic> body,
+      ) async => (await _api.patch<SharedRoomNote>(
     '/api/reading-rooms/$roomId/shared-notes/$noteId',
     body: body,
     parse: (json) => SharedRoomNote.fromJson(json as Map<String, dynamic>),
   )).data!;
 
   Future<List<SharedRoomNoteComment>> sharedNoteComments(
-    int roomId,
-    int noteId,
-  ) async =>
+      int roomId,
+      int noteId,
+      ) async =>
       (await _api.get<List<SharedRoomNoteComment>>(
         '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
         parse: (json) => (json as List)
             .map(
               (e) => SharedRoomNoteComment.fromJson(e as Map<String, dynamic>),
-            )
+        )
             .toList(),
       )).data ??
-      const [];
+          const [];
 
   Future<SharedRoomNoteComment> addSharedNoteComment(
-    int roomId,
-    int noteId,
-    String content,
-  ) async => (await _api.post<SharedRoomNoteComment>(
+      int roomId,
+      int noteId,
+      String content,
+      ) async => (await _api.post<SharedRoomNoteComment>(
     '/api/reading-rooms/$roomId/shared-notes/$noteId/comments',
+    body: {'content': content.trim()},
+    parse: (json) =>
+        SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
+  Future<SharedRoomNoteComment> updateSharedNoteComment(
+      int roomId,
+      int noteId,
+      int commentId,
+      String content,
+      ) async => (await _api.patch<SharedRoomNoteComment>(
+    '/api/reading-rooms/$roomId/shared-notes/$noteId/comments/$commentId',
     body: {'content': content.trim()},
     parse: (json) =>
         SharedRoomNoteComment.fromJson(json as Map<String, dynamic>),
@@ -304,20 +316,20 @@ class ReadingRoomRepository {
   }
 
   Future<List<RoomParticipantProgress>> participantProgress(
-    int roomId,
-    int bookId,
-  ) async =>
+      int roomId,
+      int bookId,
+      ) async =>
       (await _api.get<List<RoomParticipantProgress>>(
         '/api/reading-rooms/$roomId/books/$bookId/progress/participants',
         parse: (json) => (json as List)
             .map(
               (value) => RoomParticipantProgress.fromJson(
-                Map<String, dynamic>.from(value as Map),
-              ),
-            )
+            Map<String, dynamic>.from(value as Map),
+          ),
+        )
             .toList(),
       )).data ??
-      const [];
+          const [];
 
   Future<RoomReadingProgress> myProgress(int roomId, int bookId) async =>
       (await _api.get<RoomReadingProgress>(
@@ -327,11 +339,11 @@ class ReadingRoomRepository {
       )).data!;
 
   Future<void> saveProgress(
-    int roomId,
-    int bookId, {
-    required int progressPercent,
-    required int lastReadPosition,
-  }) async {
+      int roomId,
+      int bookId, {
+        required int progressPercent,
+        required int lastReadPosition,
+      }) async {
     await _api.post<Object>(
       '/api/reading-rooms/$roomId/books/$bookId/progress',
       body: {
@@ -347,11 +359,11 @@ class ReadingRoomRepository {
   Future<void> delete(int roomId) => _api.delete('/api/reading-rooms/$roomId');
 
   Future<ReadingRoom> uploadMyRoomProfileImage(
-    int roomId, {
-    required Uint8List bytes,
-    required String filename,
-    required String contentType,
-  }) async => (await _api.uploadFile<ReadingRoom>(
+      int roomId, {
+        required Uint8List bytes,
+        required String filename,
+        required String contentType,
+      }) async => (await _api.uploadFile<ReadingRoom>(
     '/api/reading-rooms/$roomId/members/me/profile-image',
     method: 'PUT',
     fieldName: 'profileImage',
@@ -368,11 +380,11 @@ class ReadingRoomRepository {
       )).data!;
 
   Future<ReadingRoom> uploadCoverImage(
-    int roomId, {
-    required Uint8List bytes,
-    required String filename,
-    required String contentType,
-  }) async => (await _api.uploadFile<ReadingRoom>(
+      int roomId, {
+        required Uint8List bytes,
+        required String filename,
+        required String contentType,
+      }) async => (await _api.uploadFile<ReadingRoom>(
     '/api/reading-rooms/$roomId/cover-image',
     method: 'PUT',
     fieldName: 'coverImage',
@@ -386,9 +398,9 @@ class ReadingRoomRepository {
       _api.delete('/api/reading-rooms/$roomId/cover-image');
 
   Future<ReadingRoom> updateMyRoomNickname(
-    int roomId,
-    String roomNickname,
-  ) async => (await _api.patch<ReadingRoom>(
+      int roomId,
+      String roomNickname,
+      ) async => (await _api.patch<ReadingRoom>(
     '/api/reading-rooms/$roomId/members/me',
     body: {'roomNickname': roomNickname.trim()},
     parse: (json) => ReadingRoom.fromJson(json as Map<String, dynamic>),

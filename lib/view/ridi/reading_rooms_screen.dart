@@ -3907,10 +3907,14 @@ class _SharedNoteComments extends StatefulWidget {
     required this.repository,
     required this.roomId,
     required this.note,
+    this.embedded = false,
+    this.onClose,
   });
   final ReadingRoomRepository repository;
   final int roomId;
   final SharedRoomNote note;
+  final bool embedded;
+  final VoidCallback? onClose;
   @override
   State<_SharedNoteComments> createState() => _SharedNoteCommentsState();
 }
@@ -3919,12 +3923,14 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
   final _text = TextEditingController();
   late Future<List<SharedRoomNoteComment>> _comments;
   bool _sending = false;
+  late SharedRoomNote _note;
   @override
   void initState() {
     super.initState();
+    _note = widget.note;
     _comments = widget.repository.sharedNoteComments(
       widget.roomId,
-      widget.note.id,
+      _note.id,
     );
   }
 
@@ -3937,7 +3943,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
   void _reload() => setState(
         () => _comments = widget.repository.sharedNoteComments(
       widget.roomId,
-      widget.note.id,
+      _note.id,
     ),
   );
   Future<void> _send() async {
@@ -3951,7 +3957,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
     try {
       await widget.repository.addSharedNoteComment(
         widget.roomId,
-        widget.note.id,
+        _note.id,
         text,
       );
       if (!mounted) return;
@@ -3966,88 +3972,261 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
     }
   }
 
+  Future<void> _parentNoteAction(String action) async {
+    if (!_note.mine) return;
+    if (action == 'delete') {
+      final ok = await _confirm(context, '메모 삭제', '이 메모를 삭제하시겠습니까?');
+      if (!ok || !mounted) return;
+      try {
+        await widget.repository.deleteSharedNote(widget.roomId, _note.id);
+        if (!mounted) return;
+        if (widget.onClose != null) widget.onClose!();
+        else Navigator.pop(context);
+      } on ApiException catch(e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_sharedNoteMessage(e))));
+      }
+      return;
+    }
+    final editor = TextEditingController(text: _note.content ?? '');
+    bool saving = false;
+    String? error;
+    try {
+      await showDialog<void>(context: context, barrierDismissible: false, barrierColor: Colors.transparent,
+          builder: (dc) => StatefulBuilder(builder: (_,update) => AlertDialog(
+            title: const Text('메모 수정'),
+            content: SizedBox(width: 400,child: TextField(controller: editor,enabled: !saving,
+                minLines: 4,maxLines: 8,maxLength: 4000,
+                decoration: InputDecoration(errorText: error,border: const OutlineInputBorder()))),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dc),child: const Text('취소')),
+              FilledButton(onPressed: saving ? null : () async {
+                final text = editor.text.trim();
+                if (text.isEmpty) { update(() => error = '메모 내용을 입력해 주세요.'); return; }
+                update(() { saving = true; error = null; });
+                try {
+                  final note = await widget.repository.updateSharedNote(widget.roomId,_note.id,{'content':text});
+                  if (mounted) setState(() => _note = note);
+                  if (dc.mounted) Navigator.pop(dc);
+                } catch(e) {
+                  if (dc.mounted) update(() { saving = false; error = '메모 저장 실패: $e'; });
+                }
+              },child: Text(saving ? '저장 중' : '저장')),
+            ],
+          )));
+    } finally { editor.dispose(); }
+  }
+
+  Future<void> _editComment(SharedRoomNoteComment comment) async {
+    if (!comment.mine) return;
+    final editor = TextEditingController(text: comment.content);
+    bool saving = false;
+    String? error;
+    try {
+      await showDialog<void>(context: context, barrierDismissible: false, barrierColor: Colors.transparent,
+          builder: (dc) => StatefulBuilder(builder: (_,update) => AlertDialog(
+            title: const Text('댓글 수정'),
+            content: SizedBox(width: 400,child: TextField(controller: editor,enabled: !saving,
+                minLines: 4,maxLines: 8,maxLength: 1000,
+                decoration: InputDecoration(errorText: error,border: const OutlineInputBorder()))),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dc),child: const Text('취소')),
+              FilledButton(onPressed: saving ? null : () async {
+                final text = editor.text.trim();
+                if (text.isEmpty) { update(() => error = '댓글 내용을 입력해 주세요.'); return; }
+                update(() { saving = true; error = null; });
+                try {
+                  await widget.repository.updateSharedNoteComment(widget.roomId, _note.id, comment.id, text);
+                  if (mounted) _reload();
+                  if (dc.mounted) Navigator.pop(dc);
+                } catch(e) {
+                  if (dc.mounted) update(() { saving = false; error = '댓글 저장 실패: $e'; });
+                }
+              },child: Text(saving ? '저장 중' : '저장')),
+            ],
+          )));
+    } finally { editor.dispose(); }
+  }
+
+  String _timeAgo(DateTime? value) {
+    if (value == null) return '';
+    final elapsed = DateTime.now().difference(value);
+    if (elapsed.inMinutes < 1) return '방금 전';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
+    if (elapsed.inDays < 1) return '${elapsed.inHours}시간 전';
+    return '${elapsed.inDays}일 전';
+  }
+
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: SizedBox(
-      height: MediaQuery.sizeOf(context).height * .7,
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(widget.note.nickname),
-            subtitle: Text(
-              widget.note.content ?? widget.note.selectedText ?? '',
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: FutureBuilder<List<SharedRoomNoteComment>>(
-              future: _comments,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done)
-                  return const Center(child: CircularProgressIndicator());
-                if (snapshot.hasError)
-                  return const Center(child: Text('댓글을 불러오지 못했습니다.'));
-                return ListView(
-                  children: [
-                    for (final comment
-                    in snapshot.data ?? const <SharedRoomNoteComment>[])
-                      ListTile(
-                        title: Text(comment.nickname),
-                        subtitle: Text(comment.content),
-                        trailing: comment.mine
-                            ? IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _delete(comment.id),
-                        )
-                            : null,
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.only(
-              left: 12,
-              right: 12,
-              bottom: MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _text,
-                    maxLength: 1000,
-                    decoration: const InputDecoration(
-                      hintText: '댓글을 입력하세요',
-                      counterText: '',
-                    ),
-                    onSubmitted: (_) => _sending ? null : _send(),
+  Widget build(BuildContext context) => SizedBox(
+    width: 500,
+    height: widget.embedded ? double.infinity
+        : (MediaQuery.sizeOf(context).height * .62).clamp(260.0, 560.0),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(height: 52, child: Stack(alignment: Alignment.center, children: [
+        const Text('댓글', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        Positioned(right: 8, child: TextButton(
+          onPressed: widget.onClose ?? () => Navigator.pop(context),
+          child: const Text('닫기', style: TextStyle(color: Colors.grey)),
+        )),
+      ])),
+      const Divider(height: 1, color: Color(0xFFEDEDED)),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 130),
+          child: SingleChildScrollView(child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,children: [
+            CircleAvatar(radius: 17,backgroundColor: const Color(0xFFEFF1F5),
+                child: Text(_note.nickname.isEmpty ? '?' : _note.nickname.characters.first,
+                    style: const TextStyle(fontSize: 13,color: Color(0xFF555555)))),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,children: [
+              Wrap(spacing: 8,crossAxisAlignment: WrapCrossAlignment.center,children: [
+
+                if (_note.mine)
+                  Container(
+                    width: 22, height: 22, alignment: Alignment.center,
+                    decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
+                    child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
-                ),
-                IconButton(
-                  onPressed: _sending ? null : _send,
-                  icon: _sending
-                      ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                      : const Icon(Icons.send),
-                ),
+                Text(_note.nickname,style: const TextStyle(fontSize: 13,fontWeight: FontWeight.w700)),
+                Text(_timeAgo(_note.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
+              ]),
+              if (_note.selectedText?.isNotEmpty == true) ...[
+                const SizedBox(height: 6),
+                Container(padding: const EdgeInsets.only(left: 8),
+                    decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFDDDDDD),width: 2))),
+                    child: Text('“${_note.selectedText}”',style: const TextStyle(fontSize: 12,color: Color(0xFF888888),height: 1.4))),
               ],
-            ),
-          ),
-        ],
+              const SizedBox(height: 6),
+              Text(_note.content ?? '',style: const TextStyle(fontSize: 14,height: 1.5)),
+            ])),
+            if (_note.mine) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
+              tooltip: '메모 메뉴',padding: EdgeInsets.zero,
+              icon: const Icon(Icons.more_horiz,size: 20,color: Colors.grey),
+              onSelected: _parentNoteAction,
+              itemBuilder: (_) => const [
+                PopupMenuItem(value:'edit',child: Text('수정')),
+                PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
+              ],
+            )),
+          ],
+          )),
+        ),
       ),
-    ),
+      Expanded(child: FutureBuilder<List<SharedRoomNoteComment>>(
+        future: _comments,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done)
+            return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: TextButton(
+              onPressed: _reload, child: const Text('댓글을 불러오지 못했습니다. 다시 시도')));
+          final comments = snapshot.data ?? const <SharedRoomNoteComment>[];
+          if (comments.isEmpty) return const Center(child: Text('첫 댓글을 남겨보세요.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF999999))));
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(33, 0, 16, 12),
+            itemCount: comments.length,
+            separatorBuilder: (_,__) => const SizedBox.shrink(),
+            itemBuilder: (_,i) {
+              final comment = comments[i];
+              return Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 0, 10),
+                decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFE0E0E0)))),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  CircleAvatar(radius: 14, backgroundColor: const Color(0xFFEFF1F5),
+                      child: Text(comment.nickname.isEmpty ? '?' : comment.nickname.characters.first,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF555555)))),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Wrap(spacing: 6,crossAxisAlignment: WrapCrossAlignment.center,children: [
+
+                      if (comment.mine) ...[
+                        Container(
+                          width: 22, height: 22, alignment: Alignment.center,
+                          decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
+                          child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                      Text(comment.nickname, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      Text(_timeAgo(comment.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
+                    ]),
+                    const SizedBox(height: 5),
+                    Text(comment.content, style: const TextStyle(fontSize: 14,height: 1.4)),
+                  ])),
+                  if (comment.mine) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
+                    tooltip: '댓글 메뉴',padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.more_horiz,size:20,color: Colors.grey),
+                    onSelected: (action) {
+                      if (action == 'edit') _editComment(comment);
+                      else if (action == 'delete') _delete(comment.id);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value:'edit',child: Text('수정')),
+                      PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
+                    ],
+                  )),
+                ]),
+              );
+            },
+          );
+        },
+      )),
+      const Divider(height: 1,color: Color(0xFFEDEDED)),
+      Padding(padding: const EdgeInsets.fromLTRB(12,10,12,12),child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,children: [
+        Expanded(child: TextField(
+          controller: _text, enabled: !_sending, minLines: 1,maxLines: 3,maxLength: 1000,
+          decoration: InputDecoration(
+            hintText: '댓글을 입력하세요', counterText: '', isDense: true,
+            filled: true,fillColor: const Color(0xFFF5F5F5),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12,vertical: 12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),borderSide: BorderSide.none),
+          ),
+        )),
+        const SizedBox(width: 8),
+        SizedBox(width: 42,height:42,child: IconButton.filled(
+          tooltip: '댓글 등록',onPressed: _sending ? null : _send,
+          icon: _sending ? const SizedBox(width:18,height:18,child: CircularProgressIndicator(strokeWidth:2))
+              : const Icon(Icons.arrow_upward,size:22),
+        )),
+      ],
+      )),
+    ]),
   );
 
   Future<void> _delete(int commentId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFE7E9EF),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('댓글 삭제'),
+        content: const Text('삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFF2196F3)),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF2196F3),
+              foregroundColor: Colors.white,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     try {
       await widget.repository.deleteSharedNoteComment(
         widget.roomId,
-        widget.note.id,
+        _note.id,
         commentId,
       );
       if (mounted) _reload();
@@ -4139,11 +4318,16 @@ Future<void> showSharedNoteComments(
     ReadingRoomRepository repository,
     int roomId,
     SharedRoomNote note,
-    ) => showModalBottomSheet<void>(
+    ) => showDialog<void>(
   context: context,
-  isScrollControlled: true,
-  builder: (_) =>
-      _SharedNoteComments(repository: repository, roomId: roomId, note: note),
+  barrierColor: Colors.transparent,
+  builder: (_) => Dialog(
+    backgroundColor: Colors.white,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    clipBehavior: Clip.antiAlias,
+    child: _SharedNoteComments(repository: repository, roomId: roomId, note: note),
+  ),
 );
 
 /// 내 독서방 목록을 못 불러왔을 때 격자 위에 뜨는 작은 안내 (점선 [+] 칸은 그대로 보임)
@@ -4259,3 +4443,14 @@ class _JoinRoomProfileScreenState extends State<_JoinRoomProfileScreen> {
     ]),
   );
 }
+
+/// Embedded comments view for the reader's existing notes window.
+Widget buildSharedNoteCommentsPanel({
+  required ReadingRoomRepository repository,
+  required int roomId,
+  required SharedRoomNote note,
+  required VoidCallback onClose,
+}) => _SharedNoteComments(
+  repository: repository, roomId: roomId, note: note,
+  embedded: true, onClose: onClose,
+);

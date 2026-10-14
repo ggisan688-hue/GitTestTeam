@@ -133,7 +133,32 @@ class ReadingRoomNoteService {
     return response(room,current,note);
   }
   @org.springframework.transaction.annotation.Transactional void delete(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoomNote n=note(roomId,noteId);if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_DELETE_FORBIDDEN","작성자만 공유 메모를 삭제할 수 있습니다.");notes.delete(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.deleted":"shared_note.deleted",noteId);}
-  @org.springframework.transaction.annotation.Transactional RoomNoteResponse update(String username,Long roomId,Long noteId,RoomNoteUpdateRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_EDIT_FORBIDDEN","작성자만 공유 메모를 수정할 수 있습니다.");if(request.content()!=null){if(!"MEMO".equals(n.type)||request.content().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 확인해 주세요.");n.content=request.content().trim();}if(request.highlightColor()!=null){if(!"HIGHLIGHT".equals(n.type)||request.highlightColor().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","하이라이트 색상을 확인해 주세요.");n.highlightColor=HighlightColorSupport.normalize(request.highlightColor());}if(request.content()==null&&request.highlightColor()==null)throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","수정할 내용을 입력해 주세요.");n=notes.save(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.updated":"shared_note.updated",n.id);return response(room,current,n);}
+  @org.springframework.transaction.annotation.Transactional
+  RoomNoteResponse update(String username,Long roomId,Long noteId,RoomNoteUpdateRequest request){
+    AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);
+    if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_UPDATE_FORBIDDEN","작성자만 수정할 수 있습니다.");
+    if(request.content()!=null){
+      if(!"MEMO".equals(n.type)||request.content().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 확인해 주세요.");
+      n.content=request.content().trim();
+    }
+    if(request.highlightColor()!=null){
+      if(!"HIGHLIGHT".equals(n.type)&&!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","하이라이트 색상을 확인해 주세요.");
+      n.highlightColor=HighlightColorSupport.normalize(request.highlightColor());
+      if("MEMO".equals(n.type)){
+        var ranges=NoteRangeSupport.decode(n.selectionRanges);
+        for(var h:notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,n.bookId)){
+          if(!h.userId.equals(current.id)||!"HIGHLIGHT".equals(h.type)||h.startOffset==null||h.endOffset==null)continue;
+          boolean covered=ranges.isEmpty()
+            ? h.paragraphOrder==n.paragraphOrder && n.startOffset!=null && n.endOffset!=null && n.startOffset<=h.startOffset && n.endOffset>=h.endOffset
+            : ranges.stream().anyMatch(r->r.paragraphOrder()==h.paragraphOrder && r.startOffset()<=h.startOffset && r.endOffset()>=h.endOffset);
+          if(covered){h.highlightColor=n.highlightColor;notes.save(h);sync.publish(roomId,n.bookId,"shared_highlight.updated",h.id);}
+        }
+      }
+    }
+    if(request.content()==null&&request.highlightColor()==null)throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","수정할 내용을 입력해 주세요.");
+    n=notes.save(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.updated":"shared_note.updated",n.id);
+    return response(room,current,n);
+  }
   List<RoomNoteCommentResponse> comments(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);return comments.findByRoomNoteIdOrderByCreatedAtAsc(noteId).stream().map(c->commentResponse(roomId,current,c)).toList();}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse addComment(String username,Long roomId,Long noteId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);ReadingRoomNoteComment c=new ReadingRoomNoteComment();c.roomNoteId=noteId;c.userId=current.id;c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.created",c.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse updateComment(String username,Long roomId,Long noteId,Long commentId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_EDIT_FORBIDDEN","Only the author can edit this comment.");c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.updated",c.id);return commentResponse(roomId,current,c);}
