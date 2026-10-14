@@ -7,6 +7,12 @@ import 'ridi_theme.dart';
 import 'ridi_store.dart';
 import 'persona_detail_dialog.dart';
 
+const _builtinAiFriendImagePaths = <String, String>{
+  'moru': 'assets/images/moru.png',
+  'popo': 'assets/images/popo.png',
+  'onyou': 'assets/images/onyou.png',
+};
+
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
 
@@ -258,6 +264,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       speech: friend.inputSpeechStyle ?? '',
       feature: friend.inputTraits ?? '',
       isDefault: friend.isDefault,
+      builtinKey: friend.builtinKey,
 
       // DB에 저장된 전체 페르소나
       persona: friend.persona ?? '',
@@ -453,22 +460,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          CircleAvatar(
-            radius: 54,
-            backgroundColor: RidiColors.panel,
-            child: Text(
-              friend.name.characters.take(2).toString(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: RidiText.f,
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                color: RidiColors.ink,
-              ),
-            ),
-          ),
+          _profileAvatar(friend),
 
 
           const SizedBox(width: 42),
@@ -516,13 +508,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         ),
                       ),
                     ),
-                    const Spacer(),
-                    const SizedBox(width: 12),
 
                     // 기본 AI 친구는 수정 및 삭제 불가
                     // 사용자가 생성한 AI 친구만 수정 및 삭제 가능
 
-                    if (!friend.isDefault) ...[
+                    if (friend.isDefault && friend.id == null)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Semantics(
+                        container: true,
+                        label: 'AI 친구 프로필 작업',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                            children: [
                       // 상세 보기
                       OutlinedButton(
                         onPressed: friend.id == null
@@ -557,7 +556,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
                             : () => _deleteFriend(friend),
                         child: const Text('삭제'),
                       ),
-                    ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
 
 
                   ],
@@ -612,10 +615,79 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ],
             ),
           ),
+          if (!friend.isDefault) ...[
+            const SizedBox(width: 24),
+            _profileActions(friend),
+          ],
         ],
       ),
     );
   }
+
+  Widget _profileActions(_AiFriend friend) => Semantics(
+        container: true,
+        label: 'AI 친구 프로필 작업',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OutlinedButton(
+              onPressed: friend.id == null
+                  ? null
+                  : () => showDialog<void>(
+                        context: context,
+                        builder: (_) => PersonaDetailDialog(persona: friend.persona),
+                      ),
+              child: const Text('상세 보기'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: friend.id == null ? null : () => _editFriend(friend),
+              child: const Text('수정'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed:
+                  friend.id == null ? null : () => _deleteFriend(friend),
+              child: const Text('삭제'),
+            ),
+          ],
+        ),
+      );
+
+  Widget _profileAvatar(_AiFriend friend) {
+    final imagePath = friend.isDefault
+        ? _builtinAiFriendImagePaths[friend.builtinKey]
+        : null;
+
+    return CircleAvatar(
+      radius: 54,
+      backgroundColor: RidiColors.panel,
+      child: imagePath == null
+          ? _profileAvatarFallback(friend)
+          : ClipOval(
+              child: Image.asset(
+                imagePath,
+                width: 108,
+                height: 108,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _profileAvatarFallback(friend),
+              ),
+            ),
+    );
+  }
+
+  Widget _profileAvatarFallback(_AiFriend friend) => Text(
+        friend.name.characters.take(2).toString(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontFamily: RidiText.f,
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
+          color: RidiColors.ink,
+        ),
+      );
 
   Future<void> _deleteFriend(_AiFriend friend) async {
     final confirmed = await showDialog<bool>(
@@ -969,12 +1041,28 @@ class _FriendCard extends StatelessWidget {
             CircleAvatar(
               radius: 25,
               backgroundColor: RidiColors.panel,
-              child: Text(
-                friend.name.characters.take(2).toString(),
-                style: RidiText.heading,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: friend.isDefault &&
+                      _builtinAiFriendImagePaths.containsKey(friend.builtinKey)
+                  ? ClipOval(
+                      child: Image.asset(
+                        _builtinAiFriendImagePaths[friend.builtinKey]!,
+                        width: 50,
+                        height: 50,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Text(
+                          friend.name.characters.take(2).toString(),
+                          style: RidiText.heading,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      friend.name.characters.take(2).toString(),
+                      style: RidiText.heading,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ),
 
             const SizedBox(height: 10),
@@ -1118,6 +1206,7 @@ class _AiFriend {
     required this.speech,
     required this.feature,
     required this.isDefault,
+    this.builtinKey,
     this.persona = '',
   });
 
@@ -1130,6 +1219,7 @@ class _AiFriend {
   final String speech;
   final String feature;
   final bool isDefault;
+  final String? builtinKey;
 
   // AI가 생성한 전체 페르소나
   final String persona;
