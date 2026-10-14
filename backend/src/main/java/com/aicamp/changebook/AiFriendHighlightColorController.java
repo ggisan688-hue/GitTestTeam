@@ -65,6 +65,7 @@ class AiFriendHighlightColorController {
     record ColorRequest(String highlightColor) {}
 
     @GetMapping
+    @Transactional
     ColorResponse getColor(
             @PathVariable Long friendId,
             Authentication authentication
@@ -72,11 +73,15 @@ class AiFriendHighlightColorController {
         Long userId = getUserId(authentication);
         checkFriend(friendId, userId);
 
-        String color = colorRepository
-                .findByUserIdAndFriendId(userId, friendId)
-                .map(item -> item.highlightColor)
-                .orElse("YELLOW");
-
+        var setting = colorRepository.findByUserIdAndFriendId(userId, friendId);
+        String color = setting.map(item -> HighlightColorSupport.normalize(item.highlightColor))
+                .orElse("#FFF59D");
+        setting.ifPresent(item -> {
+            if (!color.equals(item.highlightColor)) {
+                item.highlightColor = color;
+                colorRepository.save(item);
+            }
+        });
         return new ColorResponse(color);
     }
 
@@ -90,20 +95,10 @@ class AiFriendHighlightColorController {
         Long userId = getUserId(authentication);
         checkFriend(friendId, userId);
 
-        Set<String> allowedColors = Set.of(
-                "YELLOW", "PINK", "GREEN",
-                "BLUE", "PURPLE", "ORANGE"
-        );
-
-        if (request == null ||
-                request.highlightColor() == null ||
-                !allowedColors.contains(request.highlightColor())) {
-            throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "INVALID_HIGHLIGHT_COLOR",
-                    "지원하지 않는 형광펜 색상입니다."
-            );
+        if (request == null || request.highlightColor() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_HIGHLIGHT_COLOR", "색상을 선택해 주세요.");
         }
+        String color = HighlightColorSupport.normalize(request.highlightColor());
 
         AiFriendHighlightColor setting = colorRepository
                 .findByUserIdAndFriendId(userId, friendId)
@@ -114,7 +109,7 @@ class AiFriendHighlightColorController {
                     return item;
                 });
 
-        setting.highlightColor = request.highlightColor();
+        setting.highlightColor = color;
         colorRepository.save(setting);
 
         return new ColorResponse(setting.highlightColor);

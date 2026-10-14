@@ -134,24 +134,29 @@ class MemoShareService {
     String type, selected, content, color;
     int paragraphOrder;
     Integer start, end;
+    String selectionRanges;
     if (share.personalMemoId != null) {
       ReadingNote n = personal.findById(share.personalMemoId).orElseThrow();
       memoId = n.id; bookId = n.bookId; authorId = n.user.id;
       type = n.noteType.name(); paragraphOrder = n.paragraphOrder;
       start = n.startOffset; end = n.endOffset; selected = n.selectedText;
+      selectionRanges = n.selectionRanges;
       content = n.memoContent; color = n.highlightColor;
     } else {
       ReadingRoomNote n = roomNotes.findById(share.roomMemoId).orElseThrow();
       memoId = n.id; bookId = n.bookId; authorId = n.userId;
       type = n.type; paragraphOrder = n.paragraphOrder;
       start = n.startOffset; end = n.endOffset; selected = n.selectedText;
+      selectionRanges = n.selectionRanges;
       content = n.content; color = n.highlightColor;
     }
     boolean lockEnabled = members.findByRoomIdAndUserId(roomId, viewer.id)
         .map(m -> m.spoilerLockEnabled).orElse(false);
     int lastPosition = progress.findByRoomIdAndUserIdAndBookId(roomId, viewer.id, bookId)
         .map(p -> p.lastReadPosition).orElse(0);
-    boolean locked = lockEnabled && !viewer.id.equals(authorId) && paragraphOrder > lastPosition;
+    var ranges = NoteRangeSupport.decode(selectionRanges);
+    int selectionEnd = ranges.isEmpty() ? paragraphOrder : ranges.get(ranges.size()-1).paragraphOrder();
+    boolean locked = lockEnabled && !viewer.id.equals(authorId) && selectionEnd > lastPosition;
     return new MemoShareResponse(share.id, share.personalMemoId != null ? "PERSONAL" : "ROOM",
         memoId, bookId, authorId, type, paragraphOrder,
         locked ? null : start, locked ? null : end,

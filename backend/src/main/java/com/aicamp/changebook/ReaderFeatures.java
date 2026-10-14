@@ -47,6 +47,7 @@ class ReadingNote {
   @Column(name="end_offset") Integer endOffset;
   @Column(name="highlight_color") String highlightColor;
   @Column(name="linked_highlight_id") Long linkedHighlightId;
+  @Column(name="selection_ranges", columnDefinition="TEXT") String selectionRanges;
   @Column(name="created_at", nullable=false) Instant createdAt;
   @Column(name="updated_at", nullable=false) Instant updatedAt;
   @PrePersist void create() { createdAt=updatedAt=Instant.now(); }
@@ -69,12 +70,17 @@ interface ReadingNoteRepository extends JpaRepository<ReadingNote, Long> {
   int deleteAllForUserAndBookAndType(@Param("userId") Long userId, @Param("bookId") Long bookId, @Param("type") ReadingNoteType type);
 }
 record ReadingNoteRequest(@NotNull ReadingNoteType noteType, @Min(1) Integer paragraphOrder,
-  @Size(max=3000) String memoContent, @Size(max=3000) String selectedText,
-  @Min(0) Integer startOffset, @Min(0) Integer endOffset, @Size(max=20) String highlightColor) {}
+  @Size(max=3000) String memoContent, @Size(max=30000) String selectedText,
+  @Min(0) Integer startOffset, @Min(0) Integer endOffset, @Size(max=20) String highlightColor,
+  @Valid @Size(max=200) List<NoteRange> ranges) {
+  ReadingNoteRequest(ReadingNoteType type,Integer order,String memo,String text,Integer start,Integer end,String color) {
+    this(type,order,memo,text,start,end,color,null);
+  }
+}
 record ReadingNoteUpdateRequest(@Size(max=3000) String memoContent, @Size(max=20) String highlightColor) {}
 record ReadingNoteResponse(Long id, Long noteId, String type, int paragraphOrder, String memoContent, String selectedText,
-  Integer startOffset, Integer endOffset, String highlightColor, Long linkedHighlightId, String paragraphPreview, Instant createdAt, Instant updatedAt) {
-  static ReadingNoteResponse from(ReadingNote n, String preview) { return new ReadingNoteResponse(n.id,n.id,n.noteType.name(),n.paragraphOrder,n.memoContent,n.selectedText,n.startOffset,n.endOffset,n.highlightColor,n.linkedHighlightId,preview,n.createdAt,n.updatedAt); }
+  Integer startOffset, Integer endOffset, String highlightColor, Long linkedHighlightId, String paragraphPreview, Instant createdAt, Instant updatedAt, List<NoteRange> ranges) {
+  static ReadingNoteResponse from(ReadingNote n, String preview) { return new ReadingNoteResponse(n.id,n.id,n.noteType.name(),n.paragraphOrder,n.memoContent,n.selectedText,n.startOffset,n.endOffset,n.highlightColor,n.linkedHighlightId,preview,n.createdAt,n.updatedAt,NoteRangeSupport.decode(n.selectionRanges)); }
 }
 record ReadingNoteBulkDeleteResponse(int deletedCount) {}
 
@@ -100,13 +106,14 @@ record ReaderSettingsResponse(double fontScale,int lineHeightStep,String theme,b
 @Service class ReaderFeatureService {
  private final UserRepository users; private final BookRepository books; private final BookParagraphRepository paragraphs;
  private final ReaderChapterRepository chapters; private final ReadingNoteRepository notes; private final ReaderSettingsRepository settings;
- private static final Set<String> HIGHLIGHT_COLORS=Set.of("#FFF59D","#A5D6A7","#90CAF9","#FFCCBC","#CE93D8");
+ private static final Set<String> HIGHLIGHT_COLORS=Set.of("#FFF59D","#F8BBD0","#A5D6A7","#90CAF9","#CE93D8","#FFCC80","#EF9A9A","#80CBC4","#B3E5FC","#BDBDBD","#FFCCBC");
  ReaderFeatureService(UserRepository u, BookRepository b, BookParagraphRepository p, ReaderChapterRepository c, ReadingNoteRepository n, ReaderSettingsRepository s){users=u;books=b;paragraphs=p;chapters=c;notes=n;settings=s;}
  private AppUser user(String username){return users.findByUsername(username).orElseThrow(()->new ApiException(HttpStatus.UNAUTHORIZED,"UNAUTHORIZED","인증이 필요합니다."));}
  private void book(Long id){if(!books.existsById(id))throw new ApiException(HttpStatus.NOT_FOUND,"BOOK_NOT_FOUND","책을 찾을 수 없습니다.");}
  List<ChapterResponse> chapters(Long id){book(id); return chapters.findByBookIdAndVerifiedTrueOrderByChapterNumberAsc(id).stream().map(ChapterResponse::from).toList();}
  List<ReadingNoteResponse> notes(String username,Long bookId,ReadingNoteType type){AppUser u=user(username);book(bookId); List<ReadingNote> all=type==null?notes.findByUserIdAndBookIdOrderByCreatedAtDesc(u.id,bookId):notes.findByUserIdAndBookIdAndNoteTypeOrderByCreatedAtDesc(u.id,bookId,type);return all.stream().map(n->ReadingNoteResponse.from(n,preview(bookId,n.paragraphOrder))).toList();}
  @Transactional ReadingNoteResponse create(String username,Long bookId,ReadingNoteRequest r){
+  if(r.ranges()!=null && !r.ranges().isEmpty()) return createRange(username,bookId,r);
   AppUser u=user(username); book(bookId);
   var paragraph=paragraphs.findByBookIdAndParagraphOrder(bookId,r.paragraphOrder()).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"PARAGRAPH_NOT_FOUND","본문 위치를 찾을 수 없습니다."));
   boolean selectionFieldsPresent=r.startOffset()!=null||r.endOffset()!=null||r.selectedText()!=null;
@@ -119,12 +126,39 @@ record ReaderSettingsResponse(double fontScale,int lineHeightStep,String theme,b
   if(r.noteType()==ReadingNoteType.MEMO&&(r.memoContent()==null||r.memoContent().trim().isEmpty()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_REQUEST","빈 메모는 저장할 수 없습니다.");
   if(r.noteType()==ReadingNoteType.BOOKMARK){var exists=notes.findByUserIdAndBookIdAndParagraphOrderAndNoteType(u.id,bookId,r.paragraphOrder(),ReadingNoteType.BOOKMARK);if(exists.isPresent())return ReadingNoteResponse.from(exists.get(),preview(bookId,r.paragraphOrder()));}
   // A selected private memo is idempotently associated with one exact highlight.
-  if(r.noteType()==ReadingNoteType.MEMO&&selectionFieldsPresent){var existing=notes.findByUserIdAndBookIdAndParagraphOrderAndStartOffsetAndEndOffsetAndNoteType(u.id,bookId,r.paragraphOrder(),r.startOffset(),r.endOffset(),ReadingNoteType.MEMO);if(existing.isPresent())return ReadingNoteResponse.from(existing.get(),preview(bookId,r.paragraphOrder()));}
+  if(r.noteType()==ReadingNoteType.MEMO&&selectionFieldsPresent){var existing=notes.findByUserIdAndBookIdAndParagraphOrderAndStartOffsetAndEndOffsetAndNoteType(u.id,bookId,r.paragraphOrder(),r.startOffset(),r.endOffset(),ReadingNoteType.MEMO);if(existing.isPresent() && existing.get().selectionRanges==null)return ReadingNoteResponse.from(existing.get(),preview(bookId,r.paragraphOrder()));}
   ReadingNote linkedHighlight=null;
   if(r.noteType()==ReadingNoteType.MEMO&&selectionFieldsPresent){linkedHighlight=notes.findByUserIdAndBookIdAndParagraphOrderAndStartOffsetAndEndOffsetAndNoteType(u.id,bookId,r.paragraphOrder(),r.startOffset(),r.endOffset(),ReadingNoteType.HIGHLIGHT).orElse(null);if(linkedHighlight==null){ReadingNote highlight=new ReadingNote();highlight.user=u;highlight.bookId=bookId;highlight.paragraphOrder=r.paragraphOrder();highlight.noteType=ReadingNoteType.HIGHLIGHT;highlight.selectedText=r.selectedText();highlight.startOffset=r.startOffset();highlight.endOffset=r.endOffset();highlight.highlightColor=settings.findByUserId(u.id).map(s->s.defaultHighlightColor).orElse("#FFF59D");normalizeHighlights(u,bookId,r.paragraphOrder(),r.startOffset(),r.endOffset(),paragraph.content);linkedHighlight=notes.saveAndFlush(highlight);}}
   ReadingNote n=new ReadingNote();n.user=u;n.bookId=bookId;n.paragraphOrder=r.paragraphOrder();n.noteType=r.noteType();n.memoContent=r.memoContent()==null?null:r.memoContent().trim();n.selectedText=r.selectedText();n.startOffset=r.startOffset();n.endOffset=r.endOffset();n.highlightColor=r.noteType()==ReadingNoteType.HIGHLIGHT?(r.highlightColor()!=null?r.highlightColor():settings.findByUserId(u.id).map(s->s.defaultHighlightColor).orElse("#FFF59D")):r.highlightColor();n.linkedHighlightId=linkedHighlight==null?null:linkedHighlight.id;
   try{n=notes.saveAndFlush(n);}catch(DataIntegrityViolationException ex){if(r.noteType()==ReadingNoteType.HIGHLIGHT)throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_HIGHLIGHT","이미 형광펜 표시된 문장입니다.");throw ex;}
  return ReadingNoteResponse.from(n,preview(bookId,n.paragraphOrder));
+ }
+ private ReadingNoteResponse createRange(String username,Long bookId,ReadingNoteRequest request) {
+  if(request.noteType()==ReadingNoteType.BOOKMARK) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_NOTE_RANGE","책갈피는 한 위치에 저장합니다.");
+  var selected=NoteRangeSupport.validate(paragraphs,bookId,request.ranges());
+  if(request.noteType()==ReadingNoteType.MEMO && (request.memoContent()==null || request.memoContent().trim().isEmpty())) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_REQUEST","빈 메모는 저장할 수 없습니다.");
+  AppUser current=user(username); book(bookId);
+  String color=request.highlightColor()!=null ? request.highlightColor() : settings.findByUserId(current.id).map(s->s.defaultHighlightColor).orElse("#FFF59D");
+  String encoded=NoteRangeSupport.encode(selected.ranges());
+  if(request.noteType()==ReadingNoteType.MEMO) {
+    var duplicate=notes.findByUserIdAndBookIdAndNoteTypeOrderByCreatedAtDesc(current.id,bookId,ReadingNoteType.MEMO).stream()
+      .filter(n->encoded.equals(n.selectionRanges) && request.memoContent().trim().equals(n.memoContent)).findFirst();
+    if(duplicate.isPresent()) return ReadingNoteResponse.from(duplicate.get(),preview(bookId,duplicate.get().paragraphOrder));
+  }
+  ReadingNoteResponse firstHighlight=null;
+  for(int i=0;i<selected.ranges().size();i++) {
+    var range=selected.ranges().get(i);
+    if(range.endOffset()==range.startOffset()) continue;
+    var saved=create(username,bookId,new ReadingNoteRequest(ReadingNoteType.HIGHLIGHT,range.paragraphOrder(),null,selected.parts().get(i),range.startOffset(),range.endOffset(),color));
+    if(firstHighlight==null) firstHighlight=saved;
+  }
+  if(request.noteType()==ReadingNoteType.HIGHLIGHT) return firstHighlight;
+  var first=selected.ranges().get(0);
+  ReadingNote note=new ReadingNote(); note.user=current; note.bookId=bookId; note.noteType=ReadingNoteType.MEMO;
+  note.paragraphOrder=first.paragraphOrder(); note.startOffset=first.startOffset(); note.endOffset=first.endOffset();
+  note.memoContent=request.memoContent().trim(); note.selectedText=selected.text(); note.selectionRanges=encoded;
+  note.highlightColor=color; note.linkedHighlightId=firstHighlight.id();
+  return ReadingNoteResponse.from(notes.saveAndFlush(note),preview(bookId,note.paragraphOrder));
  }
  private void normalizeHighlights(AppUser user,Long bookId,int order,int start,int end,String content){
   var overlaps=notes.findAllByUserIdAndBookIdAndParagraphOrderAndNoteType(user.id,bookId,order,ReadingNoteType.HIGHLIGHT).stream().filter(n->n.startOffset!=null&&n.endOffset!=null&&n.startOffset<end&&n.endOffset>start).toList();
@@ -138,7 +172,38 @@ record ReaderSettingsResponse(double fontScale,int lineHeightStep,String theme,b
   notes.saveAll(remnants);
  }
  private ReadingNote highlightPart(AppUser user,Long bookId,int order,ReadingNote source,int start,int end,String content){ReadingNote n=new ReadingNote();n.user=user;n.bookId=bookId;n.paragraphOrder=order;n.noteType=ReadingNoteType.HIGHLIGHT;n.startOffset=start;n.endOffset=end;n.selectedText=content.substring(start,end);n.highlightColor=source.highlightColor==null?"#FFF59D":source.highlightColor;return n;}
- ReadingNoteResponse update(String username,Long bookId,Long noteId,ReadingNoteUpdateRequest r){AppUser u=user(username);ReadingNote n=notes.findByIdAndUserIdAndBookId(noteId,u.id,bookId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"READING_NOTE_NOT_FOUND","독서노트를 찾을 수 없습니다."));if(r.memoContent()!=null){if(n.noteType!=ReadingNoteType.MEMO||r.memoContent().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_REQUEST","메모 내용을 확인해 주세요.");n.memoContent=r.memoContent().trim();}if(r.highlightColor()!=null){if(n.noteType!=ReadingNoteType.HIGHLIGHT||!HIGHLIGHT_COLORS.contains(r.highlightColor()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","형광펜 색상을 확인해 주세요.");n.highlightColor=r.highlightColor();}return ReadingNoteResponse.from(notes.save(n),preview(bookId,n.paragraphOrder));}
+ @Transactional
+ ReadingNoteResponse update(String username,Long bookId,Long noteId,ReadingNoteUpdateRequest r){
+  AppUser u=user(username);
+  ReadingNote n=notes.findByIdAndUserIdAndBookId(noteId,u.id,bookId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"READING_NOTE_NOT_FOUND","독서노트를 찾을 수 없습니다."));
+  if(r.memoContent()!=null){
+   if(n.noteType!=ReadingNoteType.MEMO||r.memoContent().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_REQUEST","메모 내용을 확인해 주세요.");
+   n.memoContent=r.memoContent().trim();
+  }
+  if(r.highlightColor()!=null){
+   if((n.noteType!=ReadingNoteType.HIGHLIGHT && n.noteType!=ReadingNoteType.MEMO)||!HIGHLIGHT_COLORS.contains(r.highlightColor()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","형광펜 색상을 확인해 주세요.");
+   n.highlightColor=r.highlightColor();
+   var all=notes.findByUserIdAndBookIdOrderByCreatedAtDesc(u.id,bookId);
+   if(n.noteType==ReadingNoteType.MEMO){
+    var ranges=NoteRangeSupport.decode(n.selectionRanges);
+    for(var h:all){
+     if(h.noteType!=ReadingNoteType.HIGHLIGHT)continue;
+     boolean linked=n.linkedHighlightId!=null && n.linkedHighlightId.equals(h.id);
+     boolean covered=h.startOffset!=null && h.endOffset!=null && (ranges.isEmpty()
+       ? h.paragraphOrder==n.paragraphOrder && n.startOffset!=null && n.endOffset!=null && n.startOffset<=h.startOffset && n.endOffset>=h.endOffset
+       : ranges.stream().anyMatch(range->range.paragraphOrder()==h.paragraphOrder && range.startOffset()<=h.startOffset && range.endOffset()>=h.endOffset));
+     if(linked||covered){h.highlightColor=r.highlightColor();notes.save(h);}
+    }
+   }else{
+    for(var memo:all){
+     if(memo.noteType==ReadingNoteType.MEMO && n.id.equals(memo.linkedHighlightId)){
+      memo.highlightColor=r.highlightColor();notes.save(memo);
+     }
+    }
+   }
+  }
+  return ReadingNoteResponse.from(notes.save(n),preview(bookId,n.paragraphOrder));
+ }
  void delete(String username,Long bookId,Long noteId){AppUser u=user(username);ReadingNote n=notes.findByIdAndUserIdAndBookId(noteId,u.id,bookId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"READING_NOTE_NOT_FOUND","독서노트를 찾을 수 없습니다."));notes.delete(n);}
  @Transactional ReadingNoteBulkDeleteResponse deleteAll(String username,Long bookId,ReadingNoteType type){AppUser u=user(username);book(bookId);int count=type==null?notes.deleteAllForUserAndBook(u.id,bookId):notes.deleteAllForUserAndBookAndType(u.id,bookId,type);return new ReadingNoteBulkDeleteResponse(count);}
  private String preview(Long bookId,int order){return paragraphs.findByBookIdAndParagraphOrder(bookId,order).map(p->p.content.length()>120?p.content.substring(0,120)+"…":p.content).orElse("");}

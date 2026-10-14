@@ -23,7 +23,7 @@ class AiFriendHighlightColor {
     Long friendId;
 
     @Column(name = "highlight_color", nullable = false, length = 20)
-    String highlightColor = "YELLOW";
+    String highlightColor = "#FFF59D";
 }
 
 interface AiFriendHighlightColorRepository

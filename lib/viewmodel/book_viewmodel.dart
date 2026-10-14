@@ -1,3 +1,4 @@
+import '../model/note_range.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
@@ -175,6 +176,7 @@ class BookViewModel extends ChangeNotifier {
     String? selectedText,
     int? startOffset,
     int? endOffset,
+    List<NoteRange> ranges = const [],
     String? color,
   }) async {
     await _repository.addReadingNote(
@@ -185,6 +187,7 @@ class BookViewModel extends ChangeNotifier {
       selectedText: selectedText,
       startOffset: startOffset,
       endOffset: endOffset,
+      ranges: ranges,
       highlightColor: color,
     );
     if (_isDisposed) return;

@@ -1,3 +1,4 @@
+import 'note_range.dart';
 class SharedRoomNote {
   const SharedRoomNote({
     required this.id,
@@ -8,6 +9,7 @@ class SharedRoomNote {
     required this.paragraphOrder,
     this.startOffset,
     this.endOffset,
+    this.ranges = const [],
     this.selectedText,
     this.content,
     this.highlightColor,
@@ -20,6 +22,7 @@ class SharedRoomNote {
   final String nickname, type;
   final String? profileImageUrl;
   final int? startOffset, endOffset;
+  final List<NoteRange> ranges;
   final String? selectedText, content, highlightColor;
   final bool isSpoilerLocked;
   final bool mine;
@@ -33,6 +36,8 @@ class SharedRoomNote {
     paragraphOrder: (json['paragraphOrder'] as num).toInt(),
     startOffset: (json['startOffset'] as num?)?.toInt(),
     endOffset: (json['endOffset'] as num?)?.toInt(),
+    ranges: (json['ranges'] as List? ?? const [])
+        .map((item) => NoteRange.fromJson(item as Map<String, dynamic>)).toList(),
     selectedText: json['selectedText'] as String?,
     content: json['content'] as String?,
     highlightColor: json['highlightColor'] as String?,

@@ -16,6 +16,98 @@ class FriendsScreen extends StatefulWidget {
 class _FriendsScreenState extends State<FriendsScreen> {
 
   final Map<int, String> _friendColors = {};
+  static const _highlightColors = <String, Color>{
+    '#FFF59D': Color(0xFFFFF59D),
+    '#F8BBD0': Color(0xFFF8BBD0),
+    '#A5D6A7': Color(0xFFA5D6A7),
+    '#90CAF9': Color(0xFF90CAF9),
+    '#CE93D8': Color(0xFFCE93D8),
+    '#FFCC80': Color(0xFFFFCC80),
+    '#EF9A9A': Color(0xFFEF9A9A),
+    '#80CBC4': Color(0xFF80CBC4),
+    '#B3E5FC': Color(0xFFB3E5FC),
+    '#BDBDBD': Color(0xFFBDBDBD),
+  };
+  static const _colorNames = <String, String>{
+    '#FFF59D': '노랑', '#F8BBD0': '분홍', '#A5D6A7': '초록',
+    '#90CAF9': '파랑', '#CE93D8': '보라', '#FFCC80': '주황',
+    '#EF9A9A': '빨강', '#80CBC4': '민트', '#B3E5FC': '하늘', '#BDBDBD': '회색',
+  };
+  final Set<int> _savingColors = {};
+
+  Future<void> _chooseFriendColor(int friendId) async {
+    if (_savingColors.contains(friendId)) return;
+    final previous = _friendColors[friendId] ?? '#FFF59D';
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('형광펜 색상'),
+        content: SizedBox(
+          width: 300,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 16,
+            children: _highlightColors.entries.map((entry) {
+              final active = entry.key == previous;
+              return Semantics(
+                button: true,
+                selected: active,
+                label: _colorNames[entry.key],
+                child: InkWell(
+                  onTap: () => Navigator.pop(dialogContext, entry.key),
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 48,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: entry.value,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: active ? Colors.black87 : Colors.black12,
+                              width: active ? 2 : 1,
+                            ),
+                          ),
+                          child: active ? const Icon(Icons.check, size: 22) : null,
+                        ),
+                        const SizedBox(height: 4),
+
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('취소'),
+        )],
+      ),
+    );
+    if (!mounted || selected == null || selected == previous) return;
+    _savingColors.add(friendId);
+    setState(() => _friendColors[friendId] = selected);
+    try {
+      final token = context.read<RidiStore>().accessToken;
+      await AiReadingRepository(ApiClient(tokenProvider: () => token))
+          .saveFriendHighlightColor(friendId: friendId, color: selected);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _friendColors[friendId] = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('형광펜 색상 저장 실패: $e')),
+      );
+    } finally {
+      _savingColors.remove(friendId);
+    }
+  }
+
 
   List<_AiFriend> _friends = [];
   bool _isLoading = true;
@@ -67,7 +159,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             loadedColors[friend.id] = color;
           } catch (e) {
             debugPrint('AI 친구 ${friend.id} 색상 조회 실패: $e');
-            loadedColors[friend.id] = 'YELLOW';
+            loadedColors[friend.id] = '#FFF59D';
           }
         }),
       );
@@ -112,7 +204,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
 
       final nextHeadings = nextTitles.map(
-        (item) =>
+            (item) =>
             RegExp(r'^#{1,3}\s*(?:\d+\.\s*)?' + RegExp.escape(item) + r'\s*$'),
       );
 
@@ -386,16 +478,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                    friend.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: true,
-                    style: const TextStyle(
-                      fontFamily: RidiText.f,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: RidiColors.ink,
-                    ),
+                        friend.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                        style: const TextStyle(
+                          fontFamily: RidiText.f,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: RidiColors.ink,
+                        ),
                       ),
                     ),
                     const Spacer(),
@@ -435,73 +527,27 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     const Text('형광펜 색상'),
                     const SizedBox(width: 12),
 
-                    ...<String, Color>{
-                      'YELLOW': Colors.yellow,
-                      'PINK': Colors.pinkAccent,
-                      'GREEN': Colors.greenAccent,
-                      'BLUE': Colors.lightBlueAccent,
-                      'PURPLE': Colors.purpleAccent,
-                      'ORANGE': Colors.orangeAccent,
-                    }.entries.map((entry) {
-                      final isSelected =
-                          friend.id != null &&
-                              (_friendColors[friend.id!] ?? 'YELLOW') == entry.key;
-
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: InkWell(
-
-                          onTap: friend.id == null
-                              ? null
-                              : () async {
-                            final friendId = friend.id!;
-                            final previousColor = _friendColors[friendId] ?? 'YELLOW';
-
-                            setState(() {
-                              _friendColors[friendId] = entry.key;
-                            });
-
-                            try {
-                              final token = context.read<RidiStore>().accessToken;
-
-                              await AiReadingRepository(
-                                ApiClient(tokenProvider: () => token),
-                              ).saveFriendHighlightColor(
-                                friendId: friendId,
-                                color: entry.key,
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-
-                              setState(() {
-                                _friendColors[friendId] = previousColor;
-                              });
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('형광펜 색상 저장 실패: $e')),
-                              );
-                            }
-                          },
-
-                          borderRadius: BorderRadius.circular(50),
+                    Tooltip(
+                      message: '형광펜 색상 변경',
+                      child: InkWell(
+                        onTap: friend.id == null
+                            ? null
+                            : () => _chooseFriendColor(friend.id!),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
                           child: Container(
                             width: 28,
                             height: 28,
                             decoration: BoxDecoration(
-                              color: entry.value,
+                              color: _highlightColors[_friendColors[friend.id] ?? '#FFF59D'],
                               shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isSelected ? Colors.black87 : Colors.transparent,
-                                width: 2.5,
-                              ),
+                              border: Border.all(color: Colors.black26),
                             ),
-                            child: isSelected
-                                ? const Icon(Icons.check, size: 17, color: Colors.black87)
-                                : null,
                           ),
                         ),
-                      );
-                    }),
+                      ),
+                    ),
 
                   ],
                 ),

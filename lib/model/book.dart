@@ -1,3 +1,4 @@
+import 'note_range.dart';
 /// GET /api/books
 class Book {
   const Book({
@@ -111,6 +112,7 @@ class ReadingNote {
     this.selectedText,
     this.startOffset,
     this.endOffset,
+    this.ranges = const [],
     this.highlightColor,
     this.linkedHighlightId,
     required this.preview,
@@ -125,6 +127,7 @@ class ReadingNote {
   final String? selectedText;
   final int? startOffset;
   final int? endOffset;
+  final List<NoteRange> ranges;
   final String? highlightColor;
   final int? linkedHighlightId;
   final String preview;
@@ -141,6 +144,8 @@ class ReadingNote {
     selectedText: json['selectedText'] as String?,
     startOffset: (json['startOffset'] as num?)?.toInt(),
     endOffset: (json['endOffset'] as num?)?.toInt(),
+    ranges: (json['ranges'] as List? ?? const [])
+        .map((item) => NoteRange.fromJson(item as Map<String, dynamic>)).toList(),
     highlightColor: json['highlightColor'] as String?,
     linkedHighlightId: (json['linkedHighlightId'] as num?)?.toInt(),
     preview: json['paragraphPreview'] as String? ?? '',

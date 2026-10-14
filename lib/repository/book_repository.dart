@@ -1,3 +1,4 @@
+import '../model/note_range.dart';
 import '../core/api_client.dart';
 import '../model/book.dart';
 import '../model/ink.dart';
@@ -174,6 +175,7 @@ class BookRepository {
     String? selectedText,
     int? startOffset,
     int? endOffset,
+    List<NoteRange> ranges = const [],
     String? highlightColor,
   }) async {
     final res = await _api.post<ReadingNote>(
@@ -185,6 +187,7 @@ class BookRepository {
         if (selectedText != null) 'selectedText': selectedText,
         if (startOffset != null) 'startOffset': startOffset,
         if (endOffset != null) 'endOffset': endOffset,
+        if (ranges.isNotEmpty) 'ranges': ranges.map((range) => range.toJson()).toList(),
         if (highlightColor != null) 'highlightColor': highlightColor,
       },
       parse: (json) => ReadingNote.fromJson(json as Map<String, dynamic>),

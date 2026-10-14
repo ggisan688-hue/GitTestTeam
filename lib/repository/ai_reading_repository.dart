@@ -100,9 +100,9 @@ class AiReadingRepository {
         return list
             .map(
               (item) => AiReadingFriend.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
             .toList();
       },
     );
@@ -116,9 +116,9 @@ class AiReadingRepository {
       parse: (json) => (json as List)
           .map(
             (item) => AiReadingFriend.fromJson(
-              Map<String, dynamic>.from(item as Map),
-            ),
-          )
+          Map<String, dynamic>.from(item as Map),
+        ),
+      )
           .toList(),
     );
     return res.data ?? const [];
@@ -195,10 +195,10 @@ class AiReadingRepository {
     final res = await _api.get<String>(
       '/api/ai-reading-friends/$friendId/highlight-color',
       parse: (json) =>
-      (json as Map)['highlightColor']?.toString() ?? 'YELLOW',
+      (json as Map)['highlightColor']?.toString() ?? '#FFF59D',
     );
 
-    return res.data ?? 'YELLOW';
+    return res.data ?? '#FFF59D';
   }
 
   // AI 친구별 형광펜 색상 저장
@@ -210,10 +210,10 @@ class AiReadingRepository {
       '/api/ai-reading-friends/$friendId/highlight-color',
       body: {'highlightColor': color},
       parse: (json) =>
-      (json as Map)['highlightColor']?.toString() ?? 'YELLOW',
+      (json as Map)['highlightColor']?.toString() ?? '#FFF59D',
     );
 
-    return res.data ?? 'YELLOW';
+    return res.data ?? '#FFF59D';
   }
 
 
@@ -292,8 +292,8 @@ class AiReadingRepository {
     return list
         .map(
           (item) =>
-              AiReadingNote.fromJson(Map<String, dynamic>.from(item as Map)),
-        )
+          AiReadingNote.fromJson(Map<String, dynamic>.from(item as Map)),
+    )
         .toList();
   }
 }

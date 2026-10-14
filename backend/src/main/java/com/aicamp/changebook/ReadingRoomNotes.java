@@ -19,6 +19,7 @@ class ReadingRoomNote {
   @Column(name="paragraph_order", nullable=false) int paragraphOrder;
   @Column(name="start_offset") Integer startOffset;
   @Column(name="end_offset") Integer endOffset;
+  @Column(name="selection_ranges", columnDefinition="TEXT") String selectionRanges;
   @Column(nullable=false, length=12) String type;
   @Column(name="selected_text") String selectedText;
   @Column String content;
@@ -55,17 +56,22 @@ interface ReadingRoomNoteCommentRepository extends JpaRepository<ReadingRoomNote
 
 record RoomNoteRequest(@NotBlank @Pattern(regexp="MEMO|HIGHLIGHT|BOOKMARK") String type,
   @NotNull @Min(1) Integer paragraphOrder, @Min(0) Integer startOffset, @Min(0) Integer endOffset,
-  @Size(max=4000) String selectedText, @Size(max=4000) String content, @Size(max=20) String highlightColor,
-  Long bookId) {}
+  @Size(max=30000) String selectedText, @Size(max=4000) String content, @Size(max=20) String highlightColor,
+  Long bookId, @Valid @Size(max=200) List<NoteRange> ranges) {
+  RoomNoteRequest(String type,Integer order,Integer start,Integer end,String text,String content,String color,Long bookId) {
+    this(type,order,start,end,text,content,color,bookId,null);
+  }
+}
 record RoomNoteResponse(Long id, Long userId, String nickname, String profileImageUrl, String type, int paragraphOrder,
   Integer startOffset, Integer endOffset, String selectedText, String content, String highlightColor,
-  boolean isSpoilerLocked, boolean mine, long commentCount, Instant createdAt, Instant updatedAt, long version) {}
+  boolean isSpoilerLocked, boolean mine, long commentCount, Instant createdAt, Instant updatedAt, long version, List<NoteRange> ranges) {}
 record RoomNoteCommentRequest(@NotBlank @Size(max=1000) String content) {}
 record RoomNoteUpdateRequest(@Size(max=4000) String content, @Size(max=20) String highlightColor) {}
 record RoomNoteCommentResponse(Long id,Long userId,String nickname,String profileImageUrl,String content,Instant createdAt,Instant updatedAt,boolean mine,long version) {}
 
 @org.springframework.stereotype.Service
 class ReadingRoomNoteService {
+  @org.springframework.beans.factory.annotation.Autowired private BookParagraphRepository paragraphs;
   private final ReadingRoomNoteRepository notes; private final ReadingRoomNoteCommentRepository comments;
   private final RoomRepo rooms; private final RoomMemberRepo members; private final UserFeatureService users;
   private final UserRepository userRepository; private final RoomMemberProgressRepo progress; private final RoomBookRepo roomBooks; private final ReadingRoomSyncService sync;
@@ -78,7 +84,9 @@ class ReadingRoomNoteService {
     // Never use personal or another member's position: absence/other-book data is locked.
     int position=progress.findByRoomIdAndUserIdAndBookId(room.id,current.id,note.bookId).map(p->p.lastReadPosition).orElse(0);
     boolean enabled=members.findByRoomIdAndUserId(room.id,current.id).map(member->member.spoilerLockEnabled).orElse(false);
-    return enabled&&!note.userId.equals(current.id)&&note.paragraphOrder>position;
+    var ranges=NoteRangeSupport.decode(note.selectionRanges);
+    int last=ranges.isEmpty()?note.paragraphOrder:ranges.get(ranges.size()-1).paragraphOrder();
+    return enabled&&!note.userId.equals(current.id)&&last>position;
   }
   private void readable(ReadingRoom room,AppUser user,ReadingRoomNote note){if(spoiler(room,user,note))throw new ApiException(HttpStatus.FORBIDDEN,"SPOILER_LOCKED","Read further to view this shared note.");}
   private Long scopedBook(ReadingRoom room, Long requestedBookId) {
@@ -89,19 +97,51 @@ class ReadingRoomNoteService {
   }
   List<RoomNoteResponse> list(String username,Long roomId,Long bookId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);Long scopedBook=scopedBook(room,bookId);return notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,scopedBook).stream().map(n->response(room,current,n)).toList();}
 @org.springframework.transaction.annotation.Transactional RoomNoteResponse create(String username,Long roomId,RoomNoteRequest request){
+    if(request.ranges()!=null && !request.ranges().isEmpty()) return createRange(username,roomId,request);
     // Serialize note creation with room book removal before membership/book checks.
     ReadingRoom room=rooms.findByIdForUpdate(roomId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","Room not found."));
-    AppUser current=member(username,roomId);Long bookId=scopedBook(room,request.bookId());if("MEMO".equals(request.type())&&(request.content()==null||request.content().trim().isEmpty()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 입력해 주세요.");if("HIGHLIGHT".equals(request.type())&&(request.startOffset()==null||request.endOffset()==null||request.endOffset()<=request.startOffset()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","하이라이트 범위를 확인해 주세요.");if(("HIGHLIGHT".equals(request.type())||"BOOKMARK".equals(request.type()))&&notes.existsByRoomIdAndUserIdAndParagraphOrderAndStartOffsetAndEndOffsetAndType(roomId,current.id,request.paragraphOrder(),request.startOffset(),request.endOffset(),request.type()))throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_SHARED_NOTE","이미 공유한 노트입니다.");ReadingRoomNote n=new ReadingRoomNote();n.roomId=roomId;n.userId=current.id;n.bookId=bookId;n.type=request.type();n.paragraphOrder=request.paragraphOrder();n.startOffset=request.startOffset();n.endOffset=request.endOffset();n.selectedText=blank(request.selectedText());n.content=blank(request.content());n.highlightColor=blank(request.highlightColor());n=notes.save(n);sync.publish(roomId,bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.created":"shared_note.created",n.id);return response(room,current,n);}
+    AppUser current=member(username,roomId);Long bookId=scopedBook(room,request.bookId());if("MEMO".equals(request.type())&&(request.content()==null||request.content().trim().isEmpty()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 입력해 주세요.");if("HIGHLIGHT".equals(request.type())&&(request.startOffset()==null||request.endOffset()==null||request.endOffset()<=request.startOffset()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","하이라이트 범위를 확인해 주세요.");if(("HIGHLIGHT".equals(request.type())||"BOOKMARK".equals(request.type()))&&notes.existsByRoomIdAndUserIdAndParagraphOrderAndStartOffsetAndEndOffsetAndType(roomId,current.id,request.paragraphOrder(),request.startOffset(),request.endOffset(),request.type()))throw new ApiException(HttpStatus.CONFLICT,"DUPLICATE_SHARED_NOTE","이미 공유한 노트입니다.");ReadingRoomNote n=new ReadingRoomNote();n.roomId=roomId;n.userId=current.id;n.bookId=bookId;n.type=request.type();n.paragraphOrder=request.paragraphOrder();n.startOffset=request.startOffset();n.endOffset=request.endOffset();n.selectedText=blank(request.selectedText());n.content=blank(request.content());n.highlightColor=HighlightColorSupport.normalize(request.highlightColor());n=notes.save(n);sync.publish(roomId,bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.created":"shared_note.created",n.id);return response(room,current,n);}
+  private RoomNoteResponse createRange(String username,Long roomId,RoomNoteRequest request) {
+    ReadingRoom room=rooms.findByIdForUpdate(roomId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","방을 찾을 수 없습니다."));
+    AppUser current=member(username,roomId); Long bookId=scopedBook(room,request.bookId());
+    if("BOOKMARK".equals(request.type())) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_NOTE_RANGE","책갈피는 한 위치에 저장합니다.");
+    var selected=NoteRangeSupport.validate(paragraphs,bookId,request.ranges());
+    if("MEMO".equals(request.type()) && (request.content()==null || request.content().trim().isEmpty())) throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 입력해 주세요.");
+    if("HIGHLIGHT".equals(request.type())) {
+      ReadingRoomNote firstNote=null;
+      for(int i=0;i<selected.ranges().size();i++) {
+        var range=selected.ranges().get(i);
+        if(range.endOffset()==range.startOffset()) continue;
+        var existing=notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,bookId).stream().filter(n->n.userId.equals(current.id) && "HIGHLIGHT".equals(n.type) && n.paragraphOrder==range.paragraphOrder() && java.util.Objects.equals(n.startOffset,range.startOffset()) && java.util.Objects.equals(n.endOffset,range.endOffset())).findFirst();
+        ReadingRoomNote note=existing.orElseGet(ReadingRoomNote::new);
+        note.roomId=roomId;note.bookId=bookId;note.userId=current.id;note.type="HIGHLIGHT";
+        note.paragraphOrder=range.paragraphOrder();note.startOffset=range.startOffset();note.endOffset=range.endOffset();
+        note.selectedText=selected.parts().get(i);note.highlightColor=HighlightColorSupport.normalize(request.highlightColor());note=notes.saveAndFlush(note);
+        if(firstNote==null)firstNote=note;
+        sync.publish(roomId,bookId,"shared_highlight.created",note.id);
+      }
+      return response(room,current,firstNote);
+    }
+    String encoded=NoteRangeSupport.encode(selected.ranges());
+    var duplicate=notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,bookId).stream().filter(n->n.userId.equals(current.id) && "MEMO".equals(n.type) && encoded.equals(n.selectionRanges) && request.content().trim().equals(n.content)).findFirst();
+    if(duplicate.isPresent())return response(room,current,duplicate.get());
+    var first=selected.ranges().get(0);
+    ReadingRoomNote note=new ReadingRoomNote();note.roomId=roomId;note.bookId=bookId;note.userId=current.id;note.type="MEMO";
+    note.paragraphOrder=first.paragraphOrder();note.startOffset=first.startOffset();note.endOffset=first.endOffset();
+    note.selectedText=selected.text();note.content=request.content().trim();note.highlightColor=HighlightColorSupport.normalize(request.highlightColor());note.selectionRanges=encoded;
+    note=notes.saveAndFlush(note);sync.publish(roomId,bookId,"shared_note.created",note.id);
+    return response(room,current,note);
+  }
   @org.springframework.transaction.annotation.Transactional void delete(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoomNote n=note(roomId,noteId);if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_DELETE_FORBIDDEN","작성자만 공유 메모를 삭제할 수 있습니다.");notes.delete(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.deleted":"shared_note.deleted",noteId);}
-  @org.springframework.transaction.annotation.Transactional RoomNoteResponse update(String username,Long roomId,Long noteId,RoomNoteUpdateRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_EDIT_FORBIDDEN","작성자만 공유 메모를 수정할 수 있습니다.");if(request.content()!=null){if(!"MEMO".equals(n.type)||request.content().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 확인해 주세요.");n.content=request.content().trim();}if(request.highlightColor()!=null){if(!"HIGHLIGHT".equals(n.type)||request.highlightColor().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","하이라이트 색상을 확인해 주세요.");n.highlightColor=request.highlightColor().trim();}if(request.content()==null&&request.highlightColor()==null)throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","수정할 내용을 입력해 주세요.");n=notes.save(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.updated":"shared_note.updated",n.id);return response(room,current,n);}
+  @org.springframework.transaction.annotation.Transactional RoomNoteResponse update(String username,Long roomId,Long noteId,RoomNoteUpdateRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!n.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_EDIT_FORBIDDEN","작성자만 공유 메모를 수정할 수 있습니다.");if(request.content()!=null){if(!"MEMO".equals(n.type)||request.content().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","메모 내용을 확인해 주세요.");n.content=request.content().trim();}if(request.highlightColor()!=null){if(!"HIGHLIGHT".equals(n.type)||request.highlightColor().trim().isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","하이라이트 색상을 확인해 주세요.");n.highlightColor=HighlightColorSupport.normalize(request.highlightColor());}if(request.content()==null&&request.highlightColor()==null)throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_SHARED_NOTE","수정할 내용을 입력해 주세요.");n=notes.save(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.updated":"shared_note.updated",n.id);return response(room,current,n);}
   List<RoomNoteCommentResponse> comments(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);return comments.findByRoomNoteIdOrderByCreatedAtAsc(noteId).stream().map(c->commentResponse(roomId,current,c)).toList();}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse addComment(String username,Long roomId,Long noteId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!"MEMO".equals(n.type))throw new ApiException(HttpStatus.BAD_REQUEST,"COMMENTS_ONLY_FOR_MEMO","Comments are available only for memos.");readable(room,current,n);ReadingRoomNoteComment c=new ReadingRoomNoteComment();c.roomNoteId=noteId;c.userId=current.id;c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.created",c.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse updateComment(String username,Long roomId,Long noteId,Long commentId,RoomNoteCommentRequest request){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_EDIT_FORBIDDEN","Only the author can edit this comment.");c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.updated",c.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional void deleteComment(String username,Long roomId,Long noteId,Long commentId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_DELETE_FORBIDDEN","Only the author can delete this comment.");comments.delete(c);sync.publish(roomId,n.bookId,"shared_comment.deleted",commentId);}
-  private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n){boolean locked=spoiler(room,current,n);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,locked?null:n.selectedText,locked?null:n.content,locked?null:n.highlightColor,locked,n.userId.equals(current.id),locked?0:comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version);}
+  private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n){boolean locked=spoiler(room,current,n);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,locked?null:n.selectedText,locked?null:n.content,locked?null:n.highlightColor,locked,n.userId.equals(current.id),locked?0:comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version,locked?List.of():NoteRangeSupport.decode(n.selectionRanges));}
   /** Explicit, item-only reveal. It is never persisted, so snapshots and a
    * new app session revert to the redacted representation. */
-  RoomNoteResponse reveal(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,n.selectedText,n.content,n.highlightColor,false,n.userId.equals(current.id),comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version);}
+  RoomNoteResponse reveal(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,n.selectedText,n.content,n.highlightColor,false,n.userId.equals(current.id),comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version,NoteRangeSupport.decode(n.selectionRanges));}
   private RoomNoteCommentResponse commentResponse(Long roomId,AppUser current,ReadingRoomNoteComment c){return new RoomNoteCommentResponse(c.id,c.userId,name(roomId,c.userId),profileImage(roomId,c.userId),c.content,c.createdAt,c.updatedAt,c.userId.equals(current.id),c.version);}
   private String name(Long roomId,Long id){return members.findByRoomIdAndUserId(roomId,id).map(m->m.roomNickname).filter(n->n!=null&&!n.isBlank()).orElseGet(()->userRepository.findById(id).map(u->u.nickname).orElse("알 수 없음"));}
   private String profileImage(Long roomId,Long id){return members.findByRoomIdAndUserId(roomId,id).map(m->m.roomProfileImageUrl).filter(v->v!=null&&!v.isBlank()).orElseGet(()->userRepository.findById(id).map(users::profileFor).map(ProfileResponse::profileImageUrl).orElse(null));}
