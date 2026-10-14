@@ -189,6 +189,40 @@ AiReadingFriendResponse updateFriend(
     );
 }
 
+
+    // AI 친구 페르소나 상세 설정 저장
+    @PatchMapping("/ai-reading-friends/{friendId}/persona")
+    @org.springframework.transaction.annotation.Transactional
+    AiReadingFriendResponse updateFriendPersona(
+            @PathVariable Long friendId,
+            @Valid @RequestBody UpdatePersonaRequest request,
+            org.springframework.security.core.Authentication authentication
+    ) {
+        var user = currentUser(authentication);
+
+        // 본인이 생성한 AI 친구만 수정 가능
+        AiReadingFriend friend = friendRepository
+                .findByIdAndUserIdAndIsDefaultFalse(friendId, user.id)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "AI_FRIEND_NOT_FOUND",
+                        "수정할 AI 친구를 찾을 수 없습니다."
+                ));
+
+        // Gemini를 호출하지 않고 수정된 페르소나 직접 저장
+        friend.persona = request.persona();
+        friend.updatedAt = java.time.OffsetDateTime.now();
+
+        return AiReadingFriendResponse.from(
+                friendRepository.save(friend)
+        );
+    }
+
+    record UpdatePersonaRequest(
+            @NotBlank String persona
+    ) {}
+
+
     @DeleteMapping("/ai-reading-friends/{friendId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     @org.springframework.transaction.annotation.Transactional
     void deleteFriend(@PathVariable Long friendId, org.springframework.security.core.Authentication authentication) {
