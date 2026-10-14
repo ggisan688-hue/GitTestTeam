@@ -53,11 +53,11 @@ class BookRepository {
   }
 
   Future<BookSearchPage> searchPage(
-    String query, {
-    String? category,
-    int page = 0,
-    int size = 20,
-  }) async {
+      String query, {
+        String? category,
+        int page = 0,
+        int size = 20,
+      }) async {
     final response = await _api.get<BookSearchPage>(
       '/api/books/search/page',
       query: {
@@ -79,6 +79,16 @@ class BookRepository {
           .toList(),
     );
     return res.data ?? const [];
+  }
+
+  Future<int> recordStandardPages(int bookId, List<int> pages) async {
+    if (pages.isEmpty) return 0;
+    final response = await _api.post<int>(
+      '/api/reading-stats/pages',
+      body: {'bookId': bookId, 'pages': pages},
+      parse: (json) => ((json as Map<String, dynamic>)['addedPages'] as num?)?.toInt() ?? 0,
+    );
+    return response.data ?? 0;
   }
 
   Future<ReadingStats> readingStats({String period = 'week'}) async {
@@ -114,10 +124,10 @@ class BookRepository {
       _api.delete('/api/books/$bookId/favorite');
 
   Future<void> recordReading(
-    int bookId, {
-    int? progressPercent,
-    int? lastReadPosition,
-  }) async {
+      int bookId, {
+        int? progressPercent,
+        int? lastReadPosition,
+      }) async {
     await _api.post<Object>(
       '/api/books/$bookId/reading-progress',
       body: {
@@ -154,9 +164,9 @@ class BookRepository {
   }
 
   Future<List<ReadingNote>> readingNotes(
-    int bookId, {
-    ReaderNoteType? type,
-  }) async {
+      int bookId, {
+        ReaderNoteType? type,
+      }) async {
     final res = await _api.get<List<ReadingNote>>(
       '/api/books/$bookId/reading-notes',
       query: type == null ? null : {'type': type.api},
@@ -168,16 +178,16 @@ class BookRepository {
   }
 
   Future<ReadingNote> addReadingNote(
-    int bookId, {
-    required ReaderNoteType type,
-    required int paragraphOrder,
-    String? memoContent,
-    String? selectedText,
-    int? startOffset,
-    int? endOffset,
-    List<NoteRange> ranges = const [],
-    String? highlightColor,
-  }) async {
+      int bookId, {
+        required ReaderNoteType type,
+        required int paragraphOrder,
+        String? memoContent,
+        String? selectedText,
+        int? startOffset,
+        int? endOffset,
+        List<NoteRange> ranges = const [],
+        String? highlightColor,
+      }) async {
     final res = await _api.post<ReadingNote>(
       '/api/books/$bookId/reading-notes',
       body: {
@@ -196,11 +206,11 @@ class BookRepository {
   }
 
   Future<ReadingNote> updateReadingNote(
-    int bookId,
-    int noteId, {
-    String? memoContent,
-    String? highlightColor,
-  }) async {
+      int bookId,
+      int noteId, {
+        String? memoContent,
+        String? highlightColor,
+      }) async {
     final res = await _api.patch<ReadingNote>(
       '/api/books/$bookId/reading-notes/$noteId',
       body: {
@@ -260,11 +270,11 @@ class BookRepository {
   }
 
   Future<Memo> addMemo(
-    int bookId, {
-    required int chapter,
-    required int lineNo,
-    required String text,
-  }) async {
+      int bookId, {
+        required int chapter,
+        required int lineNo,
+        required String text,
+      }) async {
     final res = await _api.post<Memo>(
       '/api/books/$bookId/memos',
       body: {'chapter': chapter, 'lineNo': lineNo, 'text': text},
@@ -291,7 +301,7 @@ class BookRepository {
         '/api/books/$bookId/complete',
         parse: (j) => (j as Map<String, dynamic>)['complete'] == true,
       )).data ??
-      false;
+          false;
 
   Future<Map<String, dynamic>> report(int bookId, {bool force = false}) async =>
       (await _api.get<Map<String, dynamic>>(
@@ -301,10 +311,10 @@ class BookRepository {
       )).data!;
 
   Future<Memo> addInk(
-    int bookId, {
-    required int chapter,
-    required InkMemo ink,
-  }) async {
+      int bookId, {
+        required int chapter,
+        required InkMemo ink,
+      }) async {
     final res = await _api.post<Memo>(
       '/api/books/$bookId/memos',
       body: {
@@ -328,10 +338,10 @@ class BookRepository {
   )).data!;
 
   Future<Progress> updateProgress(
-    int bookId, {
-    required int chapter,
-    required int lineNo,
-  }) async => (await _api.put<Progress>(
+      int bookId, {
+        required int chapter,
+        required int lineNo,
+      }) async => (await _api.put<Progress>(
     '/api/books/$bookId/progress',
     body: {'chapter': chapter, 'lineNo': lineNo},
     parse: (j) => Progress.fromJson(j as Map<String, dynamic>),

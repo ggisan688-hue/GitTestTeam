@@ -40,11 +40,13 @@ class ReadingRoomMember {
     required this.role,
     this.roomProfileImageUrl,
     this.currentUser = false,
+    this.memoHighlightColor = '#FFF59D',
   });
   final int userId;
   final String nickname;
   final String role;
   final bool currentUser;
+  final String memoHighlightColor;
 
   /// The room-specific photo when present; the API falls back to the member's
   /// account photo so callers can render one consistent avatar field.
@@ -56,6 +58,7 @@ class ReadingRoomMember {
         role: _jsonString(json['role'], 'MEMBER'),
         roomProfileImageUrl: _jsonNullableString(json['roomProfileImageUrl']),
         currentUser: _jsonBool(json['currentUser']),
+        memoHighlightColor: _jsonString(json['memoHighlightColor'], '#FFF59D'),
       );
 }
 
@@ -136,23 +139,23 @@ class ReadingRoom {
     selectedAiFriendType: _jsonNullableString(json['selectedAiFriendType']),
     book: json['book'] is Map
         ? ReadingRoomBook.fromJson(
-            Map<String, dynamic>.from(json['book'] as Map),
-          )
+      Map<String, dynamic>.from(json['book'] as Map),
+    )
         : null,
     coverBook: json['coverBook'] is Map
         ? ReadingRoomBook.fromJson(
-            Map<String, dynamic>.from(json['coverBook'] as Map),
-          )
+      Map<String, dynamic>.from(json['coverBook'] as Map),
+    )
         : null,
     myRole: _jsonNullableString(json['myRole']),
     participants:
-        (json['participants'] is List ? json['participants'] as List : const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  ReadingRoomMember.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
+    (json['participants'] is List ? json['participants'] as List : const [])
+        .whereType<Map>()
+        .map(
+          (item) =>
+          ReadingRoomMember.fromJson(Map<String, dynamic>.from(item)),
+    )
+        .toList(),
     passwordRequired: _jsonBool(json['passwordRequired']),
     currentBookId: json['currentBookId'] == null
         ? null
@@ -161,8 +164,8 @@ class ReadingRoom {
         .whereType<Map>()
         .map(
           (item) =>
-              ReadingRoomBookItem.fromJson(Map<String, dynamic>.from(item)),
-        )
+          ReadingRoomBookItem.fromJson(Map<String, dynamic>.from(item)),
+    )
         .toList(),
     coverImageUrl: _jsonNullableString(json['coverImageUrl']),
   );

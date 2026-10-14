@@ -38,6 +38,7 @@ class UserBookProgress {
   @ManyToOne(fetch = FetchType.EAGER) @JoinColumn(name = "book_id", nullable = false) Book book;
   @Column(name = "progress_percent", nullable = false) int progressPercent;
   @Column(name = "last_read_position", nullable = false) int lastReadPosition;
+  @Column(name = "max_read_position", nullable = false) int maxReadPosition;
   @Column(name = "last_read_at", nullable = false) Instant lastReadAt;
   @Column(name = "created_at", nullable = false) Instant createdAt;
   @Column(name = "updated_at", nullable = false) Instant updatedAt;
@@ -48,12 +49,13 @@ class UserBookProgress {
 
 interface UserBookProgressRepository extends JpaRepository<UserBookProgress, Long> {
   java.util.Optional<UserBookProgress> findByUserIdAndBookId(Long userId, Long bookId);
+  List<UserBookProgress> findByBookIdAndUserIdIn(Long bookId, java.util.Collection<Long> userIds);
   List<UserBookProgress> findTop20ByUserIdOrderByLastReadAtDesc(Long userId);
   int countByUserIdAndProgressPercentGreaterThanEqual(Long userId, int progressPercent);
 }
 
 record ReadingProgressRequest(@Min(0) @Max(100) Integer progressPercent, @Min(0) Integer lastReadPosition) {}
-record ReadingProgressResponse(Long bookId, int progressPercent, int lastReadPosition, Instant lastReadAt) {}
+record ReadingProgressResponse(Long bookId, int progressPercent, int lastReadPosition, Instant lastReadAt, int maxReadPosition) {}
 record RecentBookResponse(Long id, String title, String author, String description, String coverImageUrl,
                           String category, int progressPercent, int lastReadPosition, Instant lastReadAt) {
   static RecentBookResponse from(UserBookProgress progress) {
@@ -65,6 +67,7 @@ record RecentBookResponse(Long id, String title, String author, String descripti
 
 @Service
 class ReadingProgressService {
+  @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
   private final UserBookProgressRepository progressRepository;
   private final UserRepository users;
   private final BookRepository books; private final ReadingActivityLogRepository activities;
@@ -77,16 +80,18 @@ class ReadingProgressService {
         .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다."));
     Book book = books.findById(bookId)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BOOK_NOT_FOUND", "책을 찾을 수 없습니다."));
+    // Serialize first insert and high-water updates across personal/room readers.
+    entityManager.lock(user, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
     UserBookProgress progress = progressRepository.findByUserIdAndBookId(user.id, book.id).orElseGet(() -> {
       UserBookProgress created = new UserBookProgress(); created.user = user; created.book = book; return created;
     });
-    int before=progress.id==null?0:progress.lastReadPosition;
-    if (request.progressPercent() != null) progress.progressPercent = request.progressPercent();
+    int before=Math.max(progress.maxReadPosition,progress.lastReadPosition);
+    if (request.progressPercent() != null) progress.progressPercent = Math.max(progress.progressPercent, request.progressPercent());
     if (request.lastReadPosition() != null) progress.lastReadPosition = request.lastReadPosition();
+    progress.maxReadPosition = Math.max(before, progress.lastReadPosition);
     progress.lastReadAt = Instant.now();
     UserBookProgress saved = progressRepository.save(progress);
-    if(request.lastReadPosition()!=null&&saved.lastReadPosition>before){var date=LocalDate.now(ReadingStatisticsService.ZONE);var log=activities.findByUserIdAndBookIdAndActivityDate(user.id,book.id,date).orElseGet(()->{var x=new ReadingActivityLog();x.user=user;x.book=book;x.activityDate=date;return x;});log.paragraphsRead+=saved.lastReadPosition-before;log.lastPositionBefore=before;log.lastPositionAfter=saved.lastReadPosition;activities.save(log);}
-    return new ReadingProgressResponse(book.id, saved.progressPercent, saved.lastReadPosition, saved.lastReadAt);
+    return new ReadingProgressResponse(book.id, saved.progressPercent, saved.lastReadPosition, saved.lastReadAt, saved.maxReadPosition);
   }
 
   List<RecentBookResponse> recent(String username) {
@@ -101,8 +106,8 @@ class ReadingProgressService {
     books.findById(bookId)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BOOK_NOT_FOUND", "책을 찾을 수 없습니다."));
     return progressRepository.findByUserIdAndBookId(user.id, bookId)
-        .map(progress -> new ReadingProgressResponse(bookId, progress.progressPercent, progress.lastReadPosition, progress.lastReadAt))
-        .orElse(new ReadingProgressResponse(bookId, 0, 0, null));
+        .map(progress -> new ReadingProgressResponse(bookId, progress.progressPercent, progress.lastReadPosition, progress.lastReadAt, progress.maxReadPosition))
+        .orElse(new ReadingProgressResponse(bookId, 0, 0, null, 0));
   }
 }
 

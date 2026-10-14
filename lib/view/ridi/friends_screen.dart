@@ -476,7 +476,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               children: [
                 Row(
                   children: [
-                    Expanded(
+                    Flexible(
                       child: Text(
                         friend.name,
                         maxLines: 2,
@@ -487,6 +487,28 @@ class _FriendsScreenState extends State<FriendsScreen> {
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
                           color: RidiColors.ink,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: '형광펜 색상 변경',
+                      child: InkWell(
+                        onTap: friend.id == null
+                            ? null
+                            : () => _chooseFriendColor(friend.id!),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: _highlightColors[_friendColors[friend.id] ?? '#FFF59D'],
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black26),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -512,42 +534,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         child: const Text('삭제'),
                       ),
                     ],
-
-                  ],
-                ),
-
-                const SizedBox(height: 6),
-
-
-
-                const SizedBox(height: 14),
-
-                Row(
-                  children: [
-                    const Text('형광펜 색상'),
-                    const SizedBox(width: 12),
-
-                    Tooltip(
-                      message: '형광펜 색상 변경',
-                      child: InkWell(
-                        onTap: friend.id == null
-                            ? null
-                            : () => _chooseFriendColor(friend.id!),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.all(6),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: _highlightColors[_friendColors[friend.id] ?? '#FFF59D'],
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.black26),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
 
                   ],
                 ),

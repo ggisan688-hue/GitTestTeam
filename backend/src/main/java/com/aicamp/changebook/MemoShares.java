@@ -39,6 +39,7 @@ record MemoShareResponse(Long shareId, String sourceType, Long memoId, Long book
 
 @Service
 class MemoShareService {
+  @org.springframework.beans.factory.annotation.Autowired private UserBookProgressRepository globalProgress;
   private final MemoShareRepository shares;
   private final ReadingNoteRepository personal;
   private final ReadingRoomNoteRepository roomNotes;
@@ -152,8 +153,8 @@ class MemoShareService {
     }
     boolean lockEnabled = members.findByRoomIdAndUserId(roomId, viewer.id)
         .map(m -> m.spoilerLockEnabled).orElse(false);
-    int lastPosition = progress.findByRoomIdAndUserIdAndBookId(roomId, viewer.id, bookId)
-        .map(p -> p.lastReadPosition).orElse(0);
+    int lastPosition = globalProgress.findByUserIdAndBookId(viewer.id, bookId)
+        .map(p -> Math.max(p.maxReadPosition,p.lastReadPosition)).orElse(0);
     var ranges = NoteRangeSupport.decode(selectionRanges);
     int selectionEnd = ranges.isEmpty() ? paragraphOrder : ranges.get(ranges.size()-1).paragraphOrder();
     boolean locked = lockEnabled && !viewer.id.equals(authorId) && selectionEnd > lastPosition;

@@ -185,7 +185,7 @@ class ReaderSettings {
     keepScreenOn: json['keepScreenOn'] == true,
     showHighlights: json['showHighlights'] != false,
     defaultHighlightColor:
-        json['defaultHighlightColor'] as String? ??
+    json['defaultHighlightColor'] as String? ??
         json['highlightColor'] as String? ??
         '#FFF59D',
   );
@@ -240,15 +240,18 @@ class ReadingProgress {
     required this.bookId,
     required this.progressPercent,
     required this.lastReadPosition,
+    this.maxReadPosition = 0,
   });
   final int bookId;
   final int progressPercent;
   final int lastReadPosition;
+  final int maxReadPosition;
   factory ReadingProgress.fromJson(Map<String, dynamic> json) =>
       ReadingProgress(
         bookId: (json['bookId'] as num).toInt(),
         progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
         lastReadPosition: (json['lastReadPosition'] as num?)?.toInt() ?? 0,
+        maxReadPosition: (json['maxReadPosition'] as num?)?.toInt() ?? (json['lastReadPosition'] as num?)?.toInt() ?? 0,
       );
 }
 

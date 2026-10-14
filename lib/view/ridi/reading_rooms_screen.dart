@@ -1409,6 +1409,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   bool _updatingCoverImage = false;
   bool _regeneratingCode = false;
   bool _updatingMemberLimit = false;
+  bool _savingMemberColor = false;
   final ImagePicker _imagePicker = ImagePicker();
   @override
   void initState() {
@@ -1427,6 +1428,46 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   void dispose() {
     _roomSync?.dispose();
     super.dispose();
+  }
+
+  static const _memoColors = ['#FFF59D','#F8BBD0','#A5D6A7','#90CAF9','#CE93D8',
+    '#FFCC80','#EF9A9A','#80CBC4','#B3E5FC','#BDBDBD'];
+
+  Color _memberMemoColor(String value) {
+    final hex = value.replaceFirst('#', '');
+    return Color(0xFF000000 | (int.tryParse(hex, radix: 16) ?? 0xFFF59D));
+  }
+
+  Future<void> _chooseMyMemoColor(ReadingRoom room, ReadingRoomMember member) async {
+    if (!member.currentUser || _savingMemberColor) return;
+    final color = await showDialog<String>(context: context,
+        barrierColor: Colors.transparent,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('메모 색상'),
+          content: SizedBox(width: 300, child: Wrap(spacing: 12, runSpacing: 16,
+            children: _memoColors.map((value) => InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () => Navigator.pop(dialogContext, value),
+              child: Container(width: 44,height: 44,
+                decoration: BoxDecoration(color: _memberMemoColor(value),shape: BoxShape.circle,
+                    border: Border.all(color: Colors.black26)),
+                child: value == member.memoHighlightColor.toUpperCase()
+                    ? const Icon(Icons.check,size: 22) : null,
+              ),
+            )).toList(),
+          )),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),child: const Text('취소'))],
+        ));
+    if (color == null || !mounted) return;
+    setState(() => _savingMemberColor = true);
+    try {
+      await widget.repository.updateMyMemoColor(room.id, color);
+      if (mounted) _reload();
+    } on ApiException catch (error) {
+      if (mounted) _showError(context,error);
+    } finally {
+      if (mounted) setState(() => _savingMemberColor = false);
+    }
   }
 
   void _reload() {
@@ -2218,6 +2259,19 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                           onPressed: () => _kick(room, m),
                           child: const Text('내보내기'),
                         ),
+                      Tooltip(
+                        message: m.currentUser ? '내 메모 색상 변경' : '${m.nickname}님의 메모 색상',
+                        child: InkWell(
+                          onTap: m.currentUser && !_savingMemberColor
+                              ? () => _chooseMyMemoColor(room,m) : null,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Padding(padding: const EdgeInsets.all(10),
+                            child: Container(width: 20,height: 20,
+                                decoration: BoxDecoration(color: _memberMemoColor(m.memoHighlightColor),
+                                    shape: BoxShape.circle,border: Border.all(color: Colors.black26))),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),

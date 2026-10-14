@@ -675,7 +675,7 @@ class _StatsCardState extends State<_StatsCard> {
       final stats = s.data!;
       final peak = stats.dailyReading.fold(
         1,
-            (a, b) => b.paragraphsRead > a ? b.paragraphsRead : a,
+            (a, b) => b.pagesRead > a ? b.pagesRead : a,
       );
       return InkWell(
         onTap: () => Navigator.of(context).push(
@@ -695,7 +695,7 @@ class _StatsCardState extends State<_StatsCard> {
                 ],
               ),
               Text(
-                '${stats.periodParagraphsRead}문단',
+                '${stats.periodPagesRead}페이지',
                 style: RidiText.title.copyWith(fontSize: 24),
               ),
               const SizedBox(height: 16),
@@ -711,9 +711,9 @@ class _StatsCardState extends State<_StatsCard> {
                           children: [
                             Container(
                               width: 18,
-                              height: day.paragraphsRead == 0
+                              height: day.pagesRead == 0
                                   ? 3
-                                  : 52 * day.paragraphsRead / peak,
+                                  : 52 * day.pagesRead / peak,
                               decoration: BoxDecoration(
                                 color: RidiColors.blue.withValues(alpha: .7),
                                 borderRadius: BorderRadius.circular(4),
@@ -766,10 +766,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> {
     _future = widget.repository.readingStats();
   }
 
-  /// 월별(올해 1~12월) — 서버에 period=year 를 먼저 묻고, 아직 없으면 이번 달 기록만으로 채운다.
-  // ※ 서버 연결 메모(백엔드 팀이 이어서): GET /api/reading-stats?period=year
-  //   → startDate=1/1, endDate=12/31, dailyReading = 올해 날짜별 읽은 문단 수 (지금 응답 모양 그대로).
-  //   생기면 이 화면은 그대로 12달 막대를 다 채운다.
+  /// 월별(올해 1~12월) 기본 페이지 독서량.
   Future<_MonthlyStats> _loadMonthly() async {
     try {
       final year = await widget.repository.readingStats(period: 'year');
@@ -857,7 +854,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> {
                       Text('${m.year}년 · 1월 ~ 12월', style: RidiText.sub),
                       const Spacer(),
                       Text(
-                        '올해 ${m.total}문단',
+                        '올해 ${m.total}페이지',
                         style: RidiText.sub.copyWith(
                           color: RidiColors.ink,
                           fontWeight: FontWeight.w700,
@@ -905,7 +902,7 @@ class _MonthlyStats {
     final now = DateTime.now();
     final per = List<int>.filled(12, 0);
     for (final d in x.dailyReading) {
-      if (d.date.year == now.year) per[d.date.month - 1] += d.paragraphsRead;
+      if (d.date.year == now.year) per[d.date.month - 1] += d.pagesRead;
     }
     return _MonthlyStats(
       year: now.year,
@@ -917,7 +914,7 @@ class _MonthlyStats {
   }
 }
 
-/// 독서 통계 — 이번 주: 요일별 세로 막대 (막대 위 = 읽은 문단 수, 아래 = 요일)
+/// 독서 통계 — 이번 주: 요일별 세로 막대 (막대 위 = 읽은 페이지 수, 아래 = 요일)
 class _WeekBars extends StatelessWidget {
   const _WeekBars({required this.days});
 
@@ -927,7 +924,7 @@ class _WeekBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxV = days.fold<int>(
       0,
-          (m, d) => d.paragraphsRead > m ? d.paragraphsRead : m,
+          (m, d) => d.pagesRead > m ? d.pagesRead : m,
     );
     const barMax = 220.0;
     return SizedBox(
@@ -941,11 +938,11 @@ class _WeekBars extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(
-                    '${d.paragraphsRead}문단',
+                    '${d.pagesRead}페이지',
                     maxLines: 1,
                     style: RidiText.sub.copyWith(
                       fontSize: 12,
-                      color: d.paragraphsRead > 0
+                      color: d.pagesRead > 0
                           ? RidiColors.ink
                           : RidiColors.gray,
                     ),
@@ -953,11 +950,11 @@ class _WeekBars extends StatelessWidget {
                   const SizedBox(height: 6),
                   Container(
                     width: 36,
-                    height: maxV == 0 || d.paragraphsRead == 0
+                    height: maxV == 0 || d.pagesRead == 0
                         ? 4
-                        : (barMax * d.paragraphsRead / maxV).clamp(4.0, barMax),
+                        : (barMax * d.pagesRead / maxV).clamp(4.0, barMax),
                     decoration: BoxDecoration(
-                      color: d.paragraphsRead > 0
+                      color: d.pagesRead > 0
                           ? RidiColors.blue
                           : RidiColors.grayLight,
                       borderRadius: BorderRadius.circular(6),
@@ -974,7 +971,7 @@ class _WeekBars extends StatelessWidget {
   }
 }
 
-/// 독서 통계 — 월별: 1월~12월 세로 막대 (막대 위 = 그 달 읽은 문단 수, 이번 달 글자는 굵게)
+/// 독서 통계 — 월별: 1월~12월 세로 막대 (막대 위 = 그 달 읽은 페이지 수, 이번 달 글자는 굵게)
 class _MonthBars extends StatelessWidget {
   const _MonthBars({required this.perMonth, required this.current});
 

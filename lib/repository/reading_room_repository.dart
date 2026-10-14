@@ -177,10 +177,18 @@ class ReadingRoomRepository {
       )).data ??
           const [];
 
-  Future<List<SharedRoomNote>> sharedNotes(int roomId, {int? bookId}) async =>
+  Future<void> updateMyMemoColor(int roomId, String color) async {
+    await _api.patch<Map<String, dynamic>>(
+      '/api/reading-rooms/$roomId/shared-notes/my-color',
+      body: {'highlightColor': color},
+      parse: (json) => json as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<SharedRoomNote>> sharedNotes(int roomId, {int? bookId, bool reader = false}) async =>
       (await _api.get<List<SharedRoomNote>>(
         '/api/reading-rooms/$roomId/shared-notes',
-        query: {if (bookId != null) 'bookId': '$bookId'},
+        query: {if (bookId != null) 'bookId': '$bookId', if (reader) 'reader': 'true'},
         parse: (json) => (json as List)
             .map((e) => SharedRoomNote.fromJson(e as Map<String, dynamic>))
             .toList(),

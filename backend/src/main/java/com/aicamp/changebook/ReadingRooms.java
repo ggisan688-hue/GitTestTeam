@@ -55,6 +55,7 @@ class RoomMember {
   @Id @Column(name = "room_id") Long roomId;
   @Id @Column(name = "user_id") Long userId;
   @Column(nullable = false) String role;
+  @Column(name = "memo_highlight_color", nullable = false, length = 20) String memoHighlightColor = "#FFF59D";
   @Column(name = "room_nickname") String roomNickname;
   @Column(name = "room_profile_image_url", length = 500) String roomProfileImageUrl;
   @Column(name = "spoiler_lock_enabled", nullable = false) boolean spoilerLockEnabled;
@@ -145,7 +146,11 @@ record InviteCodeValidationResponse(boolean valid, Long roomId, String roomName,
                                     boolean passwordRequired, int capacity,
                                     int currentMemberCount, boolean alreadyJoined) {}
 record RoomMemberResponse(Long userId, String nickname, String role, Instant joinedAt,
-                          String roomProfileImageUrl, boolean currentUser) {}
+                          String roomProfileImageUrl, boolean currentUser, String memoHighlightColor) {
+  RoomMemberResponse(Long userId,String nickname,String role,Instant joinedAt,String roomProfileImageUrl,boolean currentUser) {
+    this(userId,nickname,role,joinedAt,roomProfileImageUrl,currentUser,"#FFF59D");
+  }
+}
 record RoomBookResponse(Long id, String title, String author, String coverImageUrl) {
   static RoomBookResponse from(Book book) {
     return new RoomBookResponse(book.id, book.title, book.author, book.coverImageUrl);
@@ -175,6 +180,8 @@ record JoinRoomResponse(RoomResponse room, boolean alreadyJoined) {}
 
 @org.springframework.stereotype.Service
 class RoomService {
+  @org.springframework.beans.factory.annotation.Autowired private ReadingProgressService globalProgress;
+  @org.springframework.beans.factory.annotation.Autowired private UserBookProgressRepository globalProgressRepository;
   private static final Logger log = LoggerFactory.getLogger(RoomService.class);
   private static final SecureRandom CODE_RANDOM = new SecureRandom();
   private static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -514,37 +521,40 @@ class RoomService {
         () -> new ApiException(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "Room not found."));
     if(!members.existsByRoomIdAndUserId(roomId,current.id)) throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 진행률을 저장할 수 있습니다.");
     if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.BAD_REQUEST,"ROOM_BOOK_REQUIRED","방에 추가된 도서만 읽을 수 있습니다.");
+    var saved=globalProgress.record(username,bookId,new ReadingProgressRequest(request.progressPercent(),request.lastReadPosition()));
+    // Retain room visit timestamps for room cover/order compatibility only.
     RoomMemberProgress p=roomProgress.findByRoomIdAndUserIdAndBookId(roomId,current.id,bookId).orElseGet(RoomMemberProgress::new);
-    p.roomId=roomId;
-    p.userId=current.id;
-    p.bookId=bookId;
-    // Percentage is an achievement record, not a cursor: a page turn or an
-    // older device must never make it go backwards.  The cursor itself stays
-    // independent so "continue reading" can deliberately resume where the
-    // member last stopped.
-    if(request.progressPercent()!=null) p.progressPercent=Math.max(p.progressPercent,request.progressPercent());
-    if(request.lastReadPosition()!=null) p.lastReadPosition=request.lastReadPosition();
-    p.updatedAt=Instant.now();
-    p=roomProgress.save(p);
-    return progressResponse(p);
+    p.roomId=roomId;p.userId=current.id;p.bookId=bookId;
+    p.progressPercent=saved.progressPercent();p.lastReadPosition=saved.lastReadPosition();p.updatedAt=Instant.now();
+    roomProgress.save(p);
+    return new RoomProgressResponse(roomId,current.id,bookId,saved.progressPercent(),saved.lastReadPosition(),saved.lastReadAt());
   }
   @org.springframework.transaction.annotation.Transactional(readOnly=true)
-  RoomProgressResponse myProgress(String username,Long roomId,Long bookId) { AppUser current=userFeatures.me(username); if(!members.existsByRoomIdAndUserId(roomId,current.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다."); return roomProgress.findByRoomIdAndUserIdAndBookId(roomId,current.id,bookId).map(this::progressResponse).orElse(new RoomProgressResponse(roomId,current.id,bookId,0,0,null)); }
+  RoomProgressResponse myProgress(String username,Long roomId,Long bookId) {
+    AppUser current=userFeatures.me(username);
+    if(!members.existsByRoomIdAndUserId(roomId,current.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다.");
+    if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId))throw new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방의 책을 찾을 수 없습니다.");
+    var p=globalProgress.get(username,bookId);
+    return new RoomProgressResponse(roomId,current.id,bookId,p.progressPercent(),p.lastReadPosition(),p.lastReadAt());
+  }
   @org.springframework.transaction.annotation.Transactional(readOnly=true)
   List<RoomParticipantProgressResponse> participantProgress(String username,Long roomId,Long bookId) {
-    AppUser current=userFeatures.me(username); room(roomId);
-    if(!members.existsByRoomIdAndUserId(roomId,current.id)) throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다.");
-    if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId)) throw new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방의 책을 찾을 수 없습니다.");
-    java.util.Map<Long,RoomMemberProgress> byUser=roomProgress.findByRoomIdAndBookIdOrderByUpdatedAtDesc(roomId,bookId).stream().collect(java.util.stream.Collectors.toMap(p->p.userId,p->p,(first,ignored)->first));
-    return members.findByRoomIdOrderByJoinedAtAsc(roomId).stream().map(member->{
-      RoomMemberProgress p=byUser.get(member.userId);
+    AppUser current=userFeatures.me(username);room(roomId);
+    if(!members.existsByRoomIdAndUserId(roomId,current.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","방에 가입한 사용자만 볼 수 있습니다.");
+    if(!roomBooks.existsByRoomIdAndBookId(roomId,bookId))throw new ApiException(HttpStatus.NOT_FOUND,"ROOM_BOOK_NOT_FOUND","방의 책을 찾을 수 없습니다.");
+    var roomMembers=members.findByRoomIdOrderByJoinedAtAsc(roomId);
+    var ids=roomMembers.stream().map(m->m.userId).toList();
+    java.util.Map<Long,UserBookProgress> byUser=globalProgressRepository.findByBookIdAndUserIdIn(bookId,ids).stream()
+      .collect(java.util.stream.Collectors.toMap(p->p.user.id,p->p));
+    return roomMembers.stream().map(member->{
+      UserBookProgress p=byUser.get(member.userId);
       RoomMemberResponse identity=users.findById(member.userId)
           .map(user->memberResponse(member,user,java.util.Objects.equals(member.userId,current.id)))
           .orElse(new RoomMemberResponse(member.userId,"참여자",member.role,member.joinedAt,member.roomProfileImageUrl,java.util.Objects.equals(member.userId,current.id)));
-      return new RoomParticipantProgressResponse(member.userId,identity.nickname(),identity.roomProfileImageUrl(),p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.updatedAt,java.util.Objects.equals(member.userId,current.id));
+      return new RoomParticipantProgressResponse(member.userId,identity.nickname(),identity.roomProfileImageUrl(),p==null?0:p.progressPercent,p==null?0:p.lastReadPosition,p==null?null:p.lastReadAt,java.util.Objects.equals(member.userId,current.id));
     }).toList();
   }
-  private RoomProgressResponse progressResponse(RoomMemberProgress p){return new RoomProgressResponse(p.roomId,p.userId,p.bookId,p.progressPercent,p.lastReadPosition,p.updatedAt);}
+
   private void normalizeBookOrder(Long roomId){List<RoomBook> list=roomBooks.findByRoomIdOrderByDisplayOrderAsc(roomId);for(int i=0;i<list.size();i++)list.get(i).displayOrder=i;roomBooks.saveAll(list);}
 
   @org.springframework.transaction.annotation.Transactional
@@ -728,7 +738,7 @@ class RoomService {
     }
     return new RoomMemberResponse(member.userId,
         member.roomNickname == null || member.roomNickname.isBlank() ? user.nickname : member.roomNickname,
-        member.role, member.joinedAt, imageUrl, currentUser);
+        member.role, member.joinedAt, imageUrl, currentUser, member.memoHighlightColor);
   }
 
   private boolean isMember(ReadingRoom room, AppUser user) {

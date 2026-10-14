@@ -2,15 +2,15 @@ class DailyReading {
   const DailyReading({
     required this.date,
     required this.dayLabel,
-    required this.paragraphsRead,
+    required this.pagesRead,
   });
   final DateTime date;
   final String dayLabel;
-  final int paragraphsRead;
+  final int pagesRead;
   factory DailyReading.fromJson(Map<String, dynamic> json) => DailyReading(
     date: DateTime.parse(json['date'] as String),
     dayLabel: json['dayLabel'] as String,
-    paragraphsRead: (json['paragraphsRead'] as num?)?.toInt() ?? 0,
+    pagesRead: (json['pagesRead'] as num?)?.toInt() ?? 0,
   );
 }
 
@@ -23,11 +23,11 @@ class ReadingStats {
     required this.completedBooksCount,
     required this.memoCount,
     required this.periodMemoCount,
-    required this.periodParagraphsRead,
+    required this.periodPagesRead,
   });
   final DateTime startDate, endDate;
   final List<DailyReading> dailyReading;
-  final int currentStreakDays, completedBooksCount, periodParagraphsRead;
+  final int currentStreakDays, completedBooksCount, periodPagesRead;
   final int memoCount, periodMemoCount;
   factory ReadingStats.fromJson(Map<String, dynamic> json) => ReadingStats(
     startDate: DateTime.parse(json['startDate'] as String),
@@ -39,6 +39,6 @@ class ReadingStats {
     completedBooksCount: (json['completedBooksCount'] as num?)?.toInt() ?? 0,
     memoCount: (json['memoCount'] as num?)?.toInt() ?? 0,
     periodMemoCount: (json['periodMemoCount'] as num?)?.toInt() ?? 0,
-    periodParagraphsRead: (json['periodParagraphsRead'] as num?)?.toInt() ?? 0,
+    periodPagesRead: (json['periodPagesRead'] as num?)?.toInt() ?? 0,
   );
 }

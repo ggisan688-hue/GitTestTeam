@@ -169,16 +169,16 @@ class BookViewModel extends ChangeNotifier {
   }
 
   Future<void> addNote(
-    int bookId,
-    ReaderNoteType type,
-    int paragraphOrder, {
-    String? memo,
-    String? selectedText,
-    int? startOffset,
-    int? endOffset,
-    List<NoteRange> ranges = const [],
-    String? color,
-  }) async {
+      int bookId,
+      ReaderNoteType type,
+      int paragraphOrder, {
+        String? memo,
+        String? selectedText,
+        int? startOffset,
+        int? endOffset,
+        List<NoteRange> ranges = const [],
+        String? color,
+      }) async {
     await _repository.addReadingNote(
       bookId,
       type: type,
@@ -199,11 +199,11 @@ class BookViewModel extends ChangeNotifier {
   }
 
   Future<void> updateNote(
-    int bookId,
-    int noteId, {
-    String? memo,
-    String? color,
-  }) async {
+      int bookId,
+      int noteId, {
+        String? memo,
+        String? color,
+      }) async {
     await _repository.updateReadingNote(
       bookId,
       noteId,
@@ -215,7 +215,7 @@ class BookViewModel extends ChangeNotifier {
 
   Future<void> deleteNote(int bookId, int noteId) async {
     final wasMemo = readingNotes.any(
-      (n) => n.id == noteId && n.type == ReaderNoteType.memo,
+          (n) => n.id == noteId && n.type == ReaderNoteType.memo,
     );
     await _repository.deleteReadingNote(bookId, noteId);
     await loadReadingNotes(bookId);
@@ -236,8 +236,8 @@ class BookViewModel extends ChangeNotifier {
     readerSettings = settings;
     notifyListeners();
     final operation = _readerSettingsSaveTail.catchError((_) {}).then((
-      _,
-    ) async {
+        _,
+        ) async {
       try {
         final saved = await _repository.saveReaderSettings(settings);
         // A later tap is already displayed optimistically; do not let an old
@@ -260,6 +260,14 @@ class BookViewModel extends ChangeNotifier {
     await operation;
   }
 
+  Future<void> recordStandardPages(int bookId, List<int> pages) async {
+    final added = await _repository.recordStandardPages(bookId, pages);
+    if (added > 0) {
+      statsRevision++;
+      if (!_isDisposed) notifyListeners();
+    }
+  }
+
   Future<void> saveReaderProgress(int bookId, int position, int total) async {
     if (total <= 0) return;
     // Reader positions are paragraph_order values (1..N), not transient page
@@ -273,8 +281,9 @@ class BookViewModel extends ChangeNotifier {
       );
       readingProgress = ReadingProgress(
         bookId: bookId,
-        progressPercent: percent,
+        progressPercent: percent > (readingProgress?.progressPercent ?? 0) ? percent : (readingProgress?.progressPercent ?? 0),
         lastReadPosition: position,
+        maxReadPosition: position > (readingProgress?.maxReadPosition ?? 0) ? position : (readingProgress?.maxReadPosition ?? 0),
       );
       statsRevision++;
       await loadRecentBooks();

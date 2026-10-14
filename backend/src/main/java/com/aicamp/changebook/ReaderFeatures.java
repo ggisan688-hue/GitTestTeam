@@ -204,8 +204,43 @@ record ReaderSettingsResponse(double fontScale,int lineHeightStep,String theme,b
   }
   return ReadingNoteResponse.from(notes.save(n),preview(bookId,n.paragraphOrder));
  }
- void delete(String username,Long bookId,Long noteId){AppUser u=user(username);ReadingNote n=notes.findByIdAndUserIdAndBookId(noteId,u.id,bookId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"READING_NOTE_NOT_FOUND","독서노트를 찾을 수 없습니다."));notes.delete(n);}
- @Transactional ReadingNoteBulkDeleteResponse deleteAll(String username,Long bookId,ReadingNoteType type){AppUser u=user(username);book(bookId);int count=type==null?notes.deleteAllForUserAndBook(u.id,bookId):notes.deleteAllForUserAndBookAndType(u.id,bookId,type);return new ReadingNoteBulkDeleteResponse(count);}
+ @Transactional
+ void delete(String username,Long bookId,Long noteId){
+  AppUser u=user(username);
+  ReadingNote n=notes.findByIdAndUserIdAndBookId(noteId,u.id,bookId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"READING_NOTE_NOT_FOUND","독서노트를 찾을 수 없습니다."));
+  if(n.noteType==ReadingNoteType.MEMO){
+   var all=notes.findByUserIdAndBookIdOrderByCreatedAtDesc(u.id,bookId);
+   for(var h:all){
+    if(h.noteType!=ReadingNoteType.HIGHLIGHT)continue;
+    boolean associated=java.util.Objects.equals(n.linkedHighlightId,h.id)||memoContainsHighlight(n,h);
+    boolean needed=all.stream().anyMatch(other->other.noteType==ReadingNoteType.MEMO&&!other.id.equals(n.id)
+      &&(java.util.Objects.equals(other.linkedHighlightId,h.id)||memoOverlapsHighlight(other,h)));
+    if(associated&&!needed)notes.delete(h);
+   }
+  }
+  notes.delete(n);
+ }
+ private boolean memoContainsHighlight(ReadingNote memo,ReadingNote h){
+  if(h.startOffset==null||h.endOffset==null)return false;
+  var ranges=NoteRangeSupport.decode(memo.selectionRanges);
+  if(ranges.isEmpty())return memo.paragraphOrder==h.paragraphOrder&&java.util.Objects.equals(memo.startOffset,h.startOffset)&&java.util.Objects.equals(memo.endOffset,h.endOffset);
+  return ranges.stream().anyMatch(r->r.paragraphOrder()==h.paragraphOrder&&r.startOffset()==h.startOffset&&r.endOffset()==h.endOffset);
+ }
+ private boolean memoOverlapsHighlight(ReadingNote memo,ReadingNote h){
+  if(h.startOffset==null||h.endOffset==null)return false;
+  var ranges=NoteRangeSupport.decode(memo.selectionRanges);
+  if(ranges.isEmpty())return memo.paragraphOrder==h.paragraphOrder&&memo.startOffset!=null&&memo.endOffset!=null&&memo.startOffset<h.endOffset&&memo.endOffset>h.startOffset;
+  return ranges.stream().anyMatch(r->r.paragraphOrder()==h.paragraphOrder&&r.startOffset()<h.endOffset&&r.endOffset()>h.startOffset);
+ }
+ @Transactional ReadingNoteBulkDeleteResponse deleteAll(String username,Long bookId,ReadingNoteType type){
+  AppUser u=user(username);book(bookId);
+  if(type==ReadingNoteType.MEMO){
+   var memos=notes.findByUserIdAndBookIdOrderByCreatedAtDesc(u.id,bookId).stream().filter(n->n.noteType==ReadingNoteType.MEMO).toList();
+   for(var memo:memos)delete(username,bookId,memo.id);
+   return new ReadingNoteBulkDeleteResponse(memos.size());
+  }
+  int count=type==null?notes.deleteAllForUserAndBook(u.id,bookId):notes.deleteAllForUserAndBookAndType(u.id,bookId,type);return new ReadingNoteBulkDeleteResponse(count);
+ }
  private String preview(Long bookId,int order){return paragraphs.findByBookIdAndParagraphOrder(bookId,order).map(p->p.content.length()>120?p.content.substring(0,120)+"…":p.content).orElse("");}
  ReaderSettingsResponse settings(String username){AppUser u=user(username);return ReaderSettingsResponse.from(settings.findByUserId(u.id).orElseGet(()->defaults(u)));}
  ReaderSettingsResponse saveSettings(String username,ReaderSettingsRequest r){AppUser u=user(username);ReaderSettings s=settings.findByUserId(u.id).orElseGet(()->defaults(u));if(r.fontScale()!=null)s.fontScale=r.fontScale();if(r.lineHeightStep()!=null)s.lineHeightStep=r.lineHeightStep();if(r.theme()!=null)s.theme=r.theme();if(r.twoColumn()!=null)s.twoColumn=r.twoColumn();if(r.keepScreenOn()!=null)s.keepScreenOn=r.keepScreenOn();if(r.showHighlights()!=null)s.showHighlights=r.showHighlights();if(r.defaultHighlightColor()!=null){if(!HIGHLIGHT_COLORS.contains(r.defaultHighlightColor()))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_HIGHLIGHT_COLOR","형광펜 색상을 확인해 주세요.");s.defaultHighlightColor=r.defaultHighlightColor();}return ReaderSettingsResponse.from(settings.save(s));}
