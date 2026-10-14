@@ -9,6 +9,11 @@ spring:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:3}
       minimum-idle: ${DB_POOL_MIN_IDLE:0}
       idle-timeout: ${DB_IDLE_TIMEOUT_MS:30000}
+
+      # 개발 환경: 오래된 연결 교체 및 연결 누수 경고
+      max-lifetime: ${DB_MAX_LIFETIME_MS:600000}
+      leak-detection-threshold: ${DB_LEAK_DETECTION_MS:60000}
+
       connection-timeout: 10000
       validation-timeout: 5000
       initialization-fail-timeout: 10000
