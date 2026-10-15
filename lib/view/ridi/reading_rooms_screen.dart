@@ -3059,76 +3059,16 @@ class _RoomBookCardState extends State<_RoomBookCard> {
     }
   }
 
-  List<Widget> _progressGroupMarkers(
-      int progress,
-      List<RoomParticipantProgress> members,
-      double trackWidth,
-      ) {
-    final ordered = [...members]
-      ..sort((a, b) => a.currentUser == b.currentUser
-          ? a.userId.compareTo(b.userId)
-          : (a.currentUser ? -1 : 1));
-    String label(RoomParticipantProgress member) =>
-        member.currentUser ? '나' : (member.nickname.isEmpty ? '?' : member.nickname);
-    double badgeWidth(RoomParticipantProgress member) =>
-        (label(member).characters.length * 12.0 + 16).clamp(28.0, 96.0).toDouble();
-    final naturalWidth = ordered.fold<double>(0, (sum, member) => sum + badgeWidth(member))
-        + (ordered.length - 1) * 4;
-    final groupWidth = naturalWidth.clamp(0.0, trackWidth).toDouble();
-    final anchor = trackWidth * progress / 100;
-    final groupLeft = (anchor - groupWidth / 2)
-        .clamp(0.0, trackWidth - groupWidth).toDouble();
-    final arrowColor = ordered.any((member) => member.currentUser)
-        ? const Color(0xFFE0A030)
-        : Colors.primaries[ordered.first.userId.abs() % Colors.primaries.length].shade700;
-    return [
-      Positioned(
-        left: (anchor - 8).clamp(0.0, (trackWidth - 16).clamp(0.0, trackWidth)).toDouble(),
-        top: 12,
-        child: Icon(Icons.arrow_drop_up, size: 16, color: arrowColor),
+  Future<void> _showMemberProgress() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _MemberProgressDialog(
+        repository: _repository,
+        roomId: widget.room.id,
+        book: widget.book,
       ),
-      Positioned(
-        left: groupLeft,
-        top: 28,
-        width: groupWidth,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < ordered.length; i++) ...[
-                if (i > 0) const SizedBox(width: 4),
-                Container(
-                  width: badgeWidth(ordered[i]),
-                  height: 22,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
-                    color: ordered[i].currentUser
-                        ? const Color(0xFFFFF1D6)
-                        : Colors.primaries[ordered[i].userId.abs() % Colors.primaries.length]
-                        .withValues(alpha: .18),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Text(
-                    label(ordered[i]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: ordered[i].currentUser
-                          ? const Color(0xFFB7791F)
-                          : Colors.primaries[ordered[i].userId.abs() % Colors.primaries.length].shade900,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    ];
+    );
+    if (mounted) unawaited(_refreshParticipants());
   }
 
   @override
@@ -3204,37 +3144,25 @@ class _RoomBookCardState extends State<_RoomBookCard> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final groups = <int, List<RoomParticipantProgress>>{};
-                        for (final participant in participants) {
-                          final progress = participant.progressPercent.clamp(0, 100).toInt();
-                          groups.putIfAbsent(progress, () => []).add(participant);
-                        }
-                        return SizedBox(
-                          height: 52,
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                top: 0,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: pct / 100,
-                                    minHeight: 8,
-                                    color: const Color(0xFF22B573),
-                                    backgroundColor: const Color(0xFFEDEDED),
-                                  ),
-                                ),
-                              ),
-                              for (final entry in groups.entries)
-                                ..._progressGroupMarkers(entry.key, entry.value, c.maxWidth),
-                            ],
-                          ),
-                        );
-                      },
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: pct / 100,
+                        minHeight: 8,
+                        color: const Color(0xFF22B573),
+                        backgroundColor: const Color(0xFFEDEDED),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: widget.room.joined ? _showMemberProgress : null,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                        ),
+                        child: const Text('멤버 진행률 보기 ›'),
+                      ),
                     ),
                   ],
                 );
@@ -3245,6 +3173,168 @@ class _RoomBookCardState extends State<_RoomBookCard> {
       ),
     );
   }
+}
+
+// The participant endpoint returns the same room nickname and photo as the
+// member list, including members who have not started this book (0%).
+class _MemberProgressDialog extends StatefulWidget {
+  const _MemberProgressDialog({
+    required this.repository,
+    required this.roomId,
+    required this.book,
+  });
+  final ReadingRoomRepository repository;
+  final int roomId;
+  final ReadingRoomBook book;
+
+  @override
+  State<_MemberProgressDialog> createState() => _MemberProgressDialogState();
+}
+
+class _MemberProgressDialogState extends State<_MemberProgressDialog> {
+  final _scrollController = ScrollController();
+  late Future<List<RoomParticipantProgress>> _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = _fetch();
+  }
+
+  Future<List<RoomParticipantProgress>> _fetch() =>
+      widget.repository.participantProgress(widget.roomId, widget.book.id);
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Widget _memberRow(RoomParticipantProgress member) {
+    final name = member.nickname.trim().isEmpty ? '참여자' : member.nickname;
+    final photo = member.profileImageUrl?.trim();
+    final hasPhoto = photo != null && photo.isNotEmpty;
+    final percent = member.progressPercent.clamp(0, 100).toInt();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: const Color(0xFFE9EEF5),
+            foregroundImage: hasPhoto
+                ? NetworkImage(widget.repository.absoluteUrl(photo!)) : null,
+            onForegroundImageError: hasPhoto ? (_, __) {} : null,
+            child: Text(name.characters.first,
+                style: const TextStyle(fontWeight: FontWeight.w700,
+                    color: Color(0xFF4A5568))),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    if (member.currentUser) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFF505761),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: const Text('나', style: TextStyle(
+                            color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(child: Text(name, maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+                    const SizedBox(width: 12),
+                    Text('$percent%', style: const TextStyle(
+                        color: Color(0xFF22B573), fontSize: 15, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(value: percent / 100,
+                      minHeight: 7, color: const Color(0xFF22B573),
+                      backgroundColor: const Color(0xFFEDEDED)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    child: SizedBox(
+      width: 440,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Expanded(child: Text('멤버 진행률', style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w800))),
+              IconButton(tooltip: '닫기', onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Color(0xFF777777))),
+            ]),
+            Text(widget.book.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, color: Color(0xFF888888))),
+            const SizedBox(height: 12),
+            Flexible(
+              child: FutureBuilder<List<RoomParticipantProgress>>(
+                future: _progress,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const SizedBox(height: 120,
+                        child: Center(child: CircularProgressIndicator()));
+                  }
+                  if (snapshot.hasError) {
+                    return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Center(child: TextButton(
+                            onPressed: () { setState(() { _progress = _fetch(); }); },
+                            child: const Text('진행률을 불러오지 못했습니다. 다시 시도'))));
+                  }
+                  final members = [...(snapshot.data ?? const <RoomParticipantProgress>[])];
+                  // Keep join order for everyone else; show the current user first.
+                  final ordered = [
+                    ...members.where((member) => member.currentUser),
+                    ...members.where((member) => !member.currentUser),
+                  ];
+                  if (ordered.isEmpty) {
+                    return const Padding(padding: EdgeInsets.all(20),
+                        child: Center(child: Text('참여 중인 멤버가 없습니다.')));
+                  }
+                  return Scrollbar(
+                    controller: _scrollController,
+                    thumbVisibility: false,
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      shrinkWrap: true,
+                      itemCount: ordered.length,
+                      itemBuilder: (_, index) => _memberRow(ordered[index]),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 Future<Map<String, dynamic>?> showRoomEditorLegacy(
@@ -3960,6 +4050,7 @@ class _SharedNoteComments extends StatefulWidget {
 }
 
 class _SharedNoteCommentsState extends State<_SharedNoteComments> {
+  final _commentsScrollController = ScrollController();
   final _text = TextEditingController();
   final _memoFocus = FocusNode();
   late final TextEditingController _memoEditor;
@@ -3983,6 +4074,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
 
   @override
   void dispose() {
+    _commentsScrollController.dispose();
     _text.dispose();
     _memoEditor.dispose();
     _memoFocus.dispose();
@@ -4204,149 +4296,179 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: widget.bodyMemoStyle ? 560 : 500,
-    height: widget.embedded ? double.infinity
-        : widget.bodyMemoStyle
-        ? (MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom - 80).clamp(300.0, 600.0)
-        : (MediaQuery.sizeOf(context).height * .62).clamp(260.0, 560.0),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(height: 52, child: Stack(alignment: Alignment.center, children: [
-        Text(widget.bodyMemoStyle ? '메모' : '댓글', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        Positioned(left: widget.bodyMemoStyle ? 8 : null, right: widget.bodyMemoStyle ? null : 8, child: TextButton(
-          onPressed: _savingMemo || _sending ? null : widget.onClose ?? () => Navigator.pop(context),
-          child: const Text('닫기', style: TextStyle(color: Colors.grey)),
-        )),
-        if (widget.bodyMemoStyle) Positioned(right: 8, child: TextButton(
-          onPressed: _savingMemo || _sending ? null : _saveBodyMemo,
-          child: Text(_editingMemo && _note.mine ? (_savingMemo ? '저장 중' : '저장') : '완료',
-              style: const TextStyle(color: Color(0xFF1E88E5), fontWeight: FontWeight.bold)),
-        )),
-      ])),
-      const Divider(height: 1, color: Color(0xFFEDEDED)),
-      if (widget.bodyMemoStyle) _bodyMemoCard() else Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 130),
-          child: SingleChildScrollView(child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,children: [
-            CircleAvatar(radius: 17,backgroundColor: const Color(0xFFEFF1F5),
-                child: Text(_note.nickname.isEmpty ? '?' : _note.nickname.characters.first,
-                    style: const TextStyle(fontSize: 13,color: Color(0xFF555555)))),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,children: [
-              Wrap(spacing: 8,crossAxisAlignment: WrapCrossAlignment.center,children: [
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      // Dialog (or the containing notes dialog) has already removed the keyboard
+      // from the available constraints. Never impose a minimum dialog height.
+      final preferredHeight = widget.bodyMemoStyle ? 600.0 : 560.0;
+      final availableHeight = constraints.hasBoundedHeight
+          ? constraints.maxHeight : preferredHeight;
+      final height = widget.embedded ? availableHeight
+          : availableHeight.clamp(0.0, preferredHeight).toDouble();
+      final compact = height < 420;
+      // Reserve space for the title, comment composer and optional navigation.
+      final memoHeight = (height * (compact ? .38 : .48))
+          .clamp(0.0, (height - 180).clamp(0.0, 300.0)).toDouble();
+      return SizedBox(
+        width: widget.bodyMemoStyle ? 560 : 500,
+        height: height,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(height: 52, child: Stack(alignment: Alignment.center, children: [
+            Text(widget.bodyMemoStyle ? '메모' : '댓글', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            Positioned(left: widget.bodyMemoStyle ? 8 : null, right: widget.bodyMemoStyle ? null : 8, child: TextButton(
+              onPressed: _savingMemo || _sending ? null : widget.onClose ?? () => Navigator.pop(context),
+              child: const Text('닫기', style: TextStyle(color: Colors.grey)),
+            )),
+            if (widget.bodyMemoStyle) Positioned(right: 8, child: TextButton(
+              onPressed: _savingMemo || _sending ? null : _saveBodyMemo,
+              child: Text(_editingMemo && _note.mine ? (_savingMemo ? '저장 중' : '저장') : '완료',
+                  style: const TextStyle(color: Color(0xFF1E88E5), fontWeight: FontWeight.bold)),
+            )),
+          ])),
+          const Divider(height: 1, color: Color(0xFFEDEDED)),
+          if (widget.bodyMemoStyle)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: memoHeight),
+              child: SingleChildScrollView(child: _bodyMemoCard()),
+            )
+          else Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 130),
+              child: SingleChildScrollView(child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,children: [
+                CircleAvatar(radius: 17,backgroundColor: const Color(0xFFEFF1F5),
+                    child: Text(_note.nickname.isEmpty ? '?' : _note.nickname.characters.first,
+                        style: const TextStyle(fontSize: 13,color: Color(0xFF555555)))),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,children: [
+                  Wrap(spacing: 8,crossAxisAlignment: WrapCrossAlignment.center,children: [
 
-                if (_note.mine)
-                  Container(
-                    width: 22, height: 22, alignment: Alignment.center,
-                    decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
-                    child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                  ),
-                Text(_note.nickname,style: const TextStyle(fontSize: 13,fontWeight: FontWeight.w700)),
-                Text(_timeAgo(_note.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
-              ]),
-              if (_note.selectedText?.isNotEmpty == true) ...[
-                const SizedBox(height: 6),
-                Container(padding: const EdgeInsets.only(left: 8),
-                    decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFDDDDDD),width: 2))),
-                    child: Text('“${_note.selectedText}”',style: const TextStyle(fontSize: 12,color: Color(0xFF888888),height: 1.4))),
+                    if (_note.mine)
+                      Container(
+                        width: 22, height: 22, alignment: Alignment.center,
+                        decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
+                        child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                      ),
+                    Text(_note.nickname,style: const TextStyle(fontSize: 13,fontWeight: FontWeight.w700)),
+                    Text(_timeAgo(_note.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
+                  ]),
+                  if (_note.selectedText?.isNotEmpty == true) ...[
+                    const SizedBox(height: 6),
+                    Container(padding: const EdgeInsets.only(left: 8),
+                        decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFDDDDDD),width: 2))),
+                        child: Text('“${_note.selectedText}”',style: const TextStyle(fontSize: 12,color: Color(0xFF888888),height: 1.4))),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(_note.content ?? '',style: const TextStyle(fontSize: 14,height: 1.5)),
+                ])),
+                if (!_note.isSpoilerLocked && _note.canDelete) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
+                  tooltip: '메모 메뉴',padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.more_horiz,size: 20,color: Colors.grey),
+                  onSelected: _parentNoteAction,
+                  itemBuilder: (_) => [
+                    if (_note.mine) const PopupMenuItem(value:'edit',child: Text('수정')),
+                    const PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
+                  ],
+                )),
               ],
-              const SizedBox(height: 6),
-              Text(_note.content ?? '',style: const TextStyle(fontSize: 14,height: 1.5)),
-            ])),
-            if (!_note.isSpoilerLocked && _note.canDelete) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
-              tooltip: '메모 메뉴',padding: EdgeInsets.zero,
-              icon: const Icon(Icons.more_horiz,size: 20,color: Colors.grey),
-              onSelected: _parentNoteAction,
-              itemBuilder: (_) => [
-                if (_note.mine) const PopupMenuItem(value:'edit',child: Text('수정')),
-                const PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
-              ],
+              )),
+            ),
+          ),
+          Expanded(child: FutureBuilder<List<SharedRoomNoteComment>>(
+            future: _comments,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done)
+                return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError) return Center(child: TextButton(
+                  onPressed: _reload, child: const Text('댓글을 불러오지 못했습니다. 다시 시도')));
+              final comments = snapshot.data ?? const <SharedRoomNoteComment>[];
+              if (comments.isEmpty) return const Center(child: Text('첫 댓글을 남겨보세요.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF999999))));
+              return Scrollbar(
+                controller: _commentsScrollController,
+                thumbVisibility: false,
+                trackVisibility: false,
+                thickness: 4,
+                radius: const Radius.circular(4),
+                scrollbarOrientation: ScrollbarOrientation.right,
+                notificationPredicate: (notification) =>
+                notification.depth == 0 && notification.metrics.axis == Axis.vertical,
+                child: ListView.separated(
+                  controller: _commentsScrollController,
+                  primary: false,
+                  padding: const EdgeInsets.fromLTRB(33, 0, 16, 12),
+                  itemCount: comments.length,
+                  separatorBuilder: (_,__) => const SizedBox.shrink(),
+                  itemBuilder: (_,i) {
+                    final comment = comments[i];
+                    return Container(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 0, 10),
+                      decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFE0E0E0)))),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        CircleAvatar(radius: 14, backgroundColor: const Color(0xFFEFF1F5),
+                            child: Text(comment.nickname.isEmpty ? '?' : comment.nickname.characters.first,
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF555555)))),
+                        const SizedBox(width: 10),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Wrap(spacing: 6,crossAxisAlignment: WrapCrossAlignment.center,children: [
+
+                            if (comment.mine) ...[
+                              Container(
+                                width: 22, height: 22, alignment: Alignment.center,
+                                decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
+                                child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                              ),
+                            ],
+                            Text(comment.nickname, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                            Text(_timeAgo(comment.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
+                          ]),
+                          const SizedBox(height: 5),
+                          Text(comment.content, style: const TextStyle(fontSize: 14,height: 1.4)),
+                        ])),
+                        if (comment.mine || comment.canDelete) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
+                          tooltip: '댓글 메뉴',padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.more_horiz,size:20,color: Colors.grey),
+                          onSelected: (action) {
+                            if (action == 'edit') _editComment(comment);
+                            else if (action == 'delete') _delete(comment.id);
+                          },
+                          itemBuilder: (_) => [
+                            if (comment.mine) const PopupMenuItem(value:'edit',child: Text('수정')),
+                            const PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
+                          ],
+                        )),
+                      ]),
+                    );
+                  },
+                ),
+              );
+            },
+          )),
+          if (widget.navigation != null) AbsorbPointer(absorbing: _sending || _savingMemo, child: widget.navigation!),
+          const Divider(height: 1,color: Color(0xFFEDEDED)),
+          Padding(padding: const EdgeInsets.fromLTRB(12,10,12,12),child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,children: [
+            Expanded(child: TextField(
+              controller: _text, enabled: !_sending, minLines: 1,
+              maxLines: compact ? 1 : 3, maxLength: 1000,
+              decoration: InputDecoration(
+                hintText: '댓글을 입력하세요', counterText: '', isDense: true,
+                filled: true,fillColor: const Color(0xFFF5F5F5),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12,vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),borderSide: BorderSide.none),
+              ),
+            )),
+            const SizedBox(width: 8),
+            SizedBox(width: 42,height:42,child: IconButton.filled(
+              tooltip: '댓글 등록',onPressed: _sending ? null : _send,
+              icon: _sending ? const SizedBox(width:18,height:18,child: CircularProgressIndicator(strokeWidth:2))
+                  : const Icon(Icons.arrow_upward,size:22),
             )),
           ],
           )),
-        ),
-      ),
-      Expanded(child: FutureBuilder<List<SharedRoomNoteComment>>(
-        future: _comments,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
-            return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) return Center(child: TextButton(
-              onPressed: _reload, child: const Text('댓글을 불러오지 못했습니다. 다시 시도')));
-          final comments = snapshot.data ?? const <SharedRoomNoteComment>[];
-          if (comments.isEmpty) return const Center(child: Text('첫 댓글을 남겨보세요.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF999999))));
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(33, 0, 16, 12),
-            itemCount: comments.length,
-            separatorBuilder: (_,__) => const SizedBox.shrink(),
-            itemBuilder: (_,i) {
-              final comment = comments[i];
-              return Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 0, 10),
-                decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFE0E0E0)))),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  CircleAvatar(radius: 14, backgroundColor: const Color(0xFFEFF1F5),
-                      child: Text(comment.nickname.isEmpty ? '?' : comment.nickname.characters.first,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF555555)))),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Wrap(spacing: 6,crossAxisAlignment: WrapCrossAlignment.center,children: [
-
-                      if (comment.mine) ...[
-                        Container(
-                          width: 22, height: 22, alignment: Alignment.center,
-                          decoration: const BoxDecoration(color: Color(0xFF505761), shape: BoxShape.circle),
-                          child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                        ),
-                      ],
-                      Text(comment.nickname, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                      Text(_timeAgo(comment.createdAt),style: const TextStyle(fontSize: 11,color: Color(0xFF999999))),
-                    ]),
-                    const SizedBox(height: 5),
-                    Text(comment.content, style: const TextStyle(fontSize: 14,height: 1.4)),
-                  ])),
-                  if (comment.mine || comment.canDelete) SizedBox(width: 28,height: 24,child: PopupMenuButton<String>(
-                    tooltip: '댓글 메뉴',padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.more_horiz,size:20,color: Colors.grey),
-                    onSelected: (action) {
-                      if (action == 'edit') _editComment(comment);
-                      else if (action == 'delete') _delete(comment.id);
-                    },
-                    itemBuilder: (_) => [
-                      if (comment.mine) const PopupMenuItem(value:'edit',child: Text('수정')),
-                      const PopupMenuItem(value:'delete',child: Text('삭제',style:TextStyle(color:Colors.red))),
-                    ],
-                  )),
-                ]),
-              );
-            },
-          );
-        },
-      )),
-      if (widget.navigation != null) AbsorbPointer(absorbing: _sending || _savingMemo, child: widget.navigation!),
-      const Divider(height: 1,color: Color(0xFFEDEDED)),
-      Padding(padding: const EdgeInsets.fromLTRB(12,10,12,12),child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,children: [
-        Expanded(child: TextField(
-          controller: _text, enabled: !_sending, minLines: 1,maxLines: 3,maxLength: 1000,
-          decoration: InputDecoration(
-            hintText: '댓글을 입력하세요', counterText: '', isDense: true,
-            filled: true,fillColor: const Color(0xFFF5F5F5),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12,vertical: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),borderSide: BorderSide.none),
-          ),
-        )),
-        const SizedBox(width: 8),
-        SizedBox(width: 42,height:42,child: IconButton.filled(
-          tooltip: '댓글 등록',onPressed: _sending ? null : _send,
-          icon: _sending ? const SizedBox(width:18,height:18,child: CircularProgressIndicator(strokeWidth:2))
-              : const Icon(Icons.arrow_upward,size:22),
-        )),
-      ],
-      )),
-    ]),
+        ]),
+      );
+    },
   );
 
   Future<void> _delete(int commentId) async {

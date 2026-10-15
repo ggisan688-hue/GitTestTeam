@@ -15,6 +15,7 @@ import 'account_screen.dart';
 import 'server_notifications_screen.dart';
 import 'ridi_store.dart';
 import 'ridi_theme.dart';
+import 'ridi_scroll_behavior.dart';
 import 'ridi_auth.dart';
 
 /// 북체인 앱의 시작점 (main.dart → RidiApp).
@@ -80,6 +81,7 @@ class _RidiAppState extends State<RidiApp> {
         title: RidiBrand.appName,
         debugShowCheckedModeBanner: false,
         theme: ridiTheme(),
+        scrollBehavior: const RidiScrollBehavior(),
         onGenerateRoute: (settings) {
           final uri = Uri.tryParse(settings.name ?? '');
           if (uri?.path == '/reset-password') {

@@ -1394,13 +1394,16 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     if (place == _SheetPlace.center) {
       await showDialog<void>(
         context: context,
-        builder: (_) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: Material(color: Colors.transparent, child: child),
-            ),
+        // Dialog applies keyboard insets before constraining the notes panel.
+        // Keep the reader Scaffold itself fixed to avoid repaginating the book.
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Material(color: Colors.transparent, child: child),
           ),
         ),
       );
@@ -3856,11 +3859,13 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
       );
     }
     if (notes.isEmpty) return const Center(child: Text('저장한 독서노트가 없습니다.'));
-    return ListView.separated(
-      primary: true, padding: const EdgeInsets.only(bottom: 12),
-      itemCount: notes.length,
-      separatorBuilder: (_,__) => const Divider(height: 1, color: Color(0xFFEDEDED)),
-      itemBuilder: (_,i) => _recordCard(notes[i]),
+    return _NotesScrollbar(
+      child: ListView.separated(
+        primary: true, padding: const EdgeInsets.only(bottom: 12),
+        itemCount: notes.length,
+        separatorBuilder: (_,__) => const Divider(height: 1, color: Color(0xFFEDEDED)),
+        itemBuilder: (_,i) => _recordCard(notes[i]),
+      ),
     );
   }
 }
@@ -4237,16 +4242,18 @@ class _NotesState extends State<_Notes> with SingleTickerProviderStateMixin {
                         ),
                       );
                     // 목차와 같은 모양: 줄마다 위 = 문장, 아래 = 메모 · "문단 N · 날짜", 오른쪽 작은 수정/삭제
-                    return ListView.separated(
-                      primary: true,
-                      itemCount: notes.length,
-                      separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: Color(0xFFEDEDED)),
-                      itemBuilder: (_, i) => _noteCard(
-                        notes[i], index, vm,
+                    return _NotesScrollbar(
+                      child: ListView.separated(
+                        primary: true,
+                        itemCount: notes.length,
+                        separatorBuilder: (_, _) =>
+                        const Divider(height: 1, color: Color(0xFFEDEDED)),
+                        itemBuilder: (_, i) => _noteCard(
+                          notes[i], index, vm,
+                        ),
                       ),
                     );
-                  }).map((tab) => _NotesScrollbar(child: tab)).toList(),
+                  }),
                 ),
               ),
               // 아래 버튼 줄(현재 위치 메모 · 문단 형광펜 · 모두 삭제)은 뺌 (수정 확인 피드백)
@@ -4641,145 +4648,155 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: 56,
-              width: double.infinity,
-              child: Stack(
-                alignment: Alignment.center,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Actual space already excludes Dialog's keyboard and safe insets.
+            final availableHeight = constraints.hasBoundedHeight
+                ? constraints.maxHeight : 520.0;
+            final editorHeight = (availableHeight - 200).clamp(60.0, 300.0).toDouble();
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text.rich(
-                    TextSpan(
+                  SizedBox(
+                    height: 56,
+                    width: double.infinity,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        const TextSpan(
-                          text: '메모',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              const TextSpan(
+                                text: '메모',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '  ($count/1500)',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF9E9E9E),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        TextSpan(
-                          text: '  ($count/1500)',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF9E9E9E),
+                        Positioned(
+                          left: 8,
+                          child: TextButton(
+                            onPressed: _saving
+                                ? null
+                                : () => Navigator.of(context).pop(false),
+                            child: const Text(
+                              '닫기',
+                              style: TextStyle(color: Color(0xFF8A8A8A)),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 8,
+                          child: _saving
+                              ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                              : TextButton(
+                            onPressed: _save,
+                            child: const Text(
+                              '저장',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Positioned(
-                    left: 8,
-                    child: TextButton(
-                      onPressed: _saving
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: const Text(
-                        '닫기',
-                        style: TextStyle(color: Color(0xFF8A8A8A)),
+                  const Divider(height: 1),
+                  if (widget.selectedText?.isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            margin: const EdgeInsets.only(top: 5, right: 10),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF2C94C),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              widget.selectedText!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Container(
+                      height: editorHeight,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: TextField(
+                        controller: _controller,
+                        expands: true,
+                        maxLines: null,
+                        maxLength: 1500,
+                        autofocus: true,
+                        enabled: !_saving,
+                        textAlignVertical: TextAlignVertical.top,
+                        onChanged: (_) => setState(() => _error = null),
+                        decoration: const InputDecoration(
+                          hintText: '메모를 남겨주세요.',
+                          border: InputBorder.none,
+                          counterText: '',
+                        ),
                       ),
                     ),
                   ),
-                  Positioned(
-                    right: 8,
-                    child: _saving
-                        ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFFE53935),
+                        ),
                       ),
-                    )
-                        : TextButton(
-                      onPressed: _save,
-                      child: const Text(
-                        '저장',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                    child: Text(
+                      '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}.',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)),
                     ),
                   ),
                 ],
               ),
-            ),
-            const Divider(height: 1),
-            if (widget.selectedText?.isNotEmpty == true)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      margin: const EdgeInsets.only(top: 5, right: 10),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF2C94C),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        widget.selectedText!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: Container(
-                height: 300,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: TextField(
-                  controller: _controller,
-                  expands: true,
-                  maxLines: null,
-                  maxLength: 1500,
-                  autofocus: true,
-                  enabled: !_saving,
-                  textAlignVertical: TextAlignVertical.top,
-                  onChanged: (_) => setState(() => _error = null),
-                  decoration: const InputDecoration(
-                    hintText: '메모를 남겨주세요.',
-                    border: InputBorder.none,
-                    counterText: '',
-                  ),
-                ),
-              ),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFFE53935),
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-              child: Text(
-                '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}.',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -5214,7 +5231,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
             Expanded(
               child: Scrollbar(
                 controller: _aiScrollController,
-                thumbVisibility: true,
+                thumbVisibility: false,
                 thickness: 4,
                 radius: const Radius.circular(8),
                 child: ListView.separated(
@@ -6035,9 +6052,11 @@ class _MemoTabState extends State<_MemoTab> {
       if (target < 0) target = entries.indexWhere((entry) =>
       (widget.pageOf(entry.order, entry.offset) ?? -1) >= widget.currentPage);
       if (target < 0) target = entries.length - 1;
-      return _InitiallyPositionedNotes(
-        targetIndex: target,
-        cards: entries.map((entry) => entry.card).toList(),
+      return _NotesScrollbar(
+        child: _InitiallyPositionedNotes(
+          targetIndex: target,
+          cards: entries.map((entry) => entry.card).toList(),
+        ),
       );
     }
     final others = <String>{
@@ -6215,10 +6234,16 @@ class _MemoTabState extends State<_MemoTab> {
         Expanded(
           child: shown.isEmpty
               ? Center(child: Text(empty))
-              : ListView(
-            primary: true,
-            padding: const EdgeInsets.only(bottom: 12),
-            children: rows,
+              : _NotesScrollbar(
+            key: ValueKey('memo-scroll-$_who'),
+            child: SingleChildScrollView(
+              primary: true,
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: rows,
+              ),
+            ),
           ),
         ),
       ],
@@ -6511,7 +6536,7 @@ class _InitiallyPositionedNotesState extends State<_InitiallyPositionedNotes> {
 
 // Each tab owns a controller so its scrollbar follows only that tab's list.
 class _NotesScrollbar extends StatefulWidget {
-  const _NotesScrollbar({required this.child});
+  const _NotesScrollbar({super.key, required this.child});
   final Widget child;
   @override
   State<_NotesScrollbar> createState() => _NotesScrollbarState();
@@ -6537,7 +6562,7 @@ class _NotesScrollbarState extends State<_NotesScrollbar> {
         thickness: 4,
         radius: const Radius.circular(4),
         notificationPredicate: (notification) =>
-        notification.metrics.axis == Axis.vertical,
+        notification.depth == 0 && notification.metrics.axis == Axis.vertical,
         child: widget.child,
       ),
     ),

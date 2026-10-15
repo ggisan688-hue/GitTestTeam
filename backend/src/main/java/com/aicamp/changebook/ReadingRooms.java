@@ -785,8 +785,9 @@ class RoomService {
     member.roomNickname = trimToNull(roomNickname);
     member.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(member);
+    // The new membership is already saved; exclude its actor from recipients.
     userFeatures.notifyRoomMembers(room.id,"ROOM_JOINED","새 참여자",
-        roomNotificationName(room.id,user.id)+"님이 "+room.name+" 방에 참여했습니다.",user.id,true);
+        roomNotificationName(room.id,user.id)+"님이 "+room.name+" 방에 참여했습니다.",user.id,false);
   }
 
   private void requireOwner(ReadingRoom room, AppUser user) {

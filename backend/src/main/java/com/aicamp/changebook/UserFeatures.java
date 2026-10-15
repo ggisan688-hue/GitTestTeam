@@ -284,7 +284,8 @@ class UserFeatureService {
   void notify(Long userId, String type, String title, String body, Long roomId, Long actorId, boolean includeActor, Long bookId, Long noteId) {
     if (userId == null || type.startsWith("FRIEND") || (!includeActor && userId.equals(actorId))) return;
     NotificationSettings preference = settings.findById(userId).orElse(null);
-    boolean activity = "ROOM_MEMO_CREATED".equals(type) || "ROOM_MEMO_COMMENT".equals(type);
+    boolean activity = "ROOM_MEMO_CREATED".equals(type) || "ROOM_MEMO_COMMENT".equals(type)
+        || "ROOM_MEMO_DELETED".equals(type) || "ROOM_COMMENT_DELETED".equals(type);
     boolean enabled = preference == null || (activity ? preference.activityEnabled : preference.roomEnabled);
     if (!enabled) return;
     AppNotification notification = new AppNotification();

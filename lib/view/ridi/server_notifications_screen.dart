@@ -189,6 +189,7 @@ class _UnreadNotificationBadgeState extends State<UnreadNotificationBadge>
 }
 
 class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
+  final _scrollController = ScrollController();
   late final NotificationRepository _repository;
   @override
   void initState() {
@@ -201,6 +202,12 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
       _notificationInbox.bind(store.loggedIn ? store.username : '', store.accessToken);
       if (!_notificationInbox.loading) unawaited(_notificationInbox.load());
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _reload() => unawaited(_notificationInbox.load());
@@ -336,34 +343,48 @@ class _ServerNotificationsScreenState extends State<ServerNotificationsScreen> {
           );
         return RefreshIndicator(
           onRefresh: _notificationInbox.load,
-          child: ListView.separated(
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return ListTile(
-                leading: Icon(
-                  switch (item.type) {
-                    'ROOM_MEMO_CREATED' => Icons.edit_note_outlined,
-                    'ROOM_MEMO_COMMENT' => Icons.chat_bubble_outline,
-                    'ROOM_BOOK_ADDED' || 'ROOM_BOOK_REMOVED' => Icons.menu_book_outlined,
-                    _ => Icons.groups_outlined,
-                  },
-                ),
-                title: Text(
-                  item.title,
-                  style: item.read
-                      ? null
-                      : const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(item.body),
-                trailing: _openingNotificationId == item.id
-                    ? const SizedBox(width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                    : item.read ? null : const CircleAvatar(radius: 4),
-                onTap: () => _open(item),
-              );
-            },
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: false,
+            trackVisibility: false,
+            thickness: 4,
+            radius: const Radius.circular(4),
+            scrollbarOrientation: ScrollbarOrientation.right,
+            notificationPredicate: (notification) =>
+            notification.depth == 0 && notification.metrics.axis == Axis.vertical,
+            child: ListView.separated(
+              controller: _scrollController,
+              primary: false,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return ListTile(
+                  leading: Icon(
+                    switch (item.type) {
+                      'ROOM_MEMO_CREATED' => Icons.edit_note_outlined,
+                      'ROOM_MEMO_COMMENT' => Icons.chat_bubble_outline,
+                      'ROOM_MEMO_DELETED' || 'ROOM_COMMENT_DELETED' => Icons.delete_outline,
+                      'ROOM_BOOK_ADDED' || 'ROOM_BOOK_REMOVED' => Icons.menu_book_outlined,
+                      _ => Icons.groups_outlined,
+                    },
+                  ),
+                  title: Text(
+                    item.title,
+                    style: item.read
+                        ? null
+                        : const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(item.body),
+                  trailing: _openingNotificationId == item.id
+                      ? const SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                      : item.read ? null : const CircleAvatar(radius: 4),
+                  onTap: () => _open(item),
+                );
+              },
+            ),
           ),
         );
       },
@@ -429,7 +450,7 @@ class _NotificationSettingsScreenState
             ),
             SwitchListTile(
               title: const Text('메모·댓글 알림'),
-              subtitle: const Text('방 멤버의 새 메모, 내 메모에 달린 댓글'),
+              subtitle: const Text('방 멤버의 새 메모, 내 메모의 댓글, 방장의 내 메모·댓글 삭제'),
               value: settings.activityEnabled,
               onChanged: (value) => _save(settings, activity: value),
             ),

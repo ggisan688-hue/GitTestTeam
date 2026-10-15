@@ -78,7 +78,20 @@ class ReadingRoomNoteService {
   private final RoomRepo rooms; private final RoomMemberRepo members; private final UserFeatureService users;
   private final UserRepository userRepository; private final RoomMemberProgressRepo progress; private final RoomBookRepo roomBooks; private final ReadingRoomSyncService sync;
   ReadingRoomNoteService(ReadingRoomNoteRepository n,ReadingRoomNoteCommentRepository c,RoomRepo r,RoomMemberRepo m,UserFeatureService u,UserRepository ur,RoomMemberProgressRepo p,RoomBookRepo rb,ReadingRoomSyncService s){notes=n;comments=c;rooms=r;members=m;users=u;userRepository=ur;progress=p;roomBooks=rb;sync=s;}
-  @org.springframework.transaction.annotation.Transactional void deleteAsAuthorOrOwner(String username,Long roomId,Long noteId){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);boolean owner=java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(roomId,current.id).map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false);if(!n.userId.equals(current.id)&&!owner)throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_DELETE_FORBIDDEN","Only the author or room owner can delete a shared note.");deleteMemoHighlights(n);notes.delete(n);sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.deleted":"shared_note.deleted",noteId);}
+  @org.springframework.transaction.annotation.Transactional
+  void deleteAsAuthorOrOwner(String username,Long roomId,Long noteId) {
+    AppUser current=member(username,roomId);
+    ReadingRoom room=room(roomId);
+    ReadingRoomNote n=note(roomId,noteId);
+    boolean owner=java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(roomId,current.id)
+        .map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false);
+    if(!n.userId.equals(current.id)&&!owner)
+      throw new ApiException(HttpStatus.FORBIDDEN,"SHARED_NOTE_DELETE_FORBIDDEN","Only the author or room owner can delete a shared note.");
+    deleteMemoHighlights(n);
+    notes.delete(n);
+    if("MEMO".equals(n.type)) notifyOwnerDeletion(room,current,n.userId,n.bookId,false);
+    sync.publish(roomId,n.bookId,"HIGHLIGHT".equals(n.type)?"shared_highlight.deleted":"shared_note.deleted",noteId);
+  }
   private AppUser member(String username,Long roomId){AppUser user=users.me(username);if(!members.existsByRoomIdAndUserId(roomId,user.id))throw new ApiException(HttpStatus.FORBIDDEN,"ROOM_MEMBER_REQUIRED","Join this room first.");return user;}
   private ReadingRoom room(Long roomId){return rooms.findById(roomId).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"ROOM_NOT_FOUND","Room not found."));}
   private ReadingRoomNote note(Long roomId,Long noteId){return notes.findById(noteId).filter(n->n.roomId.equals(roomId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_NOT_FOUND","Shared note not found."));}
@@ -148,6 +161,16 @@ class ReadingRoomNoteService {
     // Do not include memo text or its quotation, which may contain spoilers.
     users.notifyRoomMemo(room.id,"새 메모",
         name(room.id,memo.userId)+"님이 "+room.name+" 방에 새 메모를 남겼습니다.",memo.userId,memo.bookId,memo.id);
+  }
+  private void notifyOwnerDeletion(ReadingRoom room,AppUser actor,Long authorId,Long bookId,boolean comment) {
+    // Authorization was checked by the deletion endpoint. A different actor
+    // therefore means the owner moderated another member's content.
+    if(java.util.Objects.equals(authorId,actor.id)) return;
+    String subject=comment?"댓글":"메모";
+    // Do not target a deleted note or expose its contents in notification text.
+    users.notify(authorId,comment?"ROOM_COMMENT_DELETED":"ROOM_MEMO_DELETED",
+        subject+" 삭제",room.name+" 방의 방장이 회원님의 "+(comment?"댓글을":"메모를")+" 삭제했습니다.",
+        room.id,actor.id,false,bookId,null);
   }
   private String memberMemoColor(Long roomId,Long userId) {
     return members.findByRoomIdAndUserId(roomId,userId).map(m->m.memoHighlightColor)
@@ -273,7 +296,20 @@ class ReadingRoomNoteService {
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse updateComment(String username,Long roomId,Long noteId,Long commentId,RoomNoteCommentRequest request){return updateComment(username,roomId,noteId,commentId,request,false);}
   @org.springframework.transaction.annotation.Transactional RoomNoteCommentResponse updateComment(String username,Long roomId,Long noteId,Long commentId,RoomNoteCommentRequest request,boolean revealed){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!revealed)readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!c.userId.equals(current.id))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_EDIT_FORBIDDEN","Only the author can edit this comment.");c.content=request.content().trim();c=comments.save(c);sync.publish(roomId,n.bookId,"shared_comment.updated",c.id);return commentResponse(roomId,current,c);}
   @org.springframework.transaction.annotation.Transactional void deleteComment(String username,Long roomId,Long noteId,Long commentId){deleteComment(username,roomId,noteId,commentId,false);}
-  @org.springframework.transaction.annotation.Transactional void deleteComment(String username,Long roomId,Long noteId,Long commentId,boolean revealed){AppUser current=member(username,roomId);ReadingRoom room=room(roomId);ReadingRoomNote n=note(roomId,noteId);if(!revealed)readable(room,current,n);ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId)).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));if(!canDeleteComment(room,current,c))throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_DELETE_FORBIDDEN","댓글 작성자 또는 방장만 댓글을 삭제할 수 있습니다.");comments.delete(c);sync.publish(roomId,n.bookId,"shared_comment.deleted",commentId);}
+  @org.springframework.transaction.annotation.Transactional
+  void deleteComment(String username,Long roomId,Long noteId,Long commentId,boolean revealed) {
+    AppUser current=member(username,roomId);
+    ReadingRoom room=room(roomId);
+    ReadingRoomNote n=note(roomId,noteId);
+    if(!revealed) readable(room,current,n);
+    ReadingRoomNoteComment c=comments.findById(commentId).filter(v->v.roomNoteId.equals(noteId))
+        .orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHARED_NOTE_COMMENT_NOT_FOUND","Comment not found."));
+    if(!canDeleteComment(room,current,c))
+      throw new ApiException(HttpStatus.FORBIDDEN,"COMMENT_DELETE_FORBIDDEN","댓글 작성자 또는 방장만 댓글을 삭제할 수 있습니다.");
+    comments.delete(c);
+    notifyOwnerDeletion(room,current,c.userId,n.bookId,true);
+    sync.publish(roomId,n.bookId,"shared_comment.deleted",commentId);
+  }
   private boolean canDelete(ReadingRoom room,AppUser current,ReadingRoomNote n){return n.userId.equals(current.id)||("MEMO".equals(n.type)&&(java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(room.id,current.id).map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false)));}
   private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n){return response(room,current,n,true);}
   private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n,boolean maskSpoilers){boolean locked=maskSpoilers&&spoiler(room,current,n);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,locked?null:n.selectedText,locked?null:n.content,locked?null:n.highlightColor,locked,n.userId.equals(current.id),locked?0:comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version,locked?List.of():NoteRangeSupport.decode(n.selectionRanges),canDelete(room,current,n));}
