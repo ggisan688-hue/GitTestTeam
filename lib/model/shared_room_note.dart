@@ -16,6 +16,7 @@ class SharedRoomNote {
     required this.isSpoilerLocked,
     required this.commentCount,
     this.mine = false,
+    this.canDelete = false,
     this.createdAt,
     this.version = 0,
     this.explicitlyRevealed = false,
@@ -30,6 +31,7 @@ class SharedRoomNote {
   final String? selectedText, content, highlightColor;
   final bool isSpoilerLocked;
   final bool mine;
+  final bool canDelete;
   final DateTime? createdAt;
   factory SharedRoomNote.fromJson(Map<String, dynamic> json) => SharedRoomNote(
     explicitlyRevealed: json['explicitlyRevealed'] == true,
@@ -49,6 +51,7 @@ class SharedRoomNote {
     highlightColor: json['highlightColor'] as String?,
     isSpoilerLocked: json['isSpoilerLocked'] == true,
     mine: json['mine'] == true,
+    canDelete: json['canDelete'] == true || json['mine'] == true,
     commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
     createdAt: json['createdAt'] is String
         ? DateTime.tryParse(json['createdAt'] as String)
@@ -64,10 +67,12 @@ class SharedRoomNoteComment {
     required this.content,
     required this.mine,
     this.createdAt,
+    this.canDelete = false,
   });
   final int id, userId;
   final String nickname, content;
   final bool mine;
+  final bool canDelete;
   final DateTime? createdAt;
   factory SharedRoomNoteComment.fromJson(Map<String, dynamic> json) =>
       SharedRoomNoteComment(
@@ -76,6 +81,7 @@ class SharedRoomNoteComment {
         nickname: json['nickname'] as String? ?? '알 수 없음',
         content: json['content'] as String,
         mine: json['mine'] == true,
+        canDelete: json['canDelete'] == true || json['mine'] == true,
         createdAt: json['createdAt'] is String
             ? DateTime.tryParse(json['createdAt'] as String)
             : null,

@@ -17,6 +17,9 @@ class AiReadingFriend {
     @Column(nullable = false, length = 100)
     String name;
 
+    @Column(name = "profile_image_url", columnDefinition = "TEXT")
+    String profileImageUrl;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     String persona;
 

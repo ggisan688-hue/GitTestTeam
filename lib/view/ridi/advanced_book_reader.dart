@@ -20,8 +20,33 @@ import '../../repository/book_repository.dart';
 import '../../repository/reading_room_repository.dart';
 import '../../model/reading_room.dart';
 import '../../repository/ai_reading_repository.dart';
-import 'reading_rooms_screen.dart' show showSharedNoteComments, buildSharedNoteCommentsPanel;
+import 'reading_rooms_screen.dart' show showSharedNoteComments, buildSharedNoteCommentsPanel, showSharedMemoWithComments;
 import 'ridi_store.dart';
+
+Widget _aiFriendAvatar(AiReadingFriend friend, {double radius = 18}) {
+  const images = {
+    'moru': 'assets/images/moru.png',
+    'popo': 'assets/images/popo.png',
+    'onyou': 'assets/images/onyou.png',
+  };
+  final path = friend.isDefault ? images[friend.builtinKey] : null;
+  final profile = friend.profileImageUrl;
+  final fallback = Text(
+    friend.name.isEmpty ? '?' : friend.name.characters.take(2).toString(),
+    style: TextStyle(fontSize: radius * 0.65, color: const Color(0xFF555555)),
+  );
+  return CircleAvatar(
+    radius: radius,
+    foregroundImage: profile?.isNotEmpty == true
+        ? NetworkImage(profile!.startsWith('http') ? profile : '${AppConfig.baseUrl}$profile') : null,
+    onForegroundImageError: profile?.isNotEmpty == true ? (_, __) {} : null,
+    backgroundColor: const Color(0xFFF2F3F7),
+    child: path == null ? fallback : ClipOval(
+      child: Image.asset(path, width: radius * 2, height: radius * 2,
+          fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
+    ),
+  );
+}
 
 enum ReaderContextKind { personal, readingRoom }
 
@@ -1702,6 +1727,27 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
           : ranges.any((r) => matches(r.paragraphOrder, r.startOffset, r.endOffset));
     }
 
+    if (widget.readerContext.isReadingRoom) {
+      final notes = _sharedMemos.where((note) => !note.isSpoilerLocked &&
+          matchesRanges(note.ranges, note.paragraphOrder, note.startOffset, note.endOffset)).toList();
+      if (notes.isNotEmpty) {
+        final wasOpen = _sheetOpen;
+        setState(() => _sheetOpen = true);
+        try {
+          await showSharedMemoWithComments(context,
+              ReadingRoomRepository(ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken)),
+              widget.readerContext.roomId!, notes);
+        } finally {
+          if (mounted) {
+            setState(() => _sheetOpen = wasOpen);
+            try { await _loadSharedHighlights(); }
+            catch (_) { /* Keep the last rendered notes when refresh is offline. */ }
+          }
+        }
+        return true;
+      }
+    }
+
     // 개인 독서 화면의 내 메모
     if (!widget.readerContext.isReadingRoom) {
       for (final note in context.read<BookViewModel>().readingNotes) {
@@ -2492,7 +2538,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       paragraphOrder: r.paragraphOrder, startOffset: r.startOffset, endOffset: r.endOffset,
       selectedText: note.selectedText, content: note.content,
       highlightColor: note.highlightColor, isSpoilerLocked: note.isSpoilerLocked,
-      commentCount: note.commentCount, mine: note.mine, createdAt: note.createdAt,
+      commentCount: note.commentCount, mine: note.mine, canDelete: note.canDelete,
+      version: note.version, explicitlyRevealed: note.explicitlyRevealed, createdAt: note.createdAt,
       ranges: note.ranges,
     )];
   }
@@ -3669,9 +3716,13 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken));
 
   Future<void> _action(SharedRoomNote note, String action) async {
+    if (note.isSpoilerLocked) return;
+    if (action == 'delete') {
+      if (note.canDelete) await _delete(note);
+      return;
+    }
     if (!note.mine) return;
     if (action == 'color' && !_canChangeHighlightColor(note)) return;
-    if (action == 'delete') { await _delete(note); return; }
     if (action == 'edit') {
       await showDialog<bool>(context: context, builder: (_) => _MemoEditorDialog(
         selectedText: note.selectedText, initialMemo: note.content ?? '',
@@ -5197,19 +5248,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
                         padding: const EdgeInsets.fromLTRB(20, 14, 18, 14),
                         child: Row(
                           children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF2F3F7),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.smart_toy_outlined,
-                                size: 20,
-                                color: Color(0xFF666666),
-                              ),
-                            ),
+                            _aiFriendAvatar(friend),
 
                             const SizedBox(width: 12),
 
@@ -5519,8 +5558,10 @@ class _MemoItem {
     this.locked = false,
     this.revealKey,
     this.onReveal,
+    this.aiFriend,
   });
   final String author;
+  final AiReadingFriend? aiFriend;
   final bool mine;
   final int order;
   final int startOffset;
@@ -5874,6 +5915,7 @@ class _MemoTabState extends State<_MemoTab> {
         items.add(
           _MemoItem(
             author: friend.name,
+            aiFriend: friend,
             mine: false,
             order: note.paragraphOrder,
             startOffset: note.startOffset,
@@ -6212,7 +6254,9 @@ class _MemoTabState extends State<_MemoTab> {
                 const SizedBox(width: 4),
               ],
 
-              CircleAvatar(
+              if (m.aiFriend != null)
+                _aiFriendAvatar(m.aiFriend!, radius: 13)
+              else CircleAvatar(
                 radius: 13,
                 backgroundColor: const Color(0xFFEFF1F5),
                 child: Text(
@@ -6313,8 +6357,8 @@ class _MemoTabState extends State<_MemoTab> {
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ),
-                            if (!_shareSelecting &&
-                                m.mine &&
+                            if (!_shareSelecting && !m.locked &&
+                                (m.mine || m.shared?.canDelete == true) &&
                                 (m.own != null || m.shared != null))
                               SizedBox(
                                 width: 28,
@@ -6343,10 +6387,11 @@ class _MemoTabState extends State<_MemoTab> {
                                   itemBuilder: (_) => [
                                     if (widget.roomId == null)
                                       const PopupMenuItem<String>(value: 'color', child: Text('색상 변경')),
-                                    PopupMenuItem<String>(
-                                      value: 'edit',
-                                      child: Text('수정'),
-                                    ),
+                                    if (m.mine)
+                                      PopupMenuItem<String>(
+                                        value: 'edit',
+                                        child: Text('수정'),
+                                      ),
                                     PopupMenuItem<String>(
                                       value: 'delete',
                                       child: Text(

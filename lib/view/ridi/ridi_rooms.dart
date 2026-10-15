@@ -1,6 +1,7 @@
+import 'profile_photo_dialog.dart';
+import '../../core/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
@@ -132,7 +133,7 @@ class _RoomCreateScreenState extends State<RoomCreateScreen> {
                     sub: '${b.author} · ${b.chapters}장',
                     picked: _picked.contains(b.id),
                     onTap: () => setState(
-                      () => _picked.contains(b.id)
+                          () => _picked.contains(b.id)
                           ? _picked.remove(b.id)
                           : _picked.add(b.id),
                     ),
@@ -195,7 +196,7 @@ class _RoomCreateScreenState extends State<RoomCreateScreen> {
                         persona: p,
                         on: _personaId == p.id,
                         onTap: () => setState(
-                          () => _personaId = _personaId == p.id ? null : p.id,
+                              () => _personaId = _personaId == p.id ? null : p.id,
                         ),
                       ),
                   ],
@@ -207,17 +208,17 @@ class _RoomCreateScreenState extends State<RoomCreateScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
               child: two
                   ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: left),
-                        const SizedBox(width: 40),
-                        Expanded(child: right),
-                      ],
-                    )
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: left),
+                  const SizedBox(width: 40),
+                  Expanded(child: right),
+                ],
+              )
                   : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [left, const SizedBox(height: 28), right],
-                    ),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [left, const SizedBox(height: 28), right],
+              ),
             );
           },
         ),
@@ -286,10 +287,10 @@ Future<String?> _pickEntry(BuildContext context, String? current) async {
 /// 방 비밀번호 정하기 팝업 — 숫자 4자리. 저장하면 비밀번호를, 취소하면 null 을 돌려준다
 /// (RIDI_ROOMS_02 › 비밀번호 설정 · 방 만들기의 입장 방식에서 같이 씀)
 Future<String?> showRoomPasswordDialog(
-  BuildContext context, {
-  String tag = 'RIDI_ROOMS_02 › 비밀번호 설정',
-  String? current,
-}) {
+    BuildContext context, {
+      String tag = 'RIDI_ROOMS_02 › 비밀번호 설정',
+      String? current,
+    }) {
   final c = TextEditingController(text: current ?? '');
   String? error;
   return showDialog<String>(
@@ -411,10 +412,10 @@ class _RoomJoinScreenState extends State<RoomJoinScreen> {
       _error = full.length < 7
           ? null
           : (f == null
-                ? '방을 찾을 수 없어요'
-                : (blocked
-                      ? '이 방에는 들어갈 수 없어요'
-                      : (isFull ? '정원(${f.maxMembers}명)이 다 찼어요' : null)));
+          ? '방을 찾을 수 없어요'
+          : (blocked
+          ? '이 방에는 들어갈 수 없어요'
+          : (isFull ? '정원(${f.maxMembers}명)이 다 찼어요' : null)));
     });
   }
 
@@ -427,8 +428,8 @@ class _RoomJoinScreenState extends State<RoomJoinScreen> {
     final room = _found!;
     if (_needPassword && _pw.text != room.password) {
       setState(
-        () =>
-            _pwError = _pw.text.length < 4 ? '비밀번호 4자리를 적어주세요' : '비밀번호가 맞지 않아요',
+            () =>
+        _pwError = _pw.text.length < 4 ? '비밀번호 4자리를 적어주세요' : '비밀번호가 맞지 않아요',
       );
       return;
     }
@@ -442,7 +443,7 @@ class _RoomJoinScreenState extends State<RoomJoinScreen> {
     final result = store.joinRoom(room.code, password: _pw.text);
     if (result != JoinResult.ok) {
       setState(
-        () => _error = switch (result) {
+            () => _error = switch (result) {
           JoinResult.full => '정원(${room.maxMembers}명)이 다 찼어요',
           JoinResult.blocked => '이 방에는 들어갈 수 없어요',
           JoinResult.wrongPassword => '비밀번호가 맞지 않아요',
@@ -623,8 +624,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _nick;
   late final TextEditingController _bio;
-  final ImagePicker _imagePicker = ImagePicker();
-  XFile? _pickedImage;
+  String? _pickedImageName, _pickedImageType;
   Uint8List? _pickedImageBytes;
   bool _removeProfileImage = false;
   bool _saving = false;
@@ -657,8 +657,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         nick: nickname,
         intro: _bio.text.trim(),
         imageBytes: _pickedImageBytes,
-        imageFilename: _pickedImage?.name,
-        imageContentType: _pickedImage?.mimeType,
+        imageFilename: _pickedImageName,
+        imageContentType: _pickedImageType,
         removeProfileImage: _removeProfileImage,
       );
       if (mounted) Navigator.of(context).pop();
@@ -670,76 +670,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _choosePhoto() async {
-    final hasPhoto =
-        _pickedImageBytes != null ||
-        context.read<RidiStore>().profileImageUrl?.isNotEmpty == true;
-    final action = await showModalBottomSheet<_ProfilePhotoAction>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('갤러리에서 선택'),
-              onTap: () =>
-                  Navigator.pop(sheetContext, _ProfilePhotoAction.gallery),
-            ),
-            if (hasPhoto)
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('프로필 사진 삭제'),
-                textColor: Colors.red,
-                iconColor: Colors.red,
-                onTap: () =>
-                    Navigator.pop(sheetContext, _ProfilePhotoAction.remove),
-              ),
-            ListTile(
-              leading: const Icon(Icons.close),
-              title: const Text('취소'),
-              onTap: () => Navigator.pop(sheetContext),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (action == _ProfilePhotoAction.remove) {
-      setState(() {
-        _pickedImage = null;
-        _pickedImageBytes = null;
-        _removeProfileImage = true;
-      });
-      return;
-    }
-    if (action != _ProfilePhotoAction.gallery) return;
-    try {
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
-        imageQuality: 85,
-      );
-      if (image == null) return;
-      final validExtension = RegExp(
-        r'\.(jpe?g|png|webp)$',
-        caseSensitive: false,
-      ).hasMatch(image.name);
-      final bytes = await image.readAsBytes();
-      if (!validExtension) {
-        if (mounted) ridiToast(context, 'JPG, PNG, WEBP 형식의 이미지만 선택할 수 있습니다.');
-        return;
-      }
-      if (bytes.length > 5 * 1024 * 1024) {
-        if (mounted) ridiToast(context, '프로필 사진은 5MB 이하만 등록할 수 있습니다.');
-        return;
-      }
-      if (!mounted) return;
-      setState(() {
-        _pickedImage = image;
-        _pickedImageBytes = bytes;
-        _removeProfileImage = false;
-      });
-    } catch (_) {
-      if (mounted) ridiToast(context, '사진을 불러오지 못했습니다. 권한과 파일을 확인해주세요.');
-    }
+    if (_saving) return;
+    final stored = context.read<RidiStore>().profileImageUrl;
+    final imageUrl = stored == null || stored.isEmpty ? null
+        : stored.startsWith('http') ? stored : '${AppConfig.baseUrl}$stored';
+    await showProfilePhotoDialog(context,
+        name: _nick.text.trim(), imageUrl: imageUrl, confirmLabel: '적용',
+        initialSelection: ProfilePhotoSelection(bytes: _pickedImageBytes,
+            filename: _pickedImageName, contentType: _pickedImageType,
+            remove: _removeProfileImage),
+        onSave: (selection) async {
+          if (!mounted) return;
+          setState(() {
+            _pickedImageBytes = selection.bytes;
+            _pickedImageName = selection.filename;
+            _pickedImageType = selection.contentType;
+            _removeProfileImage = selection.remove;
+          });
+        });
   }
 
   @override
@@ -799,7 +747,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-enum _ProfilePhotoAction { gallery, remove }
 
 class _ProfilePhotoPicker extends StatelessWidget {
   const _ProfilePhotoPicker({
@@ -1063,14 +1010,14 @@ class _RoomSheet extends StatelessWidget {
                             onPressed: books.length <= 1
                                 ? null
                                 : () {
-                                    final removed = store.removeRoomBook(
-                                      room.id,
-                                      b.id,
-                                    );
-                                    if (!removed) {
-                                      ridiToast(context, '방의 마지막 책은 삭제할 수 없어요');
-                                    }
-                                  },
+                              final removed = store.removeRoomBook(
+                                room.id,
+                                b.id,
+                              );
+                              if (!removed) {
+                                ridiToast(context, '방의 마지막 책은 삭제할 수 없어요');
+                              }
+                            },
                           ),
                       ],
                     ),
@@ -1271,7 +1218,7 @@ class _RoomSheet extends StatelessWidget {
                       sub: '${b.author} · ${b.chapters}장',
                       picked: picked.contains(b.id),
                       onTap: () => setSheet(
-                        () => picked.contains(b.id)
+                            () => picked.contains(b.id)
                             ? picked.remove(b.id)
                             : picked.add(b.id),
                       ),
@@ -1354,9 +1301,9 @@ Future<String?> _renameDialog(BuildContext context, String current) {
 
 /// AI 친구 고르기 (방 메뉴 · 뷰어 도구 공통) — UC-05-3. 고른 캐릭터를 다시 누르거나 "없음"이면 AI 친구를 뺀다
 Future<void> showPersonaPicker(
-  BuildContext context, {
-  required String roomId,
-}) async {
+    BuildContext context, {
+      required String roomId,
+    }) async {
   final store = context.read<RidiStore>();
   final room = store.room(roomId);
   if (room == null) return;
@@ -1537,7 +1484,7 @@ class _SettingRow extends StatelessWidget {
         ),
         child: InkWell(
           onTap:
-              onTap ??
+          onTap ??
               (onToggle == null ? null : () => onToggle!(!(toggle ?? false))),
           child: Row(
             children: [
@@ -1556,13 +1503,13 @@ class _SettingRow extends StatelessWidget {
               else if (toggle != null)
                 _RidiSwitch(value: toggle!, onChanged: onToggle)
               else ...[
-                Text(value ?? '', style: RidiText.sub),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: RidiColors.gray,
-                ),
-              ],
+                  Text(value ?? '', style: RidiText.sub),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: RidiColors.gray,
+                  ),
+                ],
             ],
           ),
         ),
@@ -1809,137 +1756,137 @@ class RoomMembersScreen extends StatelessWidget {
       body: room == null
           ? const RidiEmpty(icon: Icons.groups_2_outlined, text: '방을 찾을 수 없어요')
           : SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-                    children: [
-                      Text(
-                        '멤버 ${room.humanCount}명 · 최대 ${room.maxMembers}명',
-                        style: RidiText.heading,
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        '내보낸 멤버는 코드로 다시 들어올 수 있고, 차단한 멤버는 다시 들어올 수 없어요',
-                        style: RidiText.sub,
-                      ),
-                      const SizedBox(height: 16),
-                      for (final m in room.members) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
-                            children: [
-                              RidiAvatar(label: m.name, ai: m.ai),
-                              const SizedBox(width: 12),
-                              Text(m.name, style: RidiText.body),
-                              if (m.owner) const _Tag('방장'),
-                              if (m.ai) const _Tag('AI 독서 친구', purple: true),
-                              const Spacer(),
-                              if (!m.owner && !m.ai) ...[
-                                RidiOutlineButton(
-                                  '방장 넘기기',
-                                  height: 34,
-                                  onTap: () async {
-                                    final ok = await ridiConfirm(
-                                      context,
-                                      title: '${m.name} 님에게 방장을 넘길까요?',
-                                      body:
-                                          '넘기면 나는 일반 멤버가 되고, 멤버 관리·비밀번호·인원은 ${m.name} 님이 정해요.',
-                                      ok: '넘기기',
-                                    );
-                                    if (!ok || !context.mounted) return;
-                                    store.transferOwner(room.id, m.name);
-                                    ridiToast(context, '${m.name} 님이 이제 방장이에요');
-                                    Navigator.of(context)
-                                        .pop(); // 이제 방장이 아니니 관리 화면을 닫는다
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                RidiOutlineButton(
-                                  '내보내기',
-                                  height: 34,
-                                  onTap: () async {
-                                    final ok = await ridiConfirm(
-                                      context,
-                                      title: '${m.name} 님을 내보낼까요?',
-                                      body: '코드가 있으면 다시 들어올 수 있어요.',
-                                      ok: '내보내기',
-                                      danger: true,
-                                    );
-                                    if (!ok || !context.mounted) return;
-                                    store.kickMember(room.id, m.name);
-                                    ridiToast(context, '${m.name} 님을 내보냈어요');
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                RidiOutlineButton(
-                                  '차단',
-                                  icon: Icons.block_rounded,
-                                  height: 34,
-                                  onTap: () async {
-                                    final ok = await ridiConfirm(
-                                      context,
-                                      title: '${m.name} 님을 차단할까요?',
-                                      body: '이 방에서 내보내고, 다시 들어올 수 없어요.',
-                                      ok: '차단',
-                                      danger: true,
-                                    );
-                                    if (!ok || !context.mounted) return;
-                                    store.blockMember(room.id, m.name);
-                                    ridiToast(context, '${m.name} 님을 차단했어요');
-                                  },
-                                ),
-                              ],
-                            ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              children: [
+                Text(
+                  '멤버 ${room.humanCount}명 · 최대 ${room.maxMembers}명',
+                  style: RidiText.heading,
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '내보낸 멤버는 코드로 다시 들어올 수 있고, 차단한 멤버는 다시 들어올 수 없어요',
+                  style: RidiText.sub,
+                ),
+                const SizedBox(height: 16),
+                for (final m in room.members) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        RidiAvatar(label: m.name, ai: m.ai),
+                        const SizedBox(width: 12),
+                        Text(m.name, style: RidiText.body),
+                        if (m.owner) const _Tag('방장'),
+                        if (m.ai) const _Tag('AI 독서 친구', purple: true),
+                        const Spacer(),
+                        if (!m.owner && !m.ai) ...[
+                          RidiOutlineButton(
+                            '방장 넘기기',
+                            height: 34,
+                            onTap: () async {
+                              final ok = await ridiConfirm(
+                                context,
+                                title: '${m.name} 님에게 방장을 넘길까요?',
+                                body:
+                                '넘기면 나는 일반 멤버가 되고, 멤버 관리·비밀번호·인원은 ${m.name} 님이 정해요.',
+                                ok: '넘기기',
+                              );
+                              if (!ok || !context.mounted) return;
+                              store.transferOwner(room.id, m.name);
+                              ridiToast(context, '${m.name} 님이 이제 방장이에요');
+                              Navigator.of(context)
+                                  .pop(); // 이제 방장이 아니니 관리 화면을 닫는다
+                            },
                           ),
-                        ),
-                        const Divider(height: 1),
+                          const SizedBox(width: 8),
+                          RidiOutlineButton(
+                            '내보내기',
+                            height: 34,
+                            onTap: () async {
+                              final ok = await ridiConfirm(
+                                context,
+                                title: '${m.name} 님을 내보낼까요?',
+                                body: '코드가 있으면 다시 들어올 수 있어요.',
+                                ok: '내보내기',
+                                danger: true,
+                              );
+                              if (!ok || !context.mounted) return;
+                              store.kickMember(room.id, m.name);
+                              ridiToast(context, '${m.name} 님을 내보냈어요');
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          RidiOutlineButton(
+                            '차단',
+                            icon: Icons.block_rounded,
+                            height: 34,
+                            onTap: () async {
+                              final ok = await ridiConfirm(
+                                context,
+                                title: '${m.name} 님을 차단할까요?',
+                                body: '이 방에서 내보내고, 다시 들어올 수 없어요.',
+                                ok: '차단',
+                                danger: true,
+                              );
+                              if (!ok || !context.mounted) return;
+                              store.blockMember(room.id, m.name);
+                              ridiToast(context, '${m.name} 님을 차단했어요');
+                            },
+                          ),
+                        ],
                       ],
-                      const SizedBox(height: 32),
-                      Text(
-                        '차단한 멤버 ${room.blocked.length}명',
-                        style: RidiText.heading,
-                      ),
-                      const SizedBox(height: 8),
-                      if (room.blocked.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Text('차단한 멤버가 없어요', style: RidiText.sub),
-                        )
-                      else
-                        for (final name in room.blocked) ...[
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: Row(
-                              children: [
-                                RidiAvatar(label: name),
-                                const SizedBox(width: 12),
-                                Text(
-                                  name,
-                                  style: RidiText.body.copyWith(
-                                    color: RidiColors.gray,
-                                  ),
-                                ),
-                                const Spacer(),
-                                RidiOutlineButton(
-                                  '차단 해제',
-                                  height: 34,
-                                  onTap: () {
-                                    store.unblockMember(room.id, name);
-                                    ridiToast(context, '$name 님 차단을 풀었어요');
-                                  },
-                                ),
-                              ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                ],
+                const SizedBox(height: 32),
+                Text(
+                  '차단한 멤버 ${room.blocked.length}명',
+                  style: RidiText.heading,
+                ),
+                const SizedBox(height: 8),
+                if (room.blocked.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('차단한 멤버가 없어요', style: RidiText.sub),
+                  )
+                else
+                  for (final name in room.blocked) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          RidiAvatar(label: name),
+                          const SizedBox(width: 12),
+                          Text(
+                            name,
+                            style: RidiText.body.copyWith(
+                              color: RidiColors.gray,
                             ),
                           ),
-                          const Divider(height: 1),
+                          const Spacer(),
+                          RidiOutlineButton(
+                            '차단 해제',
+                            height: 34,
+                            onTap: () {
+                              store.unblockMember(room.id, name);
+                              ridiToast(context, '$name 님 차단을 풀었어요');
+                            },
+                          ),
                         ],
-                    ],
-                  ),
-                ),
-              ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                  ],
+              ],
             ),
+          ),
+        ),
+      ),
     );
   }
 }

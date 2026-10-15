@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../core/api_client.dart';
 
 
@@ -7,6 +8,7 @@ class AiReadingFriend {
     required this.name,
     required this.isDefault,
     this.builtinKey,
+    this.profileImageUrl,
     this.persona,
     this.inputAge,
     this.inputGender,
@@ -20,6 +22,7 @@ class AiReadingFriend {
   final String name;
   final bool isDefault;
   final String? builtinKey;
+  final String? profileImageUrl;
   final String? persona;
 
   // 사용자가 직접 입력한 정보
@@ -36,6 +39,7 @@ class AiReadingFriend {
       name: json['name']?.toString() ?? '',
       isDefault: json['isDefault'] == true,
       builtinKey: json['builtinKey']?.toString(),
+      profileImageUrl: json['profileImageUrl']?.toString(),
       persona: json['persona'] as String?,
 
       // DB에 저장된 사용자 입력값
@@ -159,6 +163,17 @@ class AiReadingRepository {
 
 
   // 사용자가 생성한 AI 독서친구 수정
+  Future<AiReadingFriend> updateFriendProfile({
+    required int friendId, required String name, bool removeImage = false,
+    Uint8List? bytes, String? filename, String? contentType,
+  }) async => (await _api.uploadFile<AiReadingFriend>(
+    '/api/ai-reading-friends/$friendId/profile', method: 'PUT',
+    fields: {'name': name.trim(), 'removeImage': '$removeImage'},
+    bytes: bytes, filename: filename, contentType: contentType,
+    fieldName: 'profileImage',
+    parse: (json) => AiReadingFriend.fromJson(Map<String, dynamic>.from(json as Map)),
+  )).data!;
+
   Future<AiReadingFriend> updateFriend({
     required int friendId,
     required String name,

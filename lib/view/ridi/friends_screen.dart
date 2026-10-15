@@ -1,3 +1,6 @@
+import 'profile_photo_dialog.dart';
+import 'dart:typed_data';
+import '../../core/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -122,6 +125,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
   int _selectedIndex = 0;
   bool _isCreating = false;
   bool _submitting = false;
+  bool _pickingCreatePhoto = false;
+  Uint8List? _createPhotoBytes;
+  String? _createPhotoName, _createPhotoType;
 
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
@@ -265,6 +271,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       feature: friend.inputTraits ?? '',
       isDefault: friend.isDefault,
       builtinKey: friend.builtinKey,
+      profileImageUrl: friend.profileImageUrl,
 
       // DB에 저장된 전체 페르소나
       persona: friend.persona ?? '',
@@ -284,6 +291,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   void _selectFriend(int index) {
+    if (_submitting || _pickingCreatePhoto) return;
     setState(() {
       _selectedIndex = index;
       _isCreating = false;
@@ -292,6 +300,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
 
   void _startCreating() {
+    if (_submitting || _pickingCreatePhoto) return;
+    _createPhotoBytes = null;
+    _createPhotoName = null;
+    _createPhotoType = null;
     _nameController.clear();
     _ageController.clear();
     _relationshipController.clear();
@@ -306,6 +318,25 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
+
+  Future<void> _pickCreatePhoto() async {
+    if (_submitting || _pickingCreatePhoto) return;
+    setState(() => _pickingCreatePhoto = true);
+    try {
+      await showProfilePhotoDialog(context, name: _nameController.text.trim(),
+          confirmLabel: '적용',
+          initialSelection: ProfilePhotoSelection(bytes: _createPhotoBytes,
+              filename: _createPhotoName, contentType: _createPhotoType),
+          onSave: (selection) async {
+            if (!mounted) return;
+            setState(() {
+              _createPhotoBytes = selection.bytes;
+              _createPhotoName = selection.filename;
+              _createPhotoType = selection.contentType;
+            });
+          });
+    } finally { if (mounted) setState(() => _pickingCreatePhoto = false); }
+  }
 
   Future<void> _createFriend() async {
     final name = _nameController.text.trim();
@@ -322,13 +353,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
           .showSnackBar(const SnackBar(content: Text('모든 항목을 입력해 주세요.')));
       return;
     }
-    if (_submitting) return;
+    if (_submitting || _pickingCreatePhoto) return;
     setState(() => _submitting = true);
 
     try {
       final token = context.read<RidiStore>().accessToken;
 
-      final saved = await AiReadingRepository(
+      var saved = await AiReadingRepository(
         ApiClient(tokenProvider: () => token),
       ).createFriend(
         name: name,
@@ -340,25 +371,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
         traits: feature,
       );
 
+      bool photoFailed = false;
+      if (_createPhotoBytes != null) {
+        try {
+          saved = await AiReadingRepository(ApiClient(tokenProvider: () => token))
+              .updateFriendProfile(friendId: saved.id, name: saved.name,
+              bytes: _createPhotoBytes, filename: _createPhotoName,
+              contentType: _createPhotoType);
+        } catch (_) { photoFailed = true; }
+      }
+
       if (!mounted) return;
       setState(() {
         _friends = [
           ..._friends,
-          _AiFriend(
-            id: saved.id,
-            name: saved.name,
-            age: int.tryParse(_ageController.text.trim()) ?? 0,
-            gender: _gender,
-            relationship: relationship,
-            personality: personality,
-            speech: speech,
-            feature: feature,
-            isDefault: false,
-          ),
+          _friendFromApi(saved),
         ];
         _selectedIndex = _friends.length - 1;
         _isCreating = false;
       });
+      _createPhotoBytes = null;
+      _createPhotoName = null;
+      _createPhotoType = null;
+      if (photoFailed) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('AI 친구는 생성되었지만 사진 저장에 실패했어요. 프로필에서 다시 등록해주세요.')));
       _nameController.clear();
       _ageController.clear();
       _relationshipController.clear();
@@ -460,7 +496,28 @@ class _FriendsScreenState extends State<FriendsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          _profileAvatar(friend),
+          InkWell(
+            onTap: friend.isDefault ? null : () => _editProfile(friend, photo: true),
+            customBorder: const CircleBorder(),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _profileAvatar(friend),
+                if (!friend.isDefault)
+                  Positioned(
+                    right: -2, bottom: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFDDDDDD))),
+                      child: const Icon(Icons.photo_camera_outlined,
+                          size: 16, color: Color(0xFF555555)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
 
 
           const SizedBox(width: 42),
@@ -480,19 +537,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         child: Row(
                           children: [
                             Flexible(
-                              child: Text(
-                                friend.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: true,
-                                style: const TextStyle(
-                                  fontFamily: RidiText.f,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w700,
-                                  color: RidiColors.ink,
+                              child: InkWell(
+                                onTap: friend.isDefault ? null : () => _editProfile(friend),
+                                child: Text(
+                                  friend.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                  style: const TextStyle(
+                                    fontFamily: RidiText.f,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: RidiColors.ink,
+                                  ),
                                 ),
                               ),
                             ),
+                            if (!friend.isDefault)
+                              IconButton(
+                                tooltip: 'AI 친구 이름 변경',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.edit_outlined, size: 18,
+                                    color: Color(0xFF666666)),
+                                onPressed: () => _editProfile(friend),
+                              ),
                             const SizedBox(width: 8),
                             Tooltip(
                               message: '형광펜 색상 변경',
@@ -620,6 +688,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     return CircleAvatar(
       radius: 54,
+      foregroundImage: friend.profileImageUrl?.isNotEmpty == true
+          ? NetworkImage(_friendProfileUrl(friend.profileImageUrl!)) : null,
+      onForegroundImageError: friend.profileImageUrl?.isNotEmpty == true ? (_, __) {} : null,
       backgroundColor: RidiColors.panel,
       child: imagePath == null
           ? _profileAvatarFallback(friend)
@@ -647,6 +718,66 @@ class _FriendsScreenState extends State<FriendsScreen> {
       color: RidiColors.ink,
     ),
   );
+
+  Future<void> _editProfile(_AiFriend friend, {bool photo = false}) async {
+    if (friend.isDefault || friend.id == null) return;
+    if (photo) {
+      await showProfilePhotoDialog(context, name: friend.name,
+          imageUrl: friend.profileImageUrl?.isNotEmpty == true
+              ? _friendProfileUrl(friend.profileImageUrl!) : null,
+          onSave: (selection) async {
+            final repository = AiReadingRepository(ApiClient(
+                tokenProvider: () => context.read<RidiStore>().accessToken));
+            final saved = await repository.updateFriendProfile(friendId: friend.id!, name: friend.name,
+                removeImage: selection.remove, bytes: selection.bytes,
+                filename: selection.filename, contentType: selection.contentType);
+            if (!mounted) return;
+            setState(() {
+              final index = _friends.indexWhere((f) => f.id == saved.id);
+              if (index >= 0) _friends[index] = _friendFromApi(saved);
+            });
+          });
+      return;
+    }
+    final name = TextEditingController(text: friend.name);
+    bool saving = false;
+    String? error;
+    try {
+      await showDialog<void>(context: context, barrierDismissible: false,
+        builder: (dc) => StatefulBuilder(builder: (_, update) => AlertDialog(
+          title: const Text('이름 변경'),
+          content: SizedBox(width: 360, child: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: name, enabled: !saving, maxLength: 100,
+                decoration: const InputDecoration(labelText: '이름')),
+            if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+          ],
+          ))),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(dc), child: const Text('취소')),
+            FilledButton(onPressed: saving ? null : () async {
+              if (name.text.trim().isEmpty) { update(() => error = '이름을 입력해주세요.'); return; }
+              update(() { saving = true; error = null; });
+              try {
+                final repository = AiReadingRepository(ApiClient(
+                    tokenProvider: () => context.read<RidiStore>().accessToken));
+                final saved = await repository.updateFriendProfile(friendId: friend.id!,
+                    name: name.text);
+                if (!mounted) return;
+                setState(() {
+                  final index = _friends.indexWhere((f) => f.id == saved.id);
+                  if (index >= 0) _friends[index] = _friendFromApi(saved);
+                });
+                if (dc.mounted) Navigator.pop(dc);
+              } catch (_) {
+                if (dc.mounted) update(() { saving = false; error = '프로필 저장에 실패했어요. 다시 시도해주세요.'; });
+              }
+            }, child: Text(saving ? '저장 중' : '저장')),
+          ],
+        )),
+      );
+    } finally { name.dispose(); }
+  }
 
   Future<void> _deleteFriend(_AiFriend friend) async {
     final confirmed = await showDialog<bool>(
@@ -685,6 +816,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
 
   void _editFriend(_AiFriend friend) {
+    if (_submitting || _pickingCreatePhoto) return;
     if (friend.isDefault || friend.id == null) {
       return;
     }
@@ -715,7 +847,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         return;
       }
 
-      final name = _nameController.text.trim();
+      final name = friend.name;
       final relationship = _relationshipController.text.trim();
       final personality = _personalityController.text.trim();
       final speech = _speechController.text.trim();
@@ -817,11 +949,54 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_editingFriend == null) ...[
+                SizedBox(width: 90, child: Column(children: [
+                  const SizedBox(height: 16),
+                  Tooltip(message: '프로필 사진 선택', child: InkWell(
+                    onTap: _submitting || _pickingCreatePhoto ? null : _pickCreatePhoto,
+                    customBorder: const CircleBorder(),
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      CircleAvatar(radius: 34, backgroundColor: RidiColors.panel,
+                          backgroundImage: _createPhotoBytes == null ? null : MemoryImage(_createPhotoBytes!),
+                          child: _pickingCreatePhoto ? const SizedBox(width: 22, height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2)) :
+                          _createPhotoBytes == null ? const Icon(Icons.person_outline,
+                              size: 32, color: Color(0xFF999999)) : null),
+                      Positioned(right: -2, bottom: -2, child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFFDDDDDD))),
+                          child: const Icon(Icons.photo_camera_outlined, size: 14,
+                              color: Color(0xFF555555)))),
+                    ]),
+                  )),
+
+                ])),
+                const SizedBox(width: 18),
+              ],
               Expanded(
-                child: _InputField(
+                child: _editingFriend == null
+                    ? _InputField(
                   label: '이름',
                   controller: _nameController,
                   hint: '예) hihi',
+                )
+                    : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('이름', style: RidiText.bodyBold),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F2F2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: RidiColors.grayLight),
+                      ),
+                      child: Text(_editingFriend!.name, style: RidiText.body),
+                    ),
+                  ],
                 ),
               ),
 
@@ -918,7 +1093,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
-              onPressed: _submitting
+              onPressed: _submitting || _pickingCreatePhoto
                   ? null
                   : _editingFriend == null
                   ? _createFriend
@@ -999,6 +1174,9 @@ class _FriendCard extends StatelessWidget {
 
             CircleAvatar(
               radius: 25,
+              foregroundImage: friend.profileImageUrl?.isNotEmpty == true
+                  ? NetworkImage(_friendProfileUrl(friend.profileImageUrl!)) : null,
+              onForegroundImageError: friend.profileImageUrl?.isNotEmpty == true ? (_, __) {} : null,
               backgroundColor: RidiColors.panel,
               child: friend.isDefault &&
                   _builtinAiFriendImagePaths.containsKey(friend.builtinKey)
@@ -1104,10 +1282,12 @@ class _InputField extends StatelessWidget {
     required this.controller,
     required this.hint,
     this.keyboardType,
+    this.enabled = true,
     this.minLines,
     this.maxLines = 1,
   });
 
+  final bool enabled;
   final String label;
   final TextEditingController controller;
   final String hint;
@@ -1124,6 +1304,7 @@ class _InputField extends StatelessWidget {
         const SizedBox(height: 8),
         TextField(
           controller: controller,
+          enabled: enabled,
           keyboardType: keyboardType,
           minLines: minLines,
           maxLines: maxLines,
@@ -1166,6 +1347,7 @@ class _AiFriend {
     required this.feature,
     required this.isDefault,
     this.builtinKey,
+    this.profileImageUrl,
     this.persona = '',
   });
 
@@ -1179,8 +1361,11 @@ class _AiFriend {
   final String feature;
   final bool isDefault;
   final String? builtinKey;
+  final String? profileImageUrl;
 
   // AI가 생성한 전체 페르소나
   final String persona;
 }
 
+
+String _friendProfileUrl(String path) => path.startsWith('http') ? path : '${AppConfig.baseUrl}$path';

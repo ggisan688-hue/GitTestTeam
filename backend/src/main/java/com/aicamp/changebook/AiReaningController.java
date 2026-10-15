@@ -22,6 +22,8 @@ private final BookParagraphRepository paragraphRepository;
 private final AiReadingProgressRepository progressRepository;
 
 // AI 페르소나 생성용
+@org.springframework.beans.factory.annotation.Autowired
+private ProfileImageStorage profileImages;
 private final GeminiClient geminiClient;
 private final CharacterPromptService characterPromptService;
 
@@ -148,6 +150,10 @@ AiReadingFriendResponse updateFriend(
                     "수정할 AI 친구를 찾을 수 없습니다."
             ));
 
+    if (!friend.name.equals(request.name().trim())) {
+        throw new ApiException(HttpStatus.BAD_REQUEST, "AI_FRIEND_NAME_PROFILE_ONLY", "이름은 프로필 수정에서 변경해주세요.");
+    }
+
     // 수정된 사용자 정보로 프롬프트 생성
     String prompt = characterPromptService.makeCharacterPrompt(
             request.name(),
@@ -189,6 +195,52 @@ AiReadingFriendResponse updateFriend(
     );
 }
 
+
+    // 이름/사진 변경은 페르소나 생성과 분리한다.
+    @PutMapping(value = "/ai-reading-friends/{friendId}/profile", consumes = "multipart/form-data")
+    @org.springframework.transaction.annotation.Transactional
+    AiReadingFriendResponse updateProfile(
+            @PathVariable Long friendId,
+            @RequestParam String name,
+            @RequestParam(defaultValue = "false") boolean removeImage,
+            @RequestPart(value = "profileImage", required = false) org.springframework.web.multipart.MultipartFile image,
+            org.springframework.security.core.Authentication authentication) {
+        var user = currentUser(authentication);
+        var friend = friendRepository.findByIdAndUserIdAndIsDefaultFalse(friendId, user.id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "AI_FRIEND_NOT_FOUND", "수정할 AI 친구를 찾을 수 없습니다."));
+        String nextName = name.trim();
+        if (nextName.isEmpty() || nextName.length() > 100)
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_AI_FRIEND_NAME", "이름은 1~100자로 입력해주세요.");
+        String oldImage = friend.profileImageUrl;
+        String uploaded = image == null ? null : profileImages.save(image);
+        try {
+            friend.name = nextName;
+            if (uploaded != null) friend.profileImageUrl = uploaded;
+            else if (removeImage) friend.profileImageUrl = null;
+            friend.updatedAt = java.time.OffsetDateTime.now();
+            var saved = friendRepository.saveAndFlush(friend);
+            var response = AiReadingFriendResponse.from(saved);
+            // Delete the old bytes only after the transaction commits.
+            if (!java.util.Objects.equals(oldImage, saved.profileImageUrl)) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { profileImages.delete(oldImage); }
+                    });
+            }
+            if (uploaded != null) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCompletion(int status) {
+                            if (status != STATUS_COMMITTED) profileImages.delete(uploaded);
+                        }
+                    });
+            }
+            return response;
+        } catch (RuntimeException error) {
+            if (uploaded != null) profileImages.delete(uploaded);
+            throw error;
+        }
+    }
 
     // AI 친구 페르소나 상세 설정 저장
     @PatchMapping("/ai-reading-friends/{friendId}/persona")
@@ -389,7 +441,8 @@ record AiReadingFriendResponse(
         String inputRelationship,
         String inputPersonality,
         String inputSpeechStyle,
-        String inputTraits
+        String inputTraits,
+        String profileImageUrl
 ) {
     static AiReadingFriendResponse from(AiReadingFriend friend) {
         return from(friend, null);
@@ -407,7 +460,8 @@ record AiReadingFriendResponse(
                 friend.inputRelationship,
                 friend.inputPersonality,
                 friend.inputSpeechStyle,
-                friend.inputTraits
+                friend.inputTraits,
+                friend.profileImageUrl
         );
     }
 }
