@@ -532,6 +532,7 @@ class RoomService {
     p.roomId=roomId;p.userId=current.id;p.bookId=bookId;
     p.progressPercent=saved.progressPercent();p.lastReadPosition=saved.lastReadPosition();p.updatedAt=Instant.now();
     roomProgress.save(p);
+    sync.publish(roomId,bookId,"reading_progress.updated",current.id);
     return new RoomProgressResponse(roomId,current.id,bookId,saved.progressPercent(),saved.lastReadPosition(),saved.lastReadAt());
   }
   @org.springframework.transaction.annotation.Transactional(readOnly=true)

@@ -1403,6 +1403,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   late Future<ReadingRoom> _room;
   late Future<List<ReadingRoomBookItem>> _recentBooks;
   ReadingRoom? _visibleRoom;
+  int _readerReturnRevision = 0;
   RoomSyncClient? _roomSync;
   bool _deleting = false;
   bool _bookMutationInFlight = false;
@@ -1849,7 +1850,11 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
         ),
       ),
     );
-    if (mounted) _reload();
+    if (!mounted) return;
+    // The card owns a separate participant-progress future. Invalidate it on
+    // every reader return, even while the room-detail request is still loading.
+    setState(() => _readerReturnRevision++);
+    _reload();
   }
 
   Future<List<ReadingRoomBookItem>> _sortBooksByMyReading(ReadingRoom room) async {
@@ -2593,6 +2598,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                       room: room,
                       book: item.book,
                       isCurrent: item.current,
+                      progressRevision: _readerReturnRevision,
                       onOpen: () => _openBook(room, item.book.id),
                     ),
                   ),
@@ -2602,6 +2608,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                     room: room,
                     book: room.book!,
                     isCurrent: true,
+                    progressRevision: _readerReturnRevision,
                     onOpen: () => _openBook(room, room.bookId!),
                   ),
               ],
@@ -2974,11 +2981,13 @@ class _RoomBookCard extends StatefulWidget {
     required this.room,
     required this.book,
     required this.isCurrent,
+    required this.progressRevision,
     required this.onOpen,
   });
   final ReadingRoom room;
   final ReadingRoomBook book;
   final bool isCurrent;
+  final int progressRevision;
   final VoidCallback onOpen;
   @override
   State<_RoomBookCard> createState() => _RoomBookCardState();
@@ -2987,13 +2996,30 @@ class _RoomBookCard extends StatefulWidget {
 class _RoomBookCardState extends State<_RoomBookCard> {
   late Future<List<RoomParticipantProgress>> _participants;
   late final ReadingRoomRepository _repository;
+  Timer? _progressTimer;
+  int _progressRequest = 0;
+  bool _refreshingProgress = false;
 
   @override
   void initState() {
     super.initState();
-    final token = context.read<RidiStore>().accessToken;
-    _repository = ReadingRoomRepository(ApiClient(tokenProvider: () => token));
+    _repository = ReadingRoomRepository(ApiClient(
+      tokenProvider: () => context.read<RidiStore>().accessToken,
+    ));
     _loadParticipants();
+    _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        unawaited(_refreshParticipants());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    _progressRequest++;
+    super.dispose();
   }
 
   @override
@@ -3001,15 +3027,36 @@ class _RoomBookCardState extends State<_RoomBookCard> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.room.id != widget.room.id ||
         oldWidget.book.id != widget.book.id ||
+        oldWidget.progressRevision != widget.progressRevision ||
         oldWidget.room != widget.room) {
       _loadParticipants();
     }
   }
 
   void _loadParticipants() {
+    _progressRequest++;
     _participants = _repository
         .participantProgress(widget.room.id, widget.book.id)
         .catchError((Object _) => <RoomParticipantProgress>[]);
+  }
+
+  Future<void> _refreshParticipants() async {
+    if (_refreshingProgress) return;
+    _refreshingProgress = true;
+    final request = ++_progressRequest;
+    try {
+      final participants = await _repository.participantProgress(
+        widget.room.id, widget.book.id,
+      );
+      if (!mounted || request != _progressRequest) return;
+      setState(() {
+        _participants = Future.value(participants);
+      });
+    } catch (_) {
+      // Keep the last visible progress when a background refresh fails.
+    } finally {
+      _refreshingProgress = false;
+    }
   }
 
   List<Widget> _progressGroupMarkers(
