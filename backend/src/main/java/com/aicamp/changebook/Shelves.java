@@ -41,6 +41,7 @@ record ShelfRequest(@NotBlank @Size(max=80) String name,@Size(max=300) String de
 record ShelfResponse(Long id,String name,String description,boolean isPublic,long bookCount,Long coverBookId,String coverImageUrl,List<String> previewCoverImageUrls,Instant createdAt,Instant updatedAt){}
 record ShelfDetailResponse(Long id,String name,String description,boolean isPublic,long bookCount,Long coverBookId,String coverImageUrl,List<String> previewCoverImageUrls,List<BookResponse> books,Instant createdAt,Instant updatedAt){}
 record ShelfBulkDeleteResponse(int deletedCount){}
+record ShelfBookRemovalResponse(boolean shelfDeleted){}
 
 @org.springframework.stereotype.Service class ShelfService {
  final ShelfRepository shelves; final ShelfBookRepository shelfBooks; final UserRepository users; final BookRepository books;
@@ -57,7 +58,20 @@ record ShelfBulkDeleteResponse(int deletedCount){}
  @org.springframework.transaction.annotation.Transactional int deleteAll(String username){return shelves.deleteAllByUserId(user(username).id);}
  List<BookResponse> candidates(String username,Long shelfId){Shelf s=owned(username,shelfId);return shelfBooks.findCandidates(s.id).stream().map(BookResponse::from).toList();}
  @org.springframework.transaction.annotation.Transactional boolean add(String username,Long shelfId,Long bookId){AppUser u=user(username);Shelf s=shelves.findOwnedForUpdate(shelfId,u.id).orElseThrow(()->new ApiException(HttpStatus.NOT_FOUND,"SHELF_NOT_FOUND","Shelf not found."));if(!books.existsById(bookId))throw new ApiException(HttpStatus.NOT_FOUND,"BOOK_NOT_FOUND","Book not found.");if(shelfBooks.existsByShelfIdAndBookId(s.id,bookId))return false;ShelfBook b=new ShelfBook();b.shelfId=s.id;b.bookId=bookId;b.displayOrder=(int)shelfBooks.countByShelfId(s.id);try{shelfBooks.saveAndFlush(b);return true;}catch(org.springframework.dao.DataIntegrityViolationException e){if(shelfBooks.existsByShelfIdAndBookId(s.id,bookId))return false;throw e;}}
- void remove(String username,Long shelfId,Long bookId){Shelf s=owned(username,shelfId);if(!shelfBooks.existsByShelfIdAndBookId(s.id,bookId))throw new ApiException(HttpStatus.NOT_FOUND,"SHELF_BOOK_NOT_FOUND","책장에 없는 도서입니다.");shelfBooks.deleteByShelfIdAndBookId(s.id,bookId);}
+ @org.springframework.transaction.annotation.Transactional
+ boolean remove(String username, Long shelfId, Long bookId) {
+  AppUser current = user(username);
+  // Serialize add/remove operations on the same shelf.
+  Shelf shelf = shelves.findOwnedForUpdate(shelfId, current.id)
+      .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SHELF_NOT_FOUND", "책장을 찾을 수 없습니다."));
+  if (!shelfBooks.existsByShelfIdAndBookId(shelf.id, bookId))
+   throw new ApiException(HttpStatus.NOT_FOUND, "SHELF_BOOK_NOT_FOUND", "책장에 없는 도서입니다.");
+  shelfBooks.deleteByShelfIdAndBookId(shelf.id, bookId);
+  shelfBooks.flush();
+  boolean shelfDeleted = shelfBooks.countByShelfId(shelf.id) == 0;
+  if (shelfDeleted) shelves.delete(shelf);
+  return shelfDeleted;
+ }
  String blank(String x){return x==null||x.trim().isEmpty()?null:x.trim();}
 }
 @RestController @RequestMapping("/api/shelves") class ShelfController {
@@ -70,5 +84,5 @@ record ShelfBulkDeleteResponse(int deletedCount){}
  @DeleteMapping("/{shelfId}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long shelfId,org.springframework.security.core.Authentication a){service.delete(a.getName(),shelfId);}
  @GetMapping("/{shelfId}/book-candidates") List<BookResponse> candidates(@PathVariable Long shelfId,org.springframework.security.core.Authentication a){return service.candidates(a.getName(),shelfId);}
  @PostMapping("/{shelfId}/books/{bookId}") org.springframework.http.ResponseEntity<Void> add(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){return service.add(a.getName(),shelfId,bookId)?org.springframework.http.ResponseEntity.noContent().build():org.springframework.http.ResponseEntity.ok().build();}
- @DeleteMapping("/{shelfId}/books/{bookId}") @ResponseStatus(HttpStatus.NO_CONTENT) void remove(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){service.remove(a.getName(),shelfId,bookId);}
+ @DeleteMapping("/{shelfId}/books/{bookId}") ShelfBookRemovalResponse remove(@PathVariable Long shelfId,@PathVariable Long bookId,org.springframework.security.core.Authentication a){return new ShelfBookRemovalResponse(service.remove(a.getName(),shelfId,bookId));}
 }

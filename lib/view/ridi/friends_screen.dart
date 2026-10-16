@@ -418,95 +418,106 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('AI 친구')),
-      body: Scrollbar(
-        controller: _pageScrollController,
-        thumbVisibility: false,
-        trackVisibility: false,
-        thickness: 4,
-        radius: const Radius.circular(4),
-        scrollbarOrientation: ScrollbarOrientation.right,
-        notificationPredicate: (notification) =>
-        notification.depth == 0 && notification.metrics.axis == Axis.vertical,
-        child: SingleChildScrollView(
-          controller: _pageScrollController,
-          primary: false,
-          padding: const EdgeInsets.fromLTRB(44, 24, 44, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('함께 책을 읽을 AI 친구를 만나보세요.', style: RidiText.sub),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxHeight < 420;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(44, compact ? 8 : 24, 44, compact ? 8 : 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('함께 책을 읽을 AI 친구를 만나보세요.', style: RidiText.sub),
+                SizedBox(height: compact ? 8 : 22),
+                SizedBox(
+                  height: compact ? 100 : 150,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: constraints.maxWidth - 88,
+                      height: 150,
+                      child: Row(
+                        children: [
+                          // 왼쪽: AI 친구 목록만 가로 스크롤
+                          Expanded(
+                            child: Scrollbar(
+                              controller: _friendListScrollController,
+                              thumbVisibility: false,
+                              trackVisibility: false,
+                              thickness: 4,
+                              radius: const Radius.circular(4),
+                              scrollbarOrientation: ScrollbarOrientation.bottom,
+                              notificationPredicate: (notification) =>
+                              notification.depth == 0 && notification.metrics.axis == Axis.horizontal,
+                              child: ListView.separated(
+                                controller: _friendListScrollController,
+                                primary: false,
+                                padding: const EdgeInsets.only(bottom: 8),
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _friends.length,
+                                separatorBuilder: (_, _) =>
+                                const SizedBox(width: 16),
+                                itemBuilder: (context, index) {
+                                  final friend = _friends[index];
 
-              const SizedBox(height: 22),
+                                  return _FriendCard(
+                                    friend: friend,
+                                    selected: _selectedIndex == index &&
+                                        (!_isCreating ||
+                                            _editingFriend?.id == friend.id),
+                                    onTap: () => _selectFriend(index),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
 
-
-              SizedBox(
-                height: 150,
-                child: Row(
-                  children: [
-                    // 왼쪽: AI 친구 목록만 가로 스크롤
-                    Expanded(
-                      child: Scrollbar(
-                        controller: _friendListScrollController,
-                        thumbVisibility: false,
-                        trackVisibility: false,
-                        thickness: 4,
-                        radius: const Radius.circular(4),
-                        scrollbarOrientation: ScrollbarOrientation.bottom,
-                        notificationPredicate: (notification) =>
-                        notification.depth == 0 && notification.metrics.axis == Axis.horizontal,
-                        child: ListView.separated(
-                          controller: _friendListScrollController,
-                          primary: false,
-                          padding: const EdgeInsets.only(bottom: 8),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _friends.length,
-                          separatorBuilder: (_, _) =>
                           const SizedBox(width: 16),
-                          itemBuilder: (context, index) {
-                            final friend = _friends[index];
 
-                            return _FriendCard(
-                              friend: friend,
-                              selected: _selectedIndex == index &&
-                                  (!_isCreating ||
-                                      _editingFriend?.id == friend.id),
-                              onTap: () => _selectFriend(index),
-                            );
-                          },
-                        ),
+                          // 오른쪽: AI 친구 만들기 버튼 고정
+                          SizedBox(
+                            width: 170,
+                            child: _CreateFriendCard(
+                              selected: _isCreating && _editingFriend == null,
+                              onTap: _startCreating,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-
-                    const SizedBox(width: 16),
-
-                    // 오른쪽: AI 친구 만들기 버튼 고정
-                    SizedBox(
-                      width: 170,
-                      child: _CreateFriendCard(
-                        selected: _isCreating && _editingFriend == null,
-                        onTap: _startCreating,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-
-
-              const SizedBox(height: 24),
-
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _isCreating
-                    ? _buildCreatePanel()
-                    : _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _friends.isEmpty
-                    ? const Center(child: Text('표시할 AI 친구가 없어요.'))
-                    : _buildFriendDetail(_friends[_selectedIndex]),
-              ),
-            ],
-          ),
-        ),
+                SizedBox(height: compact ? 12 : 24),
+                Expanded(
+                  child: Scrollbar(
+                    controller: _pageScrollController,
+                    thumbVisibility: false,
+                    trackVisibility: false,
+                    thickness: 4,
+                    radius: const Radius.circular(4),
+                    scrollbarOrientation: ScrollbarOrientation.right,
+                    notificationPredicate: (notification) =>
+                    notification.depth == 0 && notification.metrics.axis == Axis.vertical,
+                    child: SingleChildScrollView(
+                      controller: _pageScrollController,
+                      primary: false,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: _isCreating
+                            ? _buildCreatePanel()
+                            : _isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _friends.isEmpty
+                            ? const Center(child: Text('표시할 AI 친구가 없어요.'))
+                            : _buildFriendDetail(_friends[_selectedIndex]),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

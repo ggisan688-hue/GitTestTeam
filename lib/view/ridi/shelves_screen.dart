@@ -68,6 +68,17 @@ class _ShelvesScreenState extends State<ShelvesScreen>
 
   void _reloadShelves() => setState(() => _shelves = _loadShelves());
 
+  void _updateShelfCard(Shelf shelf) {
+    if (!mounted) return;
+    final next = _shelfCache
+        .map((item) => item.id == shelf.id ? shelf : item)
+        .toList();
+    setState(() {
+      _shelfCache = next;
+      _shelves = Future.value(next);
+    });
+  }
+
   void _syncShelvesInBackground() {
     unawaited(
       _loadShelves()
@@ -318,6 +329,7 @@ class _ShelvesScreenState extends State<ShelvesScreen>
                               builder: (_) => ShelfDetailScreen(
                                 repository: _repository,
                                 shelfId: shelf.id,
+                                onChanged: _updateShelfCard,
                               ),
                             ),
                           );
@@ -483,10 +495,12 @@ class ShelfDetailScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.shelfId,
+    this.onChanged,
   });
 
   final ShelfRepository repository;
   final int shelfId;
+  final ValueChanged<Shelf>? onChanged;
 
   @override
   State<ShelfDetailScreen> createState() => _ShelfDetailScreenState();
@@ -494,27 +508,114 @@ class ShelfDetailScreen extends StatefulWidget {
 
 class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
   late Future<ShelfDetail> _detail;
+  ShelfDetail? _cachedDetail;
+  final Set<int> _removingBooks = <int>{};
 
   @override
   void initState() {
     super.initState();
-    _detail = widget.repository.detail(widget.shelfId);
+    _detail = _loadDetail();
   }
 
-  void _reload() =>
-      setState(() => _detail = widget.repository.detail(widget.shelfId));
+  Future<ShelfDetail> _loadDetail() async {
+    final detail = await widget.repository.detail(widget.shelfId);
+    if (mounted) _cachedDetail = detail;
+    return detail;
+  }
+
+  void _reload() => setState(() => _detail = _loadDetail());
+
+  void _updateBooks(List<Book> books) {
+    final previous = _cachedDetail;
+    if (!mounted || previous == null) return;
+    final old = previous.shelf;
+    final shelf = Shelf(
+      id: old.id,
+      name: old.name,
+      description: old.description,
+      isPublic: old.isPublic,
+      bookCount: books.length,
+      coverBookId: books.isEmpty ? null : books.first.id,
+      coverImageUrl: books.isEmpty ? null : books.first.coverImageUrl,
+      previewCoverImageUrls: books
+          .map((book) => book.coverImageUrl)
+          .whereType<String>()
+          .where((url) => url.isNotEmpty)
+          .take(3)
+          .toList(),
+      createdAt: old.createdAt,
+      updatedAt: old.updatedAt,
+    );
+    final detail = ShelfDetail(shelf: shelf, books: books);
+    setState(() {
+      _cachedDetail = detail;
+      _detail = Future.value(detail);
+    });
+    widget.onChanged?.call(shelf);
+  }
+
+  Future<void> _removeBook(Book book) async {
+    if (_removingBooks.contains(book.id)) return;
+    final lastBook = _cachedDetail?.books.length == 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('삭제하시겠습니까?'),
+        content: Text(lastBook
+            ? '마지막 도서를 삭제하면 책장도 함께 삭제됩니다.'
+            : '이 책장에서 도서를 삭제합니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || _removingBooks.contains(book.id)) return;
+    setState(() => _removingBooks.add(book.id));
+    try {
+      final shelfDeleted = await widget.repository.removeBook(widget.shelfId, book.id);
+      if (!mounted) return;
+      if (shelfDeleted) {
+        Navigator.of(context).pop(widget.shelfId);
+        return;
+      }
+      _updateBooks((_cachedDetail?.books ?? const <Book>[])
+          .where((item) => item.id != book.id).toList());
+    } on ApiException catch (error) {
+      if (mounted) _showError(context, error);
+    } finally {
+      if (mounted) setState(() => _removingBooks.remove(book.id));
+    }
+  }
 
   Future<void> _edit(Shelf shelf) async {
     final values = await showShelfEditor(context, shelf: shelf);
     if (values == null || !mounted) return;
     try {
-      await widget.repository.update(
+      final saved = await widget.repository.update(
         widget.shelfId,
         name: values.name,
         description: values.description,
         isPublic: values.isPublic,
       );
-      _reload();
+      if (!mounted) return;
+      final previous = _cachedDetail;
+      if (previous != null) {
+        final detail = ShelfDetail(shelf: saved, books: previous.books);
+        setState(() {
+          _cachedDetail = detail;
+          _detail = Future.value(detail);
+        });
+        widget.onChanged?.call(saved);
+      } else {
+        _reload();
+      }
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
     }
@@ -601,17 +702,23 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
   }
 
   Future<void> _addBook([ShelfDetail? detail]) async {
+    if (_cachedDetail == null) return;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => _BookPicker(
           repository: widget.repository,
           shelfId: widget.shelfId,
           existingBookIds:
-          detail?.books.map((book) => book.id).toSet() ?? const {},
+          (_cachedDetail?.books ?? const <Book>[]).map((book) => book.id).toSet(),
+          onAdded: (book) {
+            final books = _cachedDetail?.books ?? const <Book>[];
+            if (!books.any((item) => item.id == book.id)) {
+              _updateBooks([...books, book]);
+            }
+          },
         ),
       ),
     );
-    if (mounted) _reload();
   }
 
   @override
@@ -691,17 +798,9 @@ class _ShelfDetailScreenState extends State<ShelfDetailScreen> {
                         tooltip: '책장에서 제거',
                         visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.remove_circle_outline, size: 20),
-                        onPressed: () async {
-                          try {
-                            await widget.repository.removeBook(
-                              widget.shelfId,
-                              book.id,
-                            );
-                            _reload();
-                          } on ApiException catch (error) {
-                            if (mounted) _showError(context, error);
-                          }
-                        },
+                        onPressed: _removingBooks.contains(book.id)
+                            ? null
+                            : () => _removeBook(book),
                       ),
                     ),
                   );
@@ -917,10 +1016,12 @@ class _BookPicker extends StatefulWidget {
     required this.repository,
     required this.shelfId,
     required this.existingBookIds,
+    required this.onAdded,
   });
   final ShelfRepository repository;
   final int shelfId;
   final Set<int> existingBookIds;
+  final ValueChanged<Book> onAdded;
   @override
   State<_BookPicker> createState() => _BookPickerState();
 }
@@ -965,6 +1066,9 @@ class _BookPickerState extends State<_BookPicker> {
     });
     try {
       await widget.repository.addBook(widget.shelfId, book.id);
+      // The picker may already be closed while the save finishes.
+      // Its parent still needs the successful result.
+      widget.onAdded(book);
       if (mounted) setState(() => _added.add(book.id));
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error);
