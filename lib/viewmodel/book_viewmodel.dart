@@ -53,7 +53,8 @@ class BookViewModel extends ChangeNotifier {
           ? BookLoadState.networkError
           : BookLoadState.serverError;
       errorMessage = e.message;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('loadBooks ERROR: $e\n$st');
       state = BookLoadState.networkError;
       errorMessage = '서버에 연결할 수 없습니다.';
     }

@@ -17,12 +17,14 @@ import '../../viewmodel/favorite_viewmodel.dart';
 
 class BookCatalogSection extends StatefulWidget {
   const BookCatalogSection({super.key});
+
   @override
   State<BookCatalogSection> createState() => _BookCatalogSectionState();
 }
 
 class _BookCatalogSectionState extends State<BookCatalogSection> {
   final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -48,7 +50,9 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<BookViewModel>();
-    final loggedIn = context.watch<RidiStore>().loggedIn;
+    final loggedIn = context
+        .watch<RidiStore>()
+        .loggedIn;
     if (vm.state == BookLoadState.loading && vm.books.isEmpty) {
       return const SizedBox(
         height: 170,
@@ -120,7 +124,7 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
                 crossAxisCount: columns,
                 mainAxisSpacing: loggedIn ? 22 : 24,
                 crossAxisSpacing: 16,
-                childAspectRatio: loggedIn ? 0.49 : 0.72,
+                mainAxisExtent: 322,
               ),
               itemBuilder: (_, index) {
                 if (index >= vm.books.length) {
@@ -152,15 +156,18 @@ class BookCatalogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final loggedIn = context.watch<RidiStore>().loggedIn;
+    final loggedIn = context
+        .watch<RidiStore>()
+        .loggedIn;
     final coverW = loggedIn ? 152.0 : 175.0;
     final coverH = loggedIn ? 226.0 : 260.0;
     return InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => BookDetailScreen(bookId: book.id),
-        ),
-      ),
+      onTap: () =>
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => BookDetailScreen(bookId: book.id),
+            ),
+          ),
       borderRadius: BorderRadius.circular(8),
       child: Center(
         child: SizedBox(
@@ -190,7 +197,9 @@ class BookCatalogCard extends StatelessWidget {
                             size: 18,
                           ),
                           onPressed: () {
-                            if (!context.read<RidiStore>().loggedIn) {
+                            if (!context
+                                .read<RidiStore>()
+                                .loggedIn) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('로그인이 필요합니다.'),
@@ -230,7 +239,9 @@ class BookCatalogCard extends StatelessWidget {
 
 class BookDetailScreen extends StatefulWidget {
   const BookDetailScreen({super.key, required this.bookId});
+
   final int bookId;
+
   @override
   State<BookDetailScreen> createState() => _BookDetailScreenState();
 }
@@ -245,7 +256,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   void initState() {
     super.initState();
     _repository = BookRepository(
-      ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
+      ApiClient(tokenProvider: () =>
+      context
+          .read<RidiStore>()
+          .accessToken),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BookViewModel>().openBook(widget.bookId);
@@ -254,7 +268,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Future<void> _loadFavorite() async {
-    if (!context.read<RidiStore>().loggedIn) {
+    if (!context
+        .read<RidiStore>()
+        .loggedIn) {
       if (mounted) {
         setState(() {
           _favorite = false;
@@ -287,7 +303,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   Future<void> _toggleFavorite() async {
     // 비로그인 상태에서는 안내 문구만 표시
-    if (!context.read<RidiStore>().loggedIn) {
+    if (!context
+        .read<RidiStore>()
+        .loggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('로그인이 필요합니다.'),
@@ -365,7 +383,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Future<void> _openReader() async {
-    if (!context.read<RidiStore>().loggedIn) {
+    if (!context
+        .read<RidiStore>()
+        .loggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('로그인이 필요합니다.')),
       );
@@ -472,6 +492,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
 class BookReaderScreen extends StatefulWidget {
   const BookReaderScreen({super.key, required this.bookId});
+
   final int bookId;
 
   @override
@@ -503,7 +524,11 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   }
 
   Future<bool> _onBack() async {
-    final total = context.read<BookViewModel>().content?.paragraphs.length ?? 0;
+    final total = context
+        .read<BookViewModel>()
+        .content
+        ?.paragraphs
+        .length ?? 0;
     await context.read<BookViewModel>().saveReaderProgress(
       widget.bookId,
       _position,
@@ -557,31 +582,32 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                     content.paragraphs.length,
                   );
                 },
-                itemBuilder: (_, index) => Padding(
-                  padding: const EdgeInsets.fromLTRB(30, 42, 30, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${index + 1} / ${content.paragraphs.length}',
-                        style: RidiText.sub,
-                      ),
-                      const SizedBox(height: 28),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Text(
-                            content.paragraphs[index].text,
-                            style: RidiText.body.copyWith(
-                              fontFamily: 'NotoSerifKR',
-                              fontSize: 18,
-                              height: 2.0,
+                itemBuilder: (_, index) =>
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(30, 42, 30, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${index + 1} / ${content.paragraphs.length}',
+                            style: RidiText.sub,
+                          ),
+                          const SizedBox(height: 28),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Text(
+                                content.paragraphs[index].text,
+                                style: RidiText.body.copyWith(
+                                  fontFamily: 'NotoSerifKR',
+                                  fontSize: 18,
+                                  height: 2.0,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
               ),
             ),
           ],
@@ -593,6 +619,7 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
 
 class RecentReadingSection extends StatefulWidget {
   const RecentReadingSection({super.key});
+
   @override
   State<RecentReadingSection> createState() => _RecentReadingSectionState();
 }
@@ -616,7 +643,9 @@ class _RecentReadingSectionState extends State<RecentReadingSection> {
 
   @override
   Widget build(BuildContext context) {
-    final recent = context.watch<BookViewModel>().recentBooks;
+    final recent = context
+        .watch<BookViewModel>()
+        .recentBooks;
     if (recent.isEmpty) {
       return const SizedBox(
         height: 116,
@@ -649,6 +678,7 @@ class _RecentReadingSectionState extends State<RecentReadingSection> {
 
 class _RecentCard extends StatelessWidget {
   const _RecentCard({required this.recent});
+
   final RecentBook recent;
 
   @override
@@ -658,11 +688,12 @@ class _RecentCard extends StatelessWidget {
       // Recent-reading cards resume directly in the same server-backed reader
       // used by the detail screen; the reader resolves lastReadPosition after
       // pagination rather than guessing from the displayed percentage.
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
-        ),
-      ),
+      onTap: () =>
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AdvancedBookReaderScreen(bookId: book.id),
+            ),
+          ),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: 300,
@@ -729,10 +760,12 @@ class BookCover extends StatelessWidget {
     required this.height,
     this.fit = BoxFit.cover,
   });
+
   final String? url;
   final double width;
   final double height;
   final BoxFit fit;
+
   @override
   Widget build(BuildContext context) {
     final fallback = Container(
@@ -769,14 +802,17 @@ class BookCover extends StatelessWidget {
 
 class _Category extends StatelessWidget {
   const _Category({required this.label});
+
   final String label;
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-    decoration: BoxDecoration(
-      color: RidiColors.panel,
-      borderRadius: BorderRadius.circular(10),
-    ),
-    child: Text(label, style: RidiText.sub.copyWith(fontSize: 11)),
-  );
+  Widget build(BuildContext context) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: RidiColors.panel,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(label, style: RidiText.sub.copyWith(fontSize: 11)),
+      );
 }

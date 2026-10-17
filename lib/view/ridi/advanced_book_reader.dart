@@ -321,6 +321,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _notifyAiProgress();
       _startAiProgressPolling();
       try {
+        final startedAt = DateTime.now();
         final notes = await repository.generateNotes(
           bookId: widget.bookId,
           friendId: friendId,
@@ -341,7 +342,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
               : percent.clamp(0, 99).toInt();
         });
         if (completed) {
-          _aiMessage('${_friendName(friendId)}가 AI 메모 작성을 완료했어요.');
+          if (DateTime.now().difference(startedAt).inSeconds >= 3) _aiMessage('${_friendName(friendId)}가 AI 메모 작성을 완료했어요.');
         } else {
           _aiFailedFriendIds.add(friendId);
           _aiMessage(
@@ -1376,11 +1377,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
   Widget _menu(IconData icon, String label, VoidCallback action) =>
       TextButton.icon(
-        onPressed: action,
-        icon: Icon(icon, size: 26),
+        onPressed: action,style: TextButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: MediaQuery.sizeOf(context).width < 600 ? 2 : 12)),
+        icon: Icon(icon, size: MediaQuery.sizeOf(context).width < 600 ? 18 : 26),
         label: Text(
           label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: MediaQuery.sizeOf(context).width < 600 ? 12 : 18, fontWeight: FontWeight.w600),
         ),
       );
 
@@ -5344,6 +5345,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
       // 여기서만 부모에게 최종 선택을 전달한다.
       // 친구를 누르는 것만으로는 Gemini가 실행되지 않는다.
       await widget.onAiFriendDone(Set<int>.from(_draftSelectedIds));
+      if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) {
         setState(() {

@@ -299,7 +299,7 @@ class _LoginFormState extends State<_LoginForm> {
         SizedBox(height: c ? 28 : 40),
         // "아이디"도 허용하므로 이메일 전용 키보드를 강제하지 않는다.
         // Android 한글 IME가 일반 텍스트 입력 연결을 사용해 조합 상태를 유지할 수 있다.
-        RidiInput(controller: _id, hint: '이메일 또는 아이디'),
+        RidiInput(controller: _id, hint: '아이디'),
         const SizedBox(height: 12),
         RidiInput(
           controller: _pw,
