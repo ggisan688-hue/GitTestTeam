@@ -974,6 +974,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         c.maxHeight,
         two,
         textScaler,
+        chapters: context.read<BookViewModel>().readerChapters,
       );
       final at = pages.indexWhere((e) => e.contains(_order));
       final targetPage = pages.isEmpty
@@ -1034,8 +1035,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       double width,
       double height,
       bool two,
-      TextScaler textScaler,
-      ) {
+      TextScaler textScaler, {
+        List<ReaderChapter> chapters = const [],
+      }) {
     final style = TextStyle(
       fontFamily: 'NotoSerifKR',
       fontSize: 18 * s.fontScale,
@@ -1059,8 +1061,29 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         used = 0;
       }
     }
-
+    final startTitles = <int, String>{
+      for (final c in chapters)
+        c.startParagraphOrder:
+        c.title.replaceFirst(RegExp(r'^제?\s*\d+\s*장[:\s]*'), '').trim(),
+    };
+    final headStyle = style.copyWith(
+        fontSize: 19 * s.fontScale, fontWeight: FontWeight.w700);
+    void newPage() {
+      if (columns.any((e) => e.isNotEmpty)) {
+        result.add(_Page(columns));
+        columns = [[]];
+        used = 0;
+      }
+    }
     for (final para in all) {
+      final title = startTitles[para.order];
+      if (title != null && title.isNotEmpty && title != '전문') {
+        newPage(); // 장이 시작하면 항상 새 페이지
+        final th = _height(' $title', headStyle, columnWidth, textScaler);
+        columns.last.add(_Slice(para.order, 0, '', heading: title));
+        used += th + 32 + 16;
+        if (para.text.trim() == title) continue; // 본문에 같은 제목 줄이 있으면 건너뜀
+      }
       // Keep the source string and its offsets intact.  The offsets sent to
       // the API are always offsets into BookParagraph.text, never a trimmed
       // or reflowed display string.
@@ -2808,10 +2831,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 }
 
 class _Slice {
-  const _Slice(this.order, this.start, this.text);
+  const _Slice(this.order, this.start, this.text, {this.heading});
   final int order;
   final int start;
   final String text;
+  final String? heading; // 장 제목 슬라이스면 제목 글자 (선택·형광펜 불가)
 }
 
 class _Page {
@@ -2963,29 +2987,31 @@ class _ReaderPage extends StatelessWidget {
       color: color,
     );
     Widget textColumn(List<_Slice> list) => _ReaderSelectionColumn(
-      children: list
-          .map(
-            (s) => _SelectableParagraphSlice(
+      children: list.map<Widget>((s) {
+        if (s.heading != null) {
+          return _ChapterHeading(
+            key: ValueKey('h:${s.order}'),
+            text: s.heading!,
+            fontScale: settings.fontScale,
+            color: color,
+          );
+        }
+        return _SelectableParagraphSlice(
           key: ValueKey('${s.order}:${s.start}'),
           onSelection: (value) => onSelection('${s.order}:${s.start}', value),
           continuedRanges: continuedRanges.where((r) => r.paragraphOrder == s.order).toList(),
           slice: s,
           style: style,
-          highlights: highlights
-              .where((n) => n.paragraphOrder == s.order)
-              .toList(),
+          highlights: highlights.where((n) => n.paragraphOrder == s.order).toList(),
           onHighlight: onHighlight,
           onHighlightTap: onHighlightTap,
           memos: memos.where((n) => n.paragraphOrder == s.order).toList(),
           roomMemoCount: roomMemoCounts[s.order] ?? 0,
-          additionalMemoRanges: additionalMemoRanges
-              .where((memo) => memo.paragraphOrder == s.order)
-              .toList(),
+          additionalMemoRanges: additionalMemoRanges.where((memo) => memo.paragraphOrder == s.order).toList(),
           onMemo: onMemo,
           onShowMemos: onShowMemos,
-        ),
-      )
-          .toList(),
+        );
+      }).toList(),
     );
     final content = twoColumns
         ? Row(
@@ -6594,4 +6620,32 @@ class _MemoEditorLifetimeState extends State<_MemoEditorLifetime> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+class _ChapterHeading extends StatelessWidget {
+  const _ChapterHeading({
+    super.key,
+    required this.text,
+    required this.fontScale,
+    required this.color,
+  });
+  final String text;
+  final double fontScale;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SelectionContainer.disabled(
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: 32),
+      child: Text(
+        ' $text',
+        style: TextStyle(
+          fontFamily: 'NotoSerifKR',
+          fontSize: 19 * fontScale,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    ),
+  );
 }
