@@ -4061,6 +4061,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
   late Future<List<SharedRoomNoteComment>> _comments;
   bool _sending = false;
   late SharedRoomNote _note;
+  Timer? _syncTimer;
   @override
   void initState() {
     super.initState();
@@ -4071,6 +4072,10 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
       _note.id,
       revealed: widget.bodyAccess || _note.explicitlyRevealed,
     );
+    _syncTimer = Timer.periodic(
+      const Duration(seconds: 3),
+          (_) => _refreshSilently(),
+    );
   }
 
   @override
@@ -4079,6 +4084,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
     _text.dispose();
     _memoEditor.dispose();
     _memoFocus.dispose();
+    _syncTimer?.cancel();
     super.dispose();
   }
 
@@ -4090,6 +4096,23 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
         revealed: widget.bodyAccess || _note.explicitlyRevealed,
       );
     });
+  }
+
+  Future<void> _refreshSilently() async {
+    if (!mounted || _sending) return;
+    try {
+      final latest = await widget.repository.sharedNoteComments(
+        widget.roomId,
+        _note.id,
+        revealed: widget.bodyAccess || _note.explicitlyRevealed,
+      );
+      if (!mounted) return;
+      setState(() {
+        _comments = Future.value(latest);
+      });
+    } catch (e) {
+      debugPrint('댓글 자동갱신 실패: $e');
+    }
   }
   // PC(Windows/Mac/Linux)에서만 엔터로 등록한다. 폰·태블릿은 엔터가 줄바꿈.
   bool get _enterSends {
@@ -4402,7 +4425,7 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
           Expanded(child: FutureBuilder<List<SharedRoomNoteComment>>(
             future: _comments,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done)
+              if (snapshot.connectionState != ConnectionState.done && !snapshot.hasData)
                 return const Center(child: CircularProgressIndicator());
               if (snapshot.hasError) return Center(child: TextButton(
                   onPressed: _reload, child: const Text('댓글을 불러오지 못했습니다. 다시 시도')));
