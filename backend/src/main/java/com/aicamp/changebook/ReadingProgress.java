@@ -49,7 +49,12 @@ class UserBookProgress {
 
 interface UserBookProgressRepository extends JpaRepository<UserBookProgress, Long> {
   java.util.Optional<UserBookProgress> findByUserIdAndBookId(Long userId, Long bookId);
-  List<UserBookProgress> findByBookIdAndUserIdIn(Long bookId, java.util.Collection<Long> userIds);
+  @org.springframework.data.jpa.repository.Query(
+    "select p from UserBookProgress p join fetch p.user u " +
+    "where p.book.id = :bookId and u.id in :userIds")
+List<UserBookProgress> findByBookIdAndUserIdIn(
+    @org.springframework.data.repository.query.Param("bookId") Long bookId,
+    @org.springframework.data.repository.query.Param("userIds") java.util.Collection<Long> userIds);
   List<UserBookProgress> findTop20ByUserIdOrderByLastReadAtDesc(Long userId);
   int countByUserIdAndProgressPercentGreaterThanEqual(Long userId, int progressPercent);
 }

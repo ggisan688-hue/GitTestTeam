@@ -116,7 +116,7 @@ class ReadingRoomNoteService {
   List<RoomNoteResponse> list(String username,Long roomId,Long bookId,boolean reader){
     AppUser current=member(username,roomId);ReadingRoom room=room(roomId);Long scopedBook=scopedBook(room,bookId);
     return notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,scopedBook).stream()
-      .filter(n->"MEMO".equals(n.type)||n.userId.equals(current.id))
+      .filter(n->!"BOOKMARK".equals(n.type)||n.userId.equals(current.id))
       .map(n->response(room,current,n,!reader)).toList();
   }
 @org.springframework.transaction.annotation.Transactional RoomNoteResponse create(String username,Long roomId,RoomNoteRequest request){
