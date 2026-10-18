@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'profile_photo_dialog.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -4090,6 +4091,30 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
       );
     });
   }
+  // PC(Windows/Mac/Linux)에서만 엔터로 등록한다. 폰·태블릿은 엔터가 줄바꿈.
+  bool get _enterSends {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.windows:
+      case TargetPlatform.macOS:
+      case TargetPlatform.linux:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  KeyEventResult _onCommentKey(FocusNode node, KeyEvent event) {
+    if (!_enterSends || _sending) return KeyEventResult.ignored;
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (event is KeyDownEvent &&
+        isEnter &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      if (_text.text.trim().isNotEmpty) _send();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
   Future<void> _send() async {
     final text = _text.text.trim();
     if (text.isEmpty) {
@@ -4448,14 +4473,19 @@ class _SharedNoteCommentsState extends State<_SharedNoteComments> {
           const Divider(height: 1,color: Color(0xFFEDEDED)),
           Padding(padding: const EdgeInsets.fromLTRB(12,10,12,12),child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,children: [
-            Expanded(child: TextField(
-              controller: _text, enabled: !_sending, minLines: 1,
-              maxLines: compact ? 1 : 3, maxLength: 1000,
-              decoration: InputDecoration(
-                hintText: '댓글을 입력하세요', counterText: '', isDense: true,
-                filled: true,fillColor: const Color(0xFFF5F5F5),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12,vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),borderSide: BorderSide.none),
+            Expanded(child: Focus(
+              onKeyEvent: _onCommentKey,
+              child: TextField(
+                controller: _text, enabled: !_sending, minLines: 1,
+                maxLines: compact ? 2 : 3, maxLength: 1000,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: '댓글을 입력하세요', counterText: '', isDense: true,
+                  filled: true,fillColor: const Color(0xFFF5F5F5),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12,vertical: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),borderSide: BorderSide.none),
+                ),
               ),
             )),
             const SizedBox(width: 8),
