@@ -5432,12 +5432,14 @@ class _ViewerSettings extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (wide) ...[
             _ToggleRow(
               title: '2단으로 보기',
               sub: wide ? '넓은 화면에서 두 컬럼으로 표시합니다.' : '넓은 화면에서 사용할 수 있습니다.',
               value: s.twoColumn,
               onChanged: (v) => onChange(s.copyWith(twoColumn: v)),
             ),
+            ],
             _Line(),
             _ToggleRow(
               title: '읽는 동안 화면 켜 두기',
