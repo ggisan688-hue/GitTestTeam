@@ -90,6 +90,7 @@ interface RoomMemberRepo extends JpaRepository<RoomMember, RoomMemberId> {
   boolean existsByRoomIdAndUserId(Long roomId, Long userId);
   Optional<RoomMember> findByRoomIdAndUserId(Long roomId, Long userId);
   List<RoomMember> findByRoomIdOrderByJoinedAtAsc(Long roomId);
+  boolean existsByRoomProfileImageUrl(String roomProfileImageUrl);
   @Query("select member from RoomMember member where member.userId = :userId order by member.joinedAt desc")
   List<RoomMember> findByUserId(@org.springframework.data.repository.query.Param("userId") Long userId);
 }
@@ -299,6 +300,8 @@ class RoomService {
     owner.userId = current.id;
     owner.role = "OWNER";
     owner.roomNickname = java.util.Optional.ofNullable(trimToNull(request.roomNickname())).orElse(current.nickname);
+    owner.roomProfileImageUrl = java.util.Optional.ofNullable(
+        userFeatures.profileImageUrlForUserId(current.id)).orElse("");
     owner.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(owner);
     RoomResponse result = response(room, current);
@@ -365,7 +368,8 @@ class RoomService {
     RoomMember member = members.findByRoomIdAndUserId(roomId, current.id)
         .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "ROOM_MEMBER_REQUIRED", "Join the room first."));
     String oldUrl = member.roomProfileImageUrl;
-    member.roomProfileImageUrl = null;
+    // Empty means the room explicitly has no photo; null is legacy inheritance.
+    member.roomProfileImageUrl = "";
     members.saveAndFlush(member);
     storage.delete(oldUrl);
     publishMemberProfileChange(room, current);
@@ -423,6 +427,46 @@ class RoomService {
     addMember(room, current, roomNickname);
     log.info("reading-room join-by-code joined roomId={} userId={}", room.id, current.id);
     return new JoinRoomResponse(response(room, current), false);
+  }
+
+  @org.springframework.transaction.annotation.Transactional
+  JoinRoomResponse joinWithProfile(String username, String code, String nickname,
+      String password, MultipartFile image, ProfileImageStorage storage) {
+    String roomNickname = trimToNull(nickname);
+    if (roomNickname == null || roomNickname.length() > 40)
+      throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ROOM_NICKNAME", "방에서 사용할 이름을 1~40자로 입력해주세요.");
+    AppUser current = userFeatures.me(username);
+    String normalizedCode = normalizeCode(code);
+    if (normalizedCode == null)
+      throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_CODE", "입장 코드를 확인해주세요.");
+    ReadingRoom room = rooms.findByJoinCodeForUpdate(normalizedCode)
+        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "입장 코드를 확인해주세요."));
+    // A retry after a lost response must not create duplicate members/notices.
+    if (isMember(room, current)) return new JoinRoomResponse(response(room, current), true);
+    if (room.passwordHash != null && (password == null || password.isBlank()))
+      throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_PASSWORD_REQUIRED", "방 비밀번호를 입력해 주세요.");
+    if (room.passwordHash != null && !passwords.matches(password, room.passwordHash))
+      throw new ApiException(HttpStatus.FORBIDDEN, "ROOM_PASSWORD_INCORRECT", "방 비밀번호가 올바르지 않습니다.");
+    if (members.countByRoomId(room.id) >= room.maxMembers)
+      throw new ApiException(HttpStatus.CONFLICT, "ROOM_CAPACITY_REACHED", "방 정원이 가득 찼습니다.");
+    // Save/validate the photo before inserting any membership or notification.
+    final String photoUrl = image == null || image.isEmpty() ? null : storage.save(image);
+    if (photoUrl != null && org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+      org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+          new org.springframework.transaction.support.TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+              if (status != STATUS_COMMITTED) storage.delete(photoUrl);
+            }
+          });
+    }
+    try {
+      addMember(room, current, roomNickname, photoUrl);
+      return new JoinRoomResponse(response(room, current), false);
+    } catch (RuntimeException error) {
+      if (photoUrl != null && !org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+        storage.delete(photoUrl);
+      throw error;
+    }
   }
 
   @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -551,7 +595,11 @@ class RoomService {
     var roomMembers=members.findByRoomIdOrderByJoinedAtAsc(roomId);
     var ids=roomMembers.stream().map(m->m.userId).toList();
     java.util.Map<Long,UserBookProgress> byUser=globalProgressRepository.findByBookIdAndUserIdIn(bookId,ids).stream()
-      .collect(java.util.stream.Collectors.toMap(p->p.user.id,p->p));
+      // Direct field access on a Hibernate proxy can return null even when
+      // its database identifier is present. Resolve it before indexing rows.
+      .collect(java.util.stream.Collectors.toMap(
+          p -> org.hibernate.Hibernate.unproxy(p.user, AppUser.class).id,
+          p -> p));
     return roomMembers.stream().map(member->{
       UserBookProgress p=byUser.get(member.userId);
       RoomMemberResponse identity=users.findById(member.userId)
@@ -759,9 +807,11 @@ class RoomService {
       throw new ApiException(HttpStatus.CONFLICT, "ROOM_MEMBER_USER_NOT_FOUND", "A room member has no user reference.");
     }
     String imageUrl = member.roomProfileImageUrl;
-    if (imageUrl == null || imageUrl.isBlank()) {
+    if (imageUrl == null) {
+      // Legacy rows are frozen before the next account profile change.
       imageUrl = userFeatures.profileImageUrlForUserId(member.userId);
     }
+    if (imageUrl != null && imageUrl.isBlank()) imageUrl = null;
     return new RoomMemberResponse(member.userId,
         member.roomNickname == null || member.roomNickname.isBlank() ? user.nickname : member.roomNickname,
         member.role, member.joinedAt, imageUrl, currentUser, member.memoHighlightColor);
@@ -772,6 +822,10 @@ class RoomService {
   }
 
   private void addMember(ReadingRoom room, AppUser user, String roomNickname) {
+    addMember(room, user, roomNickname, null);
+  }
+
+  private void addMember(ReadingRoom room, AppUser user, String roomNickname, String photoUrl) {
     if (isMember(room, user)) {
       throw new ApiException(HttpStatus.CONFLICT, "ALREADY_ROOM_MEMBER", "You are already in this room.");
     }
@@ -782,7 +836,9 @@ class RoomService {
     member.roomId = room.id;
     member.userId = user.id;
     member.role = "MEMBER";
-    member.roomNickname = trimToNull(roomNickname);
+    member.roomNickname = java.util.Optional.ofNullable(trimToNull(roomNickname)).orElse(user.nickname);
+    member.roomProfileImageUrl = photoUrl != null ? photoUrl
+        : java.util.Optional.ofNullable(userFeatures.profileImageUrlForUserId(user.id)).orElse("");
     member.spoilerLockEnabled = room.spoilerLockEnabled;
     members.saveAndFlush(member);
     // The new membership is already saved; exclude its actor from recipients.
@@ -850,6 +906,13 @@ class RoomController {
   @PostMapping("/join") JoinRoomResponse join(@RequestParam String code, @RequestParam(required=false) String password, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), code, null, password); }
   @PostMapping("/invite-codes/validate") InviteCodeValidationResponse validateInviteCode(@Valid @RequestBody InviteCodeValidationRequest request, org.springframework.security.core.Authentication authentication) { return service.validateInviteCode(authentication.getName(), request.inviteCode()); }
   @PostMapping("/join-by-code") JoinRoomResponse joinByCode(@Valid @RequestBody JoinRoomCodeRequest request, org.springframework.security.core.Authentication authentication) { return service.join(authentication.getName(), request.inviteCode(), request.roomNickname(), request.password()); }
+  @PostMapping(value = "/join-with-profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  JoinRoomResponse joinWithProfile(@RequestParam String inviteCode,
+      @RequestParam String roomNickname, @RequestParam(required=false) String password,
+      @RequestPart(value="profileImage", required=false) MultipartFile profileImage,
+      org.springframework.security.core.Authentication authentication) {
+    return service.joinWithProfile(authentication.getName(), inviteCode, roomNickname, password, profileImage, images);
+  }
   @PostMapping("/{roomId}/members") RoomResponse joinPublic(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.joinPublic(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/join-code") RoomResponse reissueCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }
   @PostMapping("/{roomId}/invite-code/regenerate") RoomResponse regenerateInviteCode(@PathVariable Long roomId, org.springframework.security.core.Authentication authentication) { return service.reissueCode(authentication.getName(), roomId); }

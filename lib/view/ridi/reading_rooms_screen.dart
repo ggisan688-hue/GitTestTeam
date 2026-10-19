@@ -210,42 +210,21 @@ class _ReadingRoomsScreenState extends State<ReadingRoomsScreen> {
 
   Future<void> _join() async {
     if (_joinFlowInProgress) return;
-    final result = await showDialog<ReadingRoomJoinResult>(
-      context: context,
-      builder: (_) => _JoinRoomByCodeDialog(repository: _repository),
-    );
-    if (!mounted || result == null || _joinFlowInProgress) return;
     _joinFlowInProgress = true;
     try {
-      // The join response is rendered only after /my confirms the committed
-      // membership. This avoids navigating to a stale detail route after a
-      // proxy retry or an eventual DB read.
-      await _reloadAsync();
-      if (!mounted) return;
-      ReadingRoom? room;
-      for (final candidate in _roomCache) {
-        if (candidate.id == result.room.id) {
-          room = candidate;
-          break;
-        }
-      }
-      if (room == null) {
-        throw ApiException('Joined room is missing from the refreshed list.');
-      }
-      if (result.alreadyJoined && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미 참여 중인 독서방입니다. 방을 열었습니다.')),
-        );
-      }
-      if (!result.alreadyJoined) {
-        final configured = await Navigator.of(context).push<ReadingRoom>(
-          MaterialPageRoute(builder: (_) => _JoinRoomProfileScreen(
-            repository: _repository, room: room!,
-          )),
-        );
-        if (!mounted || configured == null) return;
-        room = configured;
-      }
+      final pending = await showDialog<_PendingRoomJoin>(
+        context: context,
+        builder: (_) => _JoinRoomByCodeDialog(repository: _repository),
+      );
+      if (!mounted || pending == null) return;
+      // Validation does not create a membership. Only the completed profile does.
+      final room = await Navigator.of(context).push<ReadingRoom>(
+        MaterialPageRoute(builder: (_) => _JoinRoomProfileScreen(
+          repository: _repository, pending: pending,
+        )),
+      );
+      if (!mounted || room == null) return;
+      _putRoom(room);
       await _open(room);
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
@@ -604,6 +583,11 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
   @override
   void initState() {
     super.initState();
+    final nickname = context.read<RidiStore>().nickname;
+    _nickname.value = TextEditingValue(
+      text: nickname,
+      selection: TextSelection.collapsed(offset: nickname.length),
+    );
     _repository = ReadingRoomRepository(
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken),
     );
@@ -795,6 +779,8 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
   }
 
   Widget _right() {
+    final defaultPhoto = context.read<RidiStore>().profileImageUrl;
+    final hasDefaultPhoto = defaultPhoto?.trim().isNotEmpty == true;
     final initial =
         (_nickname.text.trim().isNotEmpty
             ? _nickname.text.trim()
@@ -818,10 +804,10 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
                     CircleAvatar(
                       radius: 28,
                       backgroundColor: const Color(0xFFEFF1F5),
-                      backgroundImage: _imageBytes == null
-                          ? null
-                          : MemoryImage(_imageBytes!),
-                      child: _imageBytes == null
+                      backgroundImage: _imageBytes != null
+                          ? MemoryImage(_imageBytes!)
+                          : hasDefaultPhoto ? NetworkImage(_repository.absoluteUrl(defaultPhoto!)) : null,
+                      child: _imageBytes == null && !hasDefaultPhoto
                           ? Text(
                         initial,
                         style: const TextStyle(
@@ -859,7 +845,7 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
                   enabled: !_submitting,
                   maxLength: 40,
                   onChanged: (_) => setState(() {}),
-                  decoration: _box(context.read<RidiStore>().nickname),
+                  decoration: _box('이 방에서 사용할 이름'),
                 ),
               ),
             ],
@@ -1222,6 +1208,13 @@ class _BookPickCover extends StatelessWidget {
 
 /// 코드 입력과 요청 중 상태는 이 다이얼로그가 소유한다. 취소는 null을 반환하는
 /// 정상 흐름이며, API 성공일 때만 방 정보를 부모 화면으로 돌려준다.
+class _PendingRoomJoin {
+  const _PendingRoomJoin({required this.validation, required this.code, required this.password});
+  final InviteCodeValidation validation;
+  final String code;
+  final String password;
+}
+
 class _JoinRoomByCodeDialog extends StatefulWidget {
   const _JoinRoomByCodeDialog({required this.repository});
 
@@ -1271,17 +1264,11 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
         setState(() => _validated = validation);
         return;
       }
-      final result = await widget.repository.join(
-        code,
+      Navigator.of(context).pop(_PendingRoomJoin(
+        validation: validation,
+        code: code,
         password: _password.text,
-      );
-      if (!mounted) return;
-      if (result.alreadyJoined) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미 참여 중인 독서방입니다. 방을 열었습니다.')),
-        );
-      }
-      Navigator.of(context).pop(result);
+      ));
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1317,6 +1304,7 @@ class _JoinRoomByCodeDialogState extends State<_JoinRoomByCodeDialog> {
             textCapitalization: TextCapitalization.characters,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _joining ? null : _submit(),
+            onChanged: (_) => setState(() { _validated = null; _error = null; }),
             decoration: const InputDecoration(hintText: '입장 코드 입력'),
           ),
           if (_validated?.passwordRequired == true) ...[
@@ -3191,21 +3179,51 @@ class _MemberProgressDialog extends StatefulWidget {
   State<_MemberProgressDialog> createState() => _MemberProgressDialogState();
 }
 
-class _MemberProgressDialogState extends State<_MemberProgressDialog> {
+class _MemberProgressDialogState extends State<_MemberProgressDialog>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   late Future<List<RoomParticipantProgress>> _progress;
+  List<RoomParticipantProgress>? _lastProgress;
+  Timer? _refreshTimer;
+  bool _fetching = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _progress = _fetch();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _reloadProgress();
+      }
+    });
   }
 
-  Future<List<RoomParticipantProgress>> _fetch() =>
-      widget.repository.participantProgress(widget.roomId, widget.book.id);
+  Future<List<RoomParticipantProgress>> _fetch() async {
+    _fetching = true;
+    try {
+      final rows = await widget.repository.participantProgress(widget.roomId, widget.book.id);
+      if (mounted) _lastProgress = rows;
+      return rows;
+    } finally {
+      _fetching = false;
+    }
+  }
+
+  void _reloadProgress() {
+    if (!mounted || _fetching) return;
+    setState(() => _progress = _fetch());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _reloadProgress();
+  }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
@@ -3286,6 +3304,8 @@ class _MemberProgressDialogState extends State<_MemberProgressDialog> {
             Row(children: [
               const Expanded(child: Text('멤버 진행률', style: TextStyle(
                   fontSize: 20, fontWeight: FontWeight.w800))),
+              IconButton(tooltip: '진행률 새로고침', onPressed: _reloadProgress,
+                  icon: const Icon(Icons.refresh, color: Color(0xFF777777))),
               IconButton(tooltip: '닫기', onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close, color: Color(0xFF777777))),
             ]),
@@ -3296,18 +3316,23 @@ class _MemberProgressDialogState extends State<_MemberProgressDialog> {
               child: FutureBuilder<List<RoomParticipantProgress>>(
                 future: _progress,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
+                  if (snapshot.connectionState != ConnectionState.done &&
+                      snapshot.data == null && _lastProgress == null) {
                     return const SizedBox(height: 120,
                         child: Center(child: CircularProgressIndicator()));
                   }
-                  if (snapshot.hasError) {
+                  if (snapshot.hasError && _lastProgress == null) {
+                    final error = snapshot.error;
                     return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: TextButton(
-                            onPressed: () { setState(() { _progress = _fetch(); }); },
-                            child: const Text('진행률을 불러오지 못했습니다. 다시 시도'))));
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text(error is ApiException ? error.message : '진행률을 불러오지 못했습니다.',
+                            textAlign: TextAlign.center),
+                        TextButton(onPressed: _reloadProgress, child: const Text('다시 시도')),
+                      ]),
+                    );
                   }
-                  final members = [...(snapshot.data ?? const <RoomParticipantProgress>[])];
+                  final members = [...(snapshot.data ?? _lastProgress ?? const <RoomParticipantProgress>[])];
                   // Keep join order for everyone else; show the current user first.
                   final ordered = [
                     ...members.where((member) => member.currentUser),
@@ -3317,7 +3342,7 @@ class _MemberProgressDialogState extends State<_MemberProgressDialog> {
                     return const Padding(padding: EdgeInsets.all(20),
                         child: Center(child: Text('참여 중인 멤버가 없습니다.')));
                   }
-                  return Scrollbar(
+                  final list = Scrollbar(
                     controller: _scrollController,
                     thumbVisibility: false,
                     child: ListView.builder(
@@ -3327,6 +3352,14 @@ class _MemberProgressDialogState extends State<_MemberProgressDialog> {
                       itemBuilder: (_, index) => _memberRow(ordered[index]),
                     ),
                   );
+                  if (snapshot.hasError) {
+                    return Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('갱신하지 못해 마지막 조회 결과를 표시합니다.',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                      Flexible(child: list),
+                    ]);
+                  }
+                  return list;
                 },
               ),
             ),
@@ -4641,9 +4674,9 @@ class _ErrorNotice extends StatelessWidget {
 }
 
 class _JoinRoomProfileScreen extends StatefulWidget {
-  const _JoinRoomProfileScreen({required this.repository, required this.room});
+  const _JoinRoomProfileScreen({required this.repository, required this.pending});
   final ReadingRoomRepository repository;
-  final ReadingRoom room;
+  final _PendingRoomJoin pending;
   @override
   State<_JoinRoomProfileScreen> createState() => _JoinRoomProfileScreenState();
 }
@@ -4652,15 +4685,17 @@ class _JoinRoomProfileScreenState extends State<_JoinRoomProfileScreen> {
   late final TextEditingController _name;
   Uint8List? _photo;
   String? _photoName;
+  String? _defaultPhotoUrl;
   bool _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text:
-    widget.room.participants.where((m) => m.currentUser).firstOrNull?.nickname
-        ?? context.read<RidiStore>().nickname);
+    final nickname = context.read<RidiStore>().nickname;
+    _defaultPhotoUrl = context.read<RidiStore>().profileImageUrl;
+    _name = TextEditingController(text: nickname);
+    _name.selection = TextSelection.collapsed(offset: nickname.length);
   }
 
   @override
@@ -4680,45 +4715,62 @@ class _JoinRoomProfileScreenState extends State<_JoinRoomProfileScreen> {
     if (name.isEmpty) { setState(() => _error = '이름을 입력해주세요.'); return; }
     setState(() { _saving = true; _error = null; });
     try {
-      var room = await widget.repository.updateMyRoomNickname(widget.room.id, name);
-      if (_photo != null) {
-        room = await widget.repository.uploadMyRoomProfileImage(
-            widget.room.id, bytes: _photo!, filename: _photoName ?? 'profile.jpg',
-            contentType: (_photoName ?? '').toLowerCase().endsWith('.png')
-                ? 'image/png' : 'image/jpeg');
-      }
-      if (mounted) Navigator.of(context).pop(room);
-    } catch (_) {
-      if (mounted) setState(() => _error = '프로필을 저장하지 못했습니다. 다시 시도해주세요.');
+      final result = await widget.repository.joinWithProfile(
+        code: widget.pending.code,
+        password: widget.pending.password,
+        roomNickname: name,
+        bytes: _photo,
+        filename: _photoName,
+        contentType: (_photoName ?? '').toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : (_photoName ?? '').toLowerCase().endsWith('.webp')
+            ? 'image/webp' : 'image/jpeg',
+      );
+      if (mounted) Navigator.of(context).pop(result.room);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      final message = _roomJoinErrorMessage(error);
+      final detail = error.message == message ? message : '$message\n${error.message}';
+      setState(() => _error = error.requestId == null
+          ? detail : '$detail\n오류 확인 번호: ${error.requestId}');
+    } catch (error, stackTrace) {
+      debugPrint('Room profile/join failed: $error\n$stackTrace');
+      if (mounted) setState(() => _error = '입장 처리 결과를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('방 프로필 설정')),
-    bottomNavigationBar: SafeArea(child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: FilledButton(onPressed: _saving ? null : _save,
-          child: Text(_saving ? '저장 중…' : '완료하고 방 입장')),
-    )),
-    body: ListView(padding: const EdgeInsets.all(24), children: [
-      Text(widget.room.name, style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
-      const Text('이 방에서 사용할 사진과 이름을 설정해주세요.'),
-      const SizedBox(height: 28),
-      Center(child: InkWell(onTap: _saving ? null : _pickPhoto,
-        borderRadius: BorderRadius.circular(60),
-        child: CircleAvatar(radius: 56,
-            backgroundImage: _photo == null ? null : MemoryImage(_photo!),
-            child: _photo == null ? const Icon(Icons.add_a_photo_outlined, size: 32) : null),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: Scaffold(
+      appBar: AppBar(title: const Text('방 프로필 설정')),
+      bottomNavigationBar: SafeArea(child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FilledButton(onPressed: _saving ? null : _save,
+            child: Text(_saving ? '저장 중…' : '완료하고 방 입장')),
       )),
-      const SizedBox(height: 24),
-      TextField(controller: _name, enabled: !_saving, maxLength: 40,
-          decoration: const InputDecoration(labelText: '이 방에서 사용할 이름')),
-      if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-    ]),
+      body: ListView(padding: const EdgeInsets.all(24), children: [
+        Text(widget.pending.validation.roomName, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        const Text('이 방에서 사용할 사진과 이름을 설정해주세요.'),
+        const SizedBox(height: 28),
+        Center(child: InkWell(onTap: _saving ? null : _pickPhoto,
+          borderRadius: BorderRadius.circular(60),
+          child: CircleAvatar(radius: 56,
+              backgroundImage: _photo != null ? MemoryImage(_photo!)
+                  : _defaultPhotoUrl?.trim().isNotEmpty == true
+                  ? NetworkImage(widget.repository.absoluteUrl(_defaultPhotoUrl!)) : null,
+              child: _photo == null && _defaultPhotoUrl?.trim().isNotEmpty != true
+                  ? const Icon(Icons.add_a_photo_outlined, size: 32) : null),
+        )),
+        const SizedBox(height: 24),
+        TextField(controller: _name, enabled: !_saving, maxLength: 40,
+            decoration: const InputDecoration(labelText: '이 방에서 사용할 이름')),
+        if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      ]),
+    ),
   );
 }
 

@@ -60,7 +60,9 @@ class UserProfile {
   void changed() { updatedAt = Instant.now(); }
 }
 
-interface UserProfileRepository extends JpaRepository<UserProfile, Long> {}
+interface UserProfileRepository extends JpaRepository<UserProfile, Long> {
+  boolean existsByAvatarUrl(String avatarUrl);
+}
 
 record ProfileResponse(Long id, String username, String nickname, String bio,
                        String avatar, String profileImageUrl, Instant createdAt, Instant updatedAt) {}
@@ -211,6 +213,14 @@ class UserFeatureService {
     if (!user.nickname.equalsIgnoreCase(nickname) && users.existsByNicknameIgnoreCase(nickname)) {
       throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_NICKNAME", "This nickname is already in use.");
     }
+    String previousPhoto = profileImageUrlForUserId(user.id);
+    for (RoomMember member : roomMembers.findByUserId(user.id)) {
+      if (member.roomNickname == null || member.roomNickname.isBlank())
+        member.roomNickname = user.nickname;
+      if (member.roomProfileImageUrl == null)
+        member.roomProfileImageUrl = previousPhoto == null ? "" : previousPhoto;
+    }
+    roomMembers.flush();
     user.nickname = nickname;
     users.save(user);
     UserProfile profile = profiles.findById(user.id).orElseGet(() -> {
@@ -341,6 +351,8 @@ class UserFeatureService {
 
 @org.springframework.stereotype.Service
 class ProfileImageStorage {
+  @org.springframework.beans.factory.annotation.Autowired private UserProfileRepository profileReferences;
+  @org.springframework.beans.factory.annotation.Autowired private RoomMemberRepo roomProfileReferences;
   private static final long MAX_SIZE_BYTES = 5L * 1024 * 1024;
   private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
   private final Path directory;
@@ -389,6 +401,9 @@ class ProfileImageStorage {
 
   void delete(String url) {
     if (url == null || !url.startsWith("/uploads/profiles/")) return;
+    // Default pictures may be snapshots shared by several independent rooms.
+    // Keep the bytes while any account or room still references this URL.
+    if (profileReferences.existsByAvatarUrl(url) || roomProfileReferences.existsByRoomProfileImageUrl(url)) return;
     Path target = directory.resolve(url.substring("/uploads/profiles/".length())).normalize();
     if (!target.getParent().equals(directory)) return;
     try {

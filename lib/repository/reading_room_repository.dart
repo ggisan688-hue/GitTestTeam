@@ -143,6 +143,29 @@ class ReadingRoomRepository {
     }
   }
 
+  /// Membership and its profile are committed together by the server.
+  Future<ReadingRoomJoinResult> joinWithProfile({
+    required String code,
+    required String roomNickname,
+    String? password,
+    Uint8List? bytes,
+    String? filename,
+    String? contentType,
+  }) async => (await _api.uploadFile<ReadingRoomJoinResult>(
+    '/api/reading-rooms/join-with-profile',
+    method: 'POST',
+    fields: {
+      'inviteCode': normalizeInviteCode(code),
+      'roomNickname': roomNickname.trim(),
+      if (password?.isNotEmpty == true) 'password': password!,
+    },
+    fieldName: 'profileImage',
+    bytes: bytes,
+    filename: filename ?? 'profile.jpg',
+    contentType: contentType ?? 'image/jpeg',
+    parse: (json) => ReadingRoomJoinResult.fromJson(json as Map<String, dynamic>),
+  )).data!;
+
   Future<InviteCodeValidation> validateInviteCode(String code) async =>
       (await _api.post<InviteCodeValidation>(
         '/api/reading-rooms/invite-codes/validate',

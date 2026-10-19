@@ -319,7 +319,13 @@ class ReadingRoomNoteService {
   private boolean canDeleteComment(ReadingRoom room,AppUser current,ReadingRoomNoteComment c){return c.userId.equals(current.id)||java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(room.id,current.id).map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false);}
   private RoomNoteCommentResponse commentResponse(Long roomId,AppUser current,ReadingRoomNoteComment c){return new RoomNoteCommentResponse(c.id,c.userId,name(roomId,c.userId),profileImage(roomId,c.userId),c.content,c.createdAt,c.updatedAt,c.userId.equals(current.id),c.version,canDeleteComment(room(roomId),current,c));}
   private String name(Long roomId,Long id){return members.findByRoomIdAndUserId(roomId,id).map(m->m.roomNickname).filter(n->n!=null&&!n.isBlank()).orElseGet(()->userRepository.findById(id).map(u->u.nickname).orElse("알 수 없음"));}
-  private String profileImage(Long roomId,Long id){return members.findByRoomIdAndUserId(roomId,id).map(m->m.roomProfileImageUrl).filter(v->v!=null&&!v.isBlank()).orElseGet(()->userRepository.findById(id).map(users::profileFor).map(ProfileResponse::profileImageUrl).orElse(null));}
+  private String profileImage(Long roomId, Long id) {
+    RoomMember member = members.findByRoomIdAndUserId(roomId, id).orElse(null);
+    if (member == null) return null;
+    String photo = member.roomProfileImageUrl;
+    if (photo == null) photo = users.profileImageUrlForUserId(id);
+    return photo == null || photo.isBlank() ? null : photo;
+  }
   private String blank(String value){return value==null||value.trim().isEmpty()?null:value.trim();}
 }
 
