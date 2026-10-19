@@ -592,7 +592,7 @@ class _ProfileCard extends StatelessWidget {
     return _Panel(
       child: Row(
         children: [
-          RidiAvatar(label: store.avatar, size: 56),
+          (store.profileImageUrl?.isNotEmpty == true) ? ClipOval(child: RidiProfileImage(imageUrl: store.profileImageUrl, size: 56)) : RidiAvatar(label: store.avatar, size: 56),
           const SizedBox(width: 14),
           Expanded(
             child: Column(

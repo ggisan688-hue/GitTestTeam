@@ -949,7 +949,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
       // 상단 친구 카드는 그대로 두고
       // 생성 폼 안쪽만 세로 스크롤
-      padding: const EdgeInsets.fromLTRB(34, 26, 34, 30),
+      padding: EdgeInsets.fromLTRB(MediaQuery.sizeOf(context).width < 600 ? 16 : 34, 26, MediaQuery.sizeOf(context).width < 600 ? 16 : 34, 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -965,102 +965,114 @@ class _FriendsScreenState extends State<FriendsScreen> {
           const SizedBox(height: 24),
 
           // 이름 / 나이 / 성별
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_editingFriend == null) ...[
-                SizedBox(width: 90, child: Column(children: [
-                  const SizedBox(height: 16),
-                  Tooltip(message: '프로필 사진 선택', child: InkWell(
-                    onTap: _submitting || _pickingCreatePhoto ? null : _pickCreatePhoto,
-                    customBorder: const CircleBorder(),
-                    child: Stack(clipBehavior: Clip.none, children: [
-                      CircleAvatar(radius: 34, backgroundColor: RidiColors.panel,
-                          backgroundImage: _createPhotoBytes == null ? null : MemoryImage(_createPhotoBytes!),
-                          child: _pickingCreatePhoto ? const SizedBox(width: 22, height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2)) :
-                          _createPhotoBytes == null ? const Icon(Icons.person_outline,
-                              size: 32, color: Color(0xFF999999)) : null),
-                      Positioned(right: -2, bottom: -2, child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFDDDDDD))),
-                          child: const Icon(Icons.photo_camera_outlined, size: 14,
-                              color: Color(0xFF555555)))),
-                    ]),
-                  )),
-
-                ])),
-                const SizedBox(width: 18),
+          Builder(builder: (context) {
+            final narrow = MediaQuery.sizeOf(context).width < 600;
+            final Widget? photo = _editingFriend != null
+                ? null
+                : SizedBox(width: 90, child: Column(children: [
+              const SizedBox(height: 16),
+              Tooltip(message: '프로필 사진 선택', child: InkWell(
+                onTap: _submitting || _pickingCreatePhoto ? null : _pickCreatePhoto,
+                customBorder: const CircleBorder(),
+                child: Stack(clipBehavior: Clip.none, children: [
+                  CircleAvatar(radius: 34, backgroundColor: RidiColors.panel,
+                      backgroundImage: _createPhotoBytes == null ? null : MemoryImage(_createPhotoBytes!),
+                      child: _pickingCreatePhoto
+                          ? const SizedBox(width: 22, height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                          : _createPhotoBytes == null
+                          ? const Icon(Icons.person_outline, size: 32, color: Color(0xFF999999))
+                          : null),
+                  Positioned(right: -2, bottom: -2, child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFDDDDDD))),
+                      child: const Icon(Icons.photo_camera_outlined, size: 14,
+                          color: Color(0xFF555555)))),
+                ]),
+              )),
+            ]));
+            final Widget nameField = _editingFriend == null
+                ? _InputField(label: '이름', controller: _nameController, hint: '예) hihi')
+                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('이름', style: RidiText.bodyBold),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF2F2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: RidiColors.grayLight),
+                ),
+                child: Text(_editingFriend!.name, style: RidiText.body),
+              ),
+            ]);
+            final Widget ageField = _InputField(
+              label: '나이',
+              controller: _ageController,
+              hint: '예) 20',
+              keyboardType: TextInputType.number,
+            );
+            final Widget genderField = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('성별', style: RidiText.bodyBold),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _gender,
+                  decoration: _inputDecoration(),
+                  items: const [
+                    DropdownMenuItem(value: '여자', child: Text('여자')),
+                    DropdownMenuItem(value: '남자', child: Text('남자')),
+                    DropdownMenuItem(value: '없음', child: Text('없음')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _gender = value;
+                      });
+                    }
+                  },
+                ),
               ],
-              Expanded(
-                child: _editingFriend == null
-                    ? _InputField(
-                  label: '이름',
-                  controller: _nameController,
-                  hint: '예) hihi',
-                )
-                    : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('이름', style: RidiText.bodyBold),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF2F2F2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: RidiColors.grayLight),
-                      ),
-                      child: Text(_editingFriend!.name, style: RidiText.body),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 18),
-
-              SizedBox(
-                width: 150,
-                child: _InputField(
-                  label: '나이',
-                  controller: _ageController,
-                  hint: '예) 20',
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-
-              const SizedBox(width: 18),
-
-              SizedBox(
-                width: 180,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('성별', style: RidiText.bodyBold),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: _gender,
-                      decoration: _inputDecoration(),
-                      items: const [
-                        DropdownMenuItem(value: '여자', child: Text('여자')),
-                        DropdownMenuItem(value: '남자', child: Text('남자')),
-                        DropdownMenuItem(value: '없음', child: Text('없음')),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _gender = value;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (photo != null) ...[photo, const SizedBox(width: 12)],
+                      Expanded(child: nameField),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: ageField),
+                      const SizedBox(width: 12),
+                      Expanded(child: genderField),
+                    ],
+                  ),
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (photo != null) ...[photo, const SizedBox(width: 18)],
+                Expanded(child: nameField),
+                const SizedBox(width: 18),
+                SizedBox(width: 150, child: ageField),
+                const SizedBox(width: 18),
+                SizedBox(width: 180, child: genderField),
+              ],
+            );
+          }),
 
           const SizedBox(height: 26),
 
