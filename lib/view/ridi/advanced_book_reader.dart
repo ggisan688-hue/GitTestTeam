@@ -676,15 +676,15 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                     }
 
                     // 길게 누르기와 드래그 제외
-                    if (DateTime.now().difference(time).inMilliseconds > 250 ||
-                        (end - start).distance > 10) {
+                    if (DateTime.now().difference(time).inMilliseconds > 600 ||
+                        (end - start).distance > 30) {
                       return;
                     }
 
                     // Wait for the double-tap selection window before treating
                     // this as a single tap for page navigation or controls.
                     _pageTapTimer = Timer(
-                        kDoubleTapTimeout + const Duration(milliseconds: 50), () {
+                        Duration.zero, () {
                       if (!mounted || _sheetOpen ||
                           ModalRoute.of(context)?.isCurrent != true ||
                           _annotationTapHandled || _activeSelection.isNotEmpty || _continuingSelection) {
@@ -693,14 +693,14 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
                       final x = end.dx;
 
-                      if (x < width * 0.25) {
+                      if (x < width * 0.30) {
                         if (_page > 0 && _controller.hasClients) {
                           _controller.previousPage(
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeOut,
                           );
                         }
-                      } else if (x > width * 0.75) {
+                      } else if (x > width * 0.70) {
                         if (_page < _pages.length - 1 && _controller.hasClients) {
                           _controller.nextPage(
                             duration: const Duration(milliseconds: 200),

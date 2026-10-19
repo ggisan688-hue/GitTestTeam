@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../repository/ridi_auth_repository.dart';
 import 'ridi_store.dart';
@@ -486,6 +487,10 @@ class _SignupScreenState extends State<SignupScreen> {
       nickname: nickname,
       email: _email.text.trim(),
     );
+    if (error == null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('tutorial_pending', true);
+    }
     if (!mounted) return;
     setState(() => _busy = false);
     if (error != null) {

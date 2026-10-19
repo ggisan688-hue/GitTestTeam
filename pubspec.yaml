@@ -51,6 +51,7 @@ flutter:
   # 브랜드 이미지: 앱 로고 · 팀 엠블렘 · 팀 대표 이미지 (docs/design/make_brand.js 로 생성)
   assets:
     - assets/images/
+    - assets/tutorial/
 
   # 글꼴: UI = Pretendard(산세리프), 본문 = Noto Serif KR(세리프, 가변)
   fonts:
