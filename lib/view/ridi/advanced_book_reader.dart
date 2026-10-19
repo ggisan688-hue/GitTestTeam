@@ -158,6 +158,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   int _roomLoadGeneration = 0;
   RoomSyncClient? _readerRoomSync;
   Timer? _roomBodyRefreshTimer;
+  // 지금 책 화면을 열어 둔 친구 (독서중인 사람 보기)
+  Timer? _presenceTimer;
+  ReadingRoomRepository? _presenceRepo;
+  List<RoomPresence> _presence = const [];
+  Map<int, ReadingRoomMember> _presenceMembers = const {};
+  bool _presenceOpen = false;
 
   List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
@@ -215,6 +221,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     super.initState();
     _controller = PageController();
     _ViewSettingsState._spoiler.addListener(_spoilerChanged);
+    unawaited(_ViewSettingsState._loadPresencePreference());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       unawaited(_loadFavorite());
@@ -259,6 +266,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
             });
           },
         )..start();
+        _startPresence();
       }
       unawaited(_loadSharedHighlights().catchError((Object error) {
         if (mounted) _aiMessage('독서방 메모를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -447,6 +455,110 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   ReadingRoomRepository get _readerRoomRepository => ReadingRoomRepository(
       ApiClient(tokenProvider: () => context.read<RidiStore>().accessToken));
 
+  // ---- 독서중인 사람 보기 ----------------------------------------------
+  void _startPresence() {
+    final roomId = widget.readerContext.roomId;
+    if (roomId == null) return;
+    // dispose() 에서도 쓸 수 있게 로그인 정보를 미리 붙잡아 둔다.
+    final store = context.read<RidiStore>();
+    _presenceRepo = ReadingRoomRepository(
+        ApiClient(tokenProvider: () => store.accessToken));
+    unawaited(_loadPresenceMembers(roomId));
+    unawaited(_presenceTick());
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer.periodic(
+        const Duration(seconds: 8), (_) => unawaited(_presenceTick()));
+  }
+
+  Future<void> _loadPresenceMembers(int roomId) async {
+    try {
+      final room = await _presenceRepo!.detail(roomId);
+      if (!mounted) return;
+      setState(() => _presenceMembers = {
+        for (final m in room.participants) m.userId: m,
+      });
+    } catch (_) {/* 부가 기능: 실패해도 책 읽기에는 영향 없다. */}
+  }
+
+  /// 내 위치를 알리고, 지금 읽는 친구 목록을 새로 받는다.
+  Future<void> _presenceTick() async {
+    final roomId = widget.readerContext.roomId;
+    final repo = _presenceRepo;
+    if (roomId == null || repo == null || !mounted || !_ready) return;
+    try {
+      await repo.sendPresence(roomId, widget.bookId, _order);
+      final list = await repo.presence(roomId, bookId: widget.bookId);
+      if (!mounted) return;
+      setState(() => _presence = list);
+    } catch (_) {/* 다음 주기에 다시 시도 */}
+  }
+
+  /// 오른쪽 위: 작은 회색 반투명 화살표. 누르면 지금 읽는 사람의 프로필만
+  /// 세로로 한 줄 펼쳐지고, 다시 누르면 접힌다. 안 읽는 사람은 나오지 않는다.
+  Widget _presenceOverlay() {
+    final safeTop = MediaQuery.paddingOf(context).top;
+    return Positioned(
+      top: safeTop + (_controls ? 64 : 10),
+      right: 10,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _ViewSettingsState._showPresence,
+        builder: (context, on, _) {
+          if (!on) return const SizedBox.shrink();
+          final readers = <({ReadingRoomMember member, RoomPresence presence})>[
+            for (final p in _presence)
+              if (_presenceMembers[p.userId] case final member?
+              when !member.currentUser)
+                (member: member, presence: p),
+          ];
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Tooltip(
+                message: _presenceOpen ? '접기' : '독서중인 친구 보기',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _presenceOpen = !_presenceOpen),
+                  child: SizedBox(
+                    width: 28,
+                    height: 22,
+                    child: Icon(
+                      _presenceOpen
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      size: 18,
+                      color: const Color(0xFF757575).withValues(alpha: .45),
+                    ),
+                  ),
+                ),
+              ),
+              if (_presenceOpen) ...[
+                if (readers.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('없음',
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: const Color(0xFF757575)
+                                .withValues(alpha: .55))),
+                  )
+                else
+                  for (final r in readers)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _PresenceChip(
+                        member: r.member,
+                        onTap: () => _go(r.presence.position),
+                      ),
+                    ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _applyRoomNotes(List<SharedRoomNote> notes) {
     if (!mounted) return;
     setState(() {
@@ -589,7 +701,10 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   void _debounceSave() {
     if (_order > _furthestReadOrder) _furthestReadOrder = _order;
     _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 2), _save);
+    _timer = Timer(const Duration(seconds: 2), () {
+      _save();
+      unawaited(_presenceTick());
+    });
   }
 
   @override
@@ -597,6 +712,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     _standardPageTimer?.cancel();
     _roomBodyRefreshTimer?.cancel();
     _readerRoomSync?.dispose();
+    _presenceTimer?.cancel();
+    final presenceRoomId = widget.readerContext.roomId;
+    if (presenceRoomId != null && _presenceRepo != null) {
+      // 책 화면을 닫으면 바로 '독서중'에서 빠진다 (실패해도 35초 뒤 자동으로 빠짐)
+      unawaited(_presenceRepo!.clearPresence(presenceRoomId).catchError((_) {}));
+    }
     _ViewSettingsState._spoiler.removeListener(_spoilerChanged);
     _timer?.cancel();
     _pageTapTimer?.cancel();
@@ -911,6 +1032,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                       ),
                     ),
                   ),
+                if (widget.readerContext.isReadingRoom) _presenceOverlay(),
                 if (_controls) _top(vm),
                 if (_controls) _bottom(vm),
               ],
@@ -1610,6 +1732,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         place: _SheetPlace.corner,
         _ViewSettings(
           showAiFriends: !widget.readerContext.isReadingRoom,
+          showPresence: widget.readerContext.isReadingRoom,
           onChange: (s) async {
             try {
               await context.read<BookViewModel>().saveSettings(s);
@@ -4843,6 +4966,7 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
 class _ViewSettings extends StatefulWidget {
   const _ViewSettings({
     this.showAiFriends = true,
+    this.showPresence = false,
     required this.onChange,
     required this.aiFriends,
     required this.selectedAiFriendIds,
@@ -4854,6 +4978,9 @@ class _ViewSettings extends StatefulWidget {
   });
 
   final bool showAiFriends;
+
+  /// 독서방 책 화면에서만 켜는 "독서중인 사람 보기" 스위치 표시 여부
+  final bool showPresence;
   final ValueChanged<ReaderSettings> onChange;
 
   // 서버에서 받아온 AI 친구 목록
@@ -4888,6 +5015,29 @@ class _ViewSettingsState extends State<_ViewSettings> {
   static const _lineLabels = ['좁게', '보통', '넓게'];
 
   static final _spoiler = ValueNotifier<bool>(true);
+
+  /// 독서중인 사람 보기 (기기에 저장, 기본 켬)
+  static final _showPresence = ValueNotifier<bool>(true);
+  static bool _presenceLoaded = false;
+  static const _presenceKey = 'reader_show_presence';
+
+  static Future<void> _loadPresencePreference() async {
+    if (_presenceLoaded) return;
+    _presenceLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _showPresence.value = prefs.getBool(_presenceKey) ?? true;
+    } catch (_) {/* 저장소를 못 읽으면 기본값(켬) 유지 */}
+  }
+
+  static Future<void> _setPresencePreference(bool value) async {
+    _showPresence.value = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_presenceKey, value);
+    } catch (_) {/* 이번 실행 동안은 적용된다 */}
+  }
+
   static String? _spoilerAccount;
   static String _spoilerKey(String account) => 'reader_spoiler_enabled:$account';
   bool _savingSpoiler = false;
@@ -5165,6 +5315,30 @@ class _ViewSettingsState extends State<_ViewSettings> {
                 ),
               ),
             ),
+
+            if (widget.showPresence) ...[
+              divider,
+              ValueListenableBuilder<bool>(
+                valueListenable: _showPresence,
+                builder: (_, on, _) => Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.menu_book_outlined,
+                        size: 20,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text('독서중인 사람 보기',
+                          style: TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      Switch(value: on, onChanged: _setPresencePreference),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -5465,12 +5639,12 @@ class _ViewerSettings extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (wide) ...[
-            _ToggleRow(
-              title: '2단으로 보기',
-              sub: wide ? '넓은 화면에서 두 컬럼으로 표시합니다.' : '넓은 화면에서 사용할 수 있습니다.',
-              value: s.twoColumn,
-              onChanged: (v) => onChange(s.copyWith(twoColumn: v)),
-            ),
+              _ToggleRow(
+                title: '2단으로 보기',
+                sub: wide ? '넓은 화면에서 두 컬럼으로 표시합니다.' : '넓은 화면에서 사용할 수 있습니다.',
+                value: s.twoColumn,
+                onChanged: (v) => onChange(s.copyWith(twoColumn: v)),
+              ),
             ],
             _Line(),
             _ToggleRow(
@@ -6654,4 +6828,58 @@ class _ChapterHeading extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// "#RRGGBB" 형광펜 색 → Color
+Color _presenceColor(String hex) {
+  final value = int.tryParse(hex.replaceFirst('#', ''), radix: 16);
+  return Color(0xFF000000 | (value ?? 0xFFF59D));
+}
+
+/// 독서중인 친구 한 명: 프로필 동그라미만, 형광펜 색으로 연하게 빛난다. 누르면 그 위치로 이동.
+class _PresenceChip extends StatelessWidget {
+  const _PresenceChip({required this.member, required this.onTap});
+
+  final ReadingRoomMember member;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _presenceColor(member.memoHighlightColor);
+    final url = member.roomProfileImageUrl;
+    final name = member.nickname.isEmpty ? '?' : member.nickname;
+    return Tooltip(
+      message: name,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: .85), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: .45),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: CircleAvatar(
+            radius: 14,
+            backgroundColor: const Color(0xFFF2F3F7),
+            foregroundImage: url?.isNotEmpty == true
+                ? NetworkImage(
+                url!.startsWith('http') ? url : '${AppConfig.baseUrl}$url')
+                : null,
+            onForegroundImageError: url?.isNotEmpty == true ? (_, __) {} : null,
+            child: Text(name.characters.take(1).toString(),
+                style:
+                const TextStyle(fontSize: 12, color: Color(0xFF555555))),
+          ),
+        ),
+      ),
+    );
+  }
 }

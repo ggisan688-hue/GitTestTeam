@@ -1401,11 +1401,32 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   bool _regeneratingCode = false;
   bool _updatingMemberLimit = false;
   bool _savingMemberColor = false;
+  // 지금 책 화면을 열어 둔 멤버 (독서중 표시)
+  Timer? _presenceTimer;
+  Set<int> _readingNow = <int>{};
   final ImagePicker _imagePicker = ImagePicker();
+
+  Future<void> _refreshPresence() async {
+    if (!mounted) return;
+    try {
+      final list = await widget.repository.presence(widget.roomId);
+      if (!mounted) return;
+      final ids = <int>{for (final p in list) p.userId};
+      if (ids.length != _readingNow.length || !ids.containsAll(_readingNow)) {
+        setState(() => _readingNow = ids);
+      }
+    } catch (_) {
+      // 독서중 표시는 부가 기능이라 실패해도 조용히 넘어간다.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _loadRoom(rebuild: false);
+    unawaited(_refreshPresence());
+    _presenceTimer = Timer.periodic(
+        const Duration(seconds: 8), (_) => unawaited(_refreshPresence()));
     _roomSync = RoomSyncClient(
       repository: widget.repository,
       baseUrl: AppConfig.baseUrl,
@@ -1417,6 +1438,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
 
   @override
   void dispose() {
+    _presenceTimer?.cancel();
     _roomSync?.dispose();
     super.dispose();
   }
@@ -2190,6 +2212,20 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                           onPressed: () => _kick(room, m),
                           child: const Text('내보내기'),
                         ),
+                      if (_readingNow.contains(m.userId))
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Text(
+                            '독서중',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Color.lerp(
+                                  _memberMemoColor(m.memoHighlightColor),
+                                  Colors.black, .45),
+                            ),
+                          ),
+                        ),
                       Tooltip(
                         message: m.currentUser ? '내 메모 색상 변경' : '${m.nickname}님의 메모 색상',
                         child: InkWell(
@@ -2199,7 +2235,13 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
                           child: Padding(padding: const EdgeInsets.all(10),
                             child: Container(width: 20,height: 20,
                                 decoration: BoxDecoration(color: _memberMemoColor(m.memoHighlightColor),
-                                    shape: BoxShape.circle,border: Border.all(color: Colors.black26))),
+                                    shape: BoxShape.circle,border: Border.all(color: Colors.black26),
+                                    // 독서중이면 형광펜 색으로 빛난다
+                                    boxShadow: _readingNow.contains(m.userId)
+                                        ? [BoxShadow(
+                                        color: _memberMemoColor(m.memoHighlightColor).withValues(alpha: .95),
+                                        blurRadius: 12, spreadRadius: 3)]
+                                        : null)),
                           ),
                         ),
                       ),

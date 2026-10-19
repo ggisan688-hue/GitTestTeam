@@ -92,7 +92,14 @@ class _BookCatalogSectionState extends State<BookCatalogSection> {
             primary: false,
             padding: const EdgeInsets.only(right: 12, bottom: 24),
             itemCount: vm.books.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate: constraints.maxWidth >= 900
+                ? const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 190,
+              mainAxisSpacing: 18,
+              crossAxisSpacing: 8,
+              mainAxisExtent: 284,
+            )
+                : SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: columns,
               mainAxisSpacing: 18,
               crossAxisSpacing: 12,

@@ -72,6 +72,25 @@ class InviteCodeValidation {
       );
 }
 
+/// 지금 책 화면을 열어 둔 친구 한 명 (서버 메모리 기준, 35초 안에 신호가 있던 사람).
+class RoomPresence {
+  const RoomPresence({
+    required this.userId,
+    required this.bookId,
+    required this.position,
+  });
+  final int userId;
+  final int bookId;
+
+  /// 친구가 보고 있는 문단 번호(paragraph order)
+  final int position;
+  factory RoomPresence.fromJson(Map<String, dynamic> json) => RoomPresence(
+    userId: (json['userId'] as num).toInt(),
+    bookId: (json['bookId'] as num).toInt(),
+    position: (json['position'] as num?)?.toInt() ?? 0,
+  );
+}
+
 class ReadingRoomRepository {
   ReadingRoomRepository(this._api);
 
@@ -370,6 +389,29 @@ class ReadingRoomRepository {
         parse: (json) =>
             RoomReadingProgress.fromJson(json as Map<String, dynamic>),
       )).data!;
+
+  /// 책 화면이 열려 있는 동안 주기적으로 호출: "나 지금 여기 읽는 중"
+  Future<void> sendPresence(int roomId, int bookId, int position) async {
+    await _api.post<Object>(
+      '/api/reading-rooms/$roomId/presence',
+      body: {'bookId': bookId, 'position': position < 0 ? 0 : position},
+    );
+  }
+
+  /// 책 화면을 닫을 때 호출 (못 불러도 35초 뒤 저절로 사라진다)
+  Future<void> clearPresence(int roomId) =>
+      _api.delete('/api/reading-rooms/$roomId/presence');
+
+  /// 지금 읽는 중인 사람들. [bookId] 를 주면 그 책을 읽는 사람만.
+  Future<List<RoomPresence>> presence(int roomId, {int? bookId}) async =>
+      (await _api.get<List<RoomPresence>>(
+        '/api/reading-rooms/$roomId/presence',
+        query: {if (bookId != null) 'bookId': '$bookId'},
+        parse: (json) => (json as List<dynamic>)
+            .map((item) => RoomPresence.fromJson(item as Map<String, dynamic>))
+            .toList(),
+      )).data ??
+          const [];
 
   Future<void> saveProgress(
       int roomId,
