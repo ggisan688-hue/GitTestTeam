@@ -489,7 +489,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   }
 
   ReadingNote _asReaderHighlight(SharedRoomNote note) => ReadingNote(
-    id: note.mine ? note.id : -note.id,
+    id: (note.mine || note.canDelete) ? note.id : -note.id,
     type: ReaderNoteType.highlight,
     paragraphOrder: note.paragraphOrder,
     selectedText: note.selectedText,
@@ -498,7 +498,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     highlightColor: note.highlightColor,
     preview: '',
     createdAt: note.createdAt,
-    readOnly: !note.mine,
+    readOnly: !(note.mine || note.canDelete),
   );
   ReadingNote _asAiReaderHighlight(AiReadingNote note) => ReadingNote(
     id: -1000000000 - note.id,
@@ -3828,11 +3828,11 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
             ),
             Padding(padding: const EdgeInsets.only(left: 24),child: Row(children: [
               Expanded(child: Text('$location$dateText',style: const TextStyle(fontSize: 12,color: Color(0xFF9E9E9E)))),
-              if (note.mine) PopupMenuButton<String>(
+              if (note.mine || note.canDelete) PopupMenuButton<String>(
                 icon: const Icon(Icons.more_horiz,color: Color(0xFF9E9E9E)),
                 onSelected: (action) => _action(note,action),
                 itemBuilder: (_) => [
-                  if (_canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
+                  if (note.mine && _canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
                   const PopupMenuItem(value:'delete',child:Text('삭제',style:TextStyle(color:Colors.red))),
                 ],
               ),
