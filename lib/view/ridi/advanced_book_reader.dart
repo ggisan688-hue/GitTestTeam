@@ -4662,13 +4662,21 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
         });
     }
   }
+  Future<void> _closeAndSave() async {
+    final memo = _controller.text.trim();
+    if (memo.isEmpty || memo == widget.initialMemo.trim()) {
+      Navigator.of(context).pop(false);
+      return;
+    }
+    await _save();
+  }
 
   /// 리디 메모 창처럼: 머리 = 닫기 · 메모(글자 수/1500) · 저장, 고른 문장, 넓은 입력 칸, 아래 날짜
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final count = _controller.text.characters.length;
-    return Dialog(
+    return PopScope(canPop: false, onPopInvokedWithResult: (didPop, _) { if (!didPop && !_saving) _closeAndSave(); }, child: Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
       insetPadding: const EdgeInsets.all(24),
@@ -4715,9 +4723,7 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
                         Positioned(
                           left: 8,
                           child: TextButton(
-                            onPressed: _saving
-                                ? null
-                                : () => Navigator.of(context).pop(false),
+                            onPressed: _saving ? null : _closeAndSave,
                             child: const Text(
                               '닫기',
                               style: TextStyle(color: Color(0xFF8A8A8A)),
@@ -4826,7 +4832,7 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
           },
         ),
       ),
-    );
+    ));
   }
 }
 

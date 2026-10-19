@@ -1162,6 +1162,18 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ),
             ),
           ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _submitting
+                  ? null
+                  : () => setState(() {
+                _editingFriend = null;
+                _isCreating = false;
+              }),
+              child: const Text('취소'),
+            ),
+          ),
 
         ],
       ),

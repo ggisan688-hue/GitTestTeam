@@ -36,13 +36,25 @@ const _pages = <_TutorialPage>[
     ],
   ),
   _TutorialPage(
+    icon: Icons.home_rounded,
+    title: '홈 화면 둘러보기',
+    image: 'assets/tutorial/t0.jpg',
+    lines: [
+      '① 위쪽 사람 모양 아이콘: 교환독서 방으로 가요.',
+      '② 최근 읽은 도서: 읽던 책을 바로 이어 읽어요.',
+      '③ 전체 도서: 읽고 싶은 책을 골라요.',
+      '④ 내 서재: 내 책장과 교환독서 방을 봐요.',
+      '⑤ AI 친구: AI 친구 방으로 가요.',
+    ],
+  ),
+  _TutorialPage(
     icon: Icons.groups_rounded,
     title: '1. 독서 방 들어가기',
     image: 'assets/tutorial/t1.jpg',
     lines: [
-      '[내 서재] → [교환독서]에서',
-      '[+ 방 만들기]로 새 방을 만들거나',
-      '[코드 참여]로 친구 방에 들어가요.',
+      '① [내 서재]를 누르고 ② [교환독서]로 가요.',
+      '③ [방 만들기]로 새 방을 만들거나',
+      '④ [코드 참여]로 친구 방에 들어가요.',
     ],
   ),
   _TutorialPage(
@@ -50,8 +62,9 @@ const _pages = <_TutorialPage>[
     title: '2. 독서 방 만들기',
     image: 'assets/tutorial/t2.jpg',
     lines: [
-      '방 이름을 쓰고 함께 읽을 책을 골라요.',
-      '[만들기]를 누르면 방이 생겨요.',
+      '① 방 이름을 쓰고',
+      '② 함께 읽을 책을 골라요.',
+      '③ [만들기]를 누르면 방이 생겨요.',
     ],
   ),
   _TutorialPage(
@@ -59,9 +72,9 @@ const _pages = <_TutorialPage>[
     title: '3. 방 코드 공유하기',
     image: 'assets/tutorial/t3.jpg',
     lines: [
-      '방 코드를 복사해서 친구에게 보내요.',
+      '① 방 코드를 복사해서 친구에게 보내요.',
       '친구가 그 코드를 입력하면',
-      '내 방에 들어올 수 있어요.',
+      '② 멤버에 친구가 나타나요.',
     ],
   ),
   _TutorialPage(
@@ -69,9 +82,9 @@ const _pages = <_TutorialPage>[
     title: '4. 독서노트로 한눈에 보기',
     image: 'assets/tutorial/t4.jpg',
     lines: [
-      '책 읽는 중 [독서노트]를 누르면',
-      '메모·형광펜·책갈피를 한눈에 봐요.',
-      '아직 안 읽은 부분의 메모는 가려져요.',
+      '① 책 읽는 중 [독서노트]를 눌러요.',
+      '② 메모·형광펜·책갈피를 한눈에 봐요.',
+      '③ 아직 안 읽은 부분의 메모는 가려져요.',
     ],
   ),
   _TutorialPage(
@@ -79,8 +92,9 @@ const _pages = <_TutorialPage>[
     title: '5. 책 읽으며 AI 친구 쓰기',
     image: 'assets/tutorial/t5.jpg',
     lines: [
-      '책 읽는 중 [보기 설정]을 눌러요.',
-      '[AI 친구 설정]에서 친구를 고르고 [완료]!',
+      '① 책 읽는 중 [보기 설정]을 눌러요.',
+      '② [AI 친구 설정]에서 친구를 고르고',
+      '③ [완료]를 눌러요!',
       '이 안내는 홈의 ? 버튼으로 다시 볼 수 있어요.',
     ],
   ),
