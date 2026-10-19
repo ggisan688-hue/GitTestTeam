@@ -116,7 +116,7 @@ class ReadingRoomNoteService {
   List<RoomNoteResponse> list(String username,Long roomId,Long bookId,boolean reader){
     AppUser current=member(username,roomId);ReadingRoom room=room(roomId);Long scopedBook=scopedBook(room,bookId);
     return notes.findByRoomIdAndBookIdOrderByParagraphOrderAscCreatedAtAsc(roomId,scopedBook).stream()
-      .filter(n->"MEMO".equals(n.type)||n.userId.equals(current.id))
+      .filter(n->!"BOOKMARK".equals(n.type)||n.userId.equals(current.id))
       .map(n->response(room,current,n,!reader)).toList();
   }
 @org.springframework.transaction.annotation.Transactional RoomNoteResponse create(String username,Long roomId,RoomNoteRequest request){
@@ -310,7 +310,7 @@ class ReadingRoomNoteService {
     notifyOwnerDeletion(room,current,c.userId,n.bookId,true);
     sync.publish(roomId,n.bookId,"shared_comment.deleted",commentId);
   }
-  private boolean canDelete(ReadingRoom room,AppUser current,ReadingRoomNote n){return n.userId.equals(current.id)||("MEMO".equals(n.type)&&(java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(room.id,current.id).map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false)));}
+  private boolean canDelete(ReadingRoom room,AppUser current,ReadingRoomNote n){return n.userId.equals(current.id)||(("MEMO".equals(n.type)||"HIGHLIGHT".equals(n.type))&&(java.util.Objects.equals(room.ownerId,current.id)||members.findByRoomIdAndUserId(room.id,current.id).map(member->"OWNER".equals(member.role)||"HOST".equals(member.role)).orElse(false)));}
   private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n){return response(room,current,n,true);}
   private RoomNoteResponse response(ReadingRoom room,AppUser current,ReadingRoomNote n,boolean maskSpoilers){boolean locked=maskSpoilers&&spoiler(room,current,n);return new RoomNoteResponse(n.id,n.userId,name(room.id,n.userId),profileImage(room.id,n.userId),n.type,n.paragraphOrder,n.startOffset,n.endOffset,locked?null:n.selectedText,locked?null:n.content,locked?null:n.highlightColor,locked,n.userId.equals(current.id),locked?0:comments.countByRoomNoteId(n.id),n.createdAt,n.updatedAt,n.version,locked?List.of():NoteRangeSupport.decode(n.selectionRanges),canDelete(room,current,n));}
   /** Explicit, item-only reveal. It is never persisted, so snapshots and a

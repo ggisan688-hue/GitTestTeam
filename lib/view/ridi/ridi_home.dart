@@ -217,8 +217,6 @@ class HomeScreen extends StatelessWidget {
                 : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                side!,
-                const SizedBox(height: 20),
                 Expanded(
                   child: NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
@@ -229,7 +227,7 @@ class HomeScreen extends StatelessWidget {
                       }
                       return false;
                     },
-                    child: _HomeBookScrollView(child: serverMain),
+                    child: _HomeBookScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [side!, const SizedBox(height: 20), serverMain])),
                   ),
                 ),
               ],

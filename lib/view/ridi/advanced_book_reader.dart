@@ -321,6 +321,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       _notifyAiProgress();
       _startAiProgressPolling();
       try {
+        final startedAt = DateTime.now();
         final notes = await repository.generateNotes(
           bookId: widget.bookId,
           friendId: friendId,
@@ -341,7 +342,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
               : percent.clamp(0, 99).toInt();
         });
         if (completed) {
-          _aiMessage('${_friendName(friendId)}가 AI 메모 작성을 완료했어요.');
+          if (DateTime.now().difference(startedAt).inSeconds >= 3) _aiMessage('${_friendName(friendId)}가 AI 메모 작성을 완료했어요.');
         } else {
           _aiFailedFriendIds.add(friendId);
           _aiMessage(
@@ -488,7 +489,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   }
 
   ReadingNote _asReaderHighlight(SharedRoomNote note) => ReadingNote(
-    id: note.mine ? note.id : -note.id,
+    id: (note.mine || note.canDelete) ? note.id : -note.id,
     type: ReaderNoteType.highlight,
     paragraphOrder: note.paragraphOrder,
     selectedText: note.selectedText,
@@ -497,7 +498,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     highlightColor: note.highlightColor,
     preview: '',
     createdAt: note.createdAt,
-    readOnly: !note.mine,
+    readOnly: !(note.mine || note.canDelete),
   );
   ReadingNote _asAiReaderHighlight(AiReadingNote note) => ReadingNote(
     id: -1000000000 - note.id,
@@ -675,15 +676,15 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                     }
 
                     // 길게 누르기와 드래그 제외
-                    if (DateTime.now().difference(time).inMilliseconds > 250 ||
-                        (end - start).distance > 10) {
+                    if (DateTime.now().difference(time).inMilliseconds > 600 ||
+                        (end - start).distance > 30) {
                       return;
                     }
 
                     // Wait for the double-tap selection window before treating
                     // this as a single tap for page navigation or controls.
                     _pageTapTimer = Timer(
-                        kDoubleTapTimeout + const Duration(milliseconds: 50), () {
+                        Duration.zero, () {
                       if (!mounted || _sheetOpen ||
                           ModalRoute.of(context)?.isCurrent != true ||
                           _annotationTapHandled || _activeSelection.isNotEmpty || _continuingSelection) {
@@ -692,14 +693,14 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
                       final x = end.dx;
 
-                      if (x < width * 0.25) {
+                      if (x < width * 0.30) {
                         if (_page > 0 && _controller.hasClients) {
                           _controller.previousPage(
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeOut,
                           );
                         }
-                      } else if (x > width * 0.75) {
+                      } else if (x > width * 0.70) {
                         if (_page < _pages.length - 1 && _controller.hasClients) {
                           _controller.nextPage(
                             duration: const Duration(milliseconds: 200),
@@ -973,6 +974,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         c.maxHeight,
         two,
         textScaler,
+        chapters: context.read<BookViewModel>().readerChapters,
       );
       final at = pages.indexWhere((e) => e.contains(_order));
       final targetPage = pages.isEmpty
@@ -1033,8 +1035,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
       double width,
       double height,
       bool two,
-      TextScaler textScaler,
-      ) {
+      TextScaler textScaler, {
+        List<ReaderChapter> chapters = const [],
+      }) {
     final style = TextStyle(
       fontFamily: 'NotoSerifKR',
       fontSize: 18 * s.fontScale,
@@ -1058,8 +1061,29 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         used = 0;
       }
     }
-
+    final startTitles = <int, String>{
+      for (final c in chapters)
+        c.startParagraphOrder:
+        c.title.replaceFirst(RegExp(r'^제?\s*\d+\s*장[:\s]*'), '').trim(),
+    };
+    final headStyle = style.copyWith(
+        fontSize: 19 * s.fontScale, fontWeight: FontWeight.w700);
+    void newPage() {
+      if (columns.any((e) => e.isNotEmpty)) {
+        result.add(_Page(columns));
+        columns = [[]];
+        used = 0;
+      }
+    }
     for (final para in all) {
+      final title = startTitles[para.order];
+      if (title != null && title.isNotEmpty && title != '전문') {
+        newPage(); // 장이 시작하면 항상 새 페이지
+        final th = _height(' $title', headStyle, columnWidth, textScaler);
+        columns.last.add(_Slice(para.order, 0, '', heading: title));
+        used += th + 32 + 16;
+        if (para.text.trim() == title) continue; // 본문에 같은 제목 줄이 있으면 건너뜀
+      }
       // Keep the source string and its offsets intact.  The offsets sent to
       // the API are always offsets into BookParagraph.text, never a trimmed
       // or reflowed display string.
@@ -1376,11 +1400,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
   Widget _menu(IconData icon, String label, VoidCallback action) =>
       TextButton.icon(
-        onPressed: action,
-        icon: Icon(icon, size: 26),
+        onPressed: action,style: TextButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: MediaQuery.sizeOf(context).width < 600 ? 2 : 12)),
+        icon: Icon(icon, size: MediaQuery.sizeOf(context).width < 600 ? 18 : 26),
         label: Text(
           label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: MediaQuery.sizeOf(context).width < 600 ? 12 : 18, fontWeight: FontWeight.w600),
         ),
       );
 
@@ -2807,10 +2831,11 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 }
 
 class _Slice {
-  const _Slice(this.order, this.start, this.text);
+  const _Slice(this.order, this.start, this.text, {this.heading});
   final int order;
   final int start;
   final String text;
+  final String? heading; // 장 제목 슬라이스면 제목 글자 (선택·형광펜 불가)
 }
 
 class _Page {
@@ -2962,29 +2987,31 @@ class _ReaderPage extends StatelessWidget {
       color: color,
     );
     Widget textColumn(List<_Slice> list) => _ReaderSelectionColumn(
-      children: list
-          .map(
-            (s) => _SelectableParagraphSlice(
+      children: list.map<Widget>((s) {
+        if (s.heading != null) {
+          return _ChapterHeading(
+            key: ValueKey('h:${s.order}'),
+            text: s.heading!,
+            fontScale: settings.fontScale,
+            color: color,
+          );
+        }
+        return _SelectableParagraphSlice(
           key: ValueKey('${s.order}:${s.start}'),
           onSelection: (value) => onSelection('${s.order}:${s.start}', value),
           continuedRanges: continuedRanges.where((r) => r.paragraphOrder == s.order).toList(),
           slice: s,
           style: style,
-          highlights: highlights
-              .where((n) => n.paragraphOrder == s.order)
-              .toList(),
+          highlights: highlights.where((n) => n.paragraphOrder == s.order).toList(),
           onHighlight: onHighlight,
           onHighlightTap: onHighlightTap,
           memos: memos.where((n) => n.paragraphOrder == s.order).toList(),
           roomMemoCount: roomMemoCounts[s.order] ?? 0,
-          additionalMemoRanges: additionalMemoRanges
-              .where((memo) => memo.paragraphOrder == s.order)
-              .toList(),
+          additionalMemoRanges: additionalMemoRanges.where((memo) => memo.paragraphOrder == s.order).toList(),
           onMemo: onMemo,
           onShowMemos: onShowMemos,
-        ),
-      )
-          .toList(),
+        );
+      }).toList(),
     );
     final content = twoColumns
         ? Row(
@@ -3801,11 +3828,11 @@ class _SharedRoomNotesTabState extends State<_SharedRoomNotesTab> {
             ),
             Padding(padding: const EdgeInsets.only(left: 24),child: Row(children: [
               Expanded(child: Text('$location$dateText',style: const TextStyle(fontSize: 12,color: Color(0xFF9E9E9E)))),
-              if (note.mine) PopupMenuButton<String>(
+              if (note.mine || note.canDelete) PopupMenuButton<String>(
                 icon: const Icon(Icons.more_horiz,color: Color(0xFF9E9E9E)),
                 onSelected: (action) => _action(note,action),
                 itemBuilder: (_) => [
-                  if (_canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
+                  if (note.mine && _canChangeHighlightColor(note)) const PopupMenuItem(value:'color',child:Text('색상 변경')),
                   const PopupMenuItem(value:'delete',child:Text('삭제',style:TextStyle(color:Colors.red))),
                 ],
               ),
@@ -5344,6 +5371,7 @@ class _ViewSettingsState extends State<_ViewSettings> {
       // 여기서만 부모에게 최종 선택을 전달한다.
       // 친구를 누르는 것만으로는 Gemini가 실행되지 않는다.
       await widget.onAiFriendDone(Set<int>.from(_draftSelectedIds));
+      if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) {
         setState(() {
@@ -5430,12 +5458,14 @@ class _ViewerSettings extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (wide) ...[
             _ToggleRow(
               title: '2단으로 보기',
               sub: wide ? '넓은 화면에서 두 컬럼으로 표시합니다.' : '넓은 화면에서 사용할 수 있습니다.',
               value: s.twoColumn,
               onChanged: (v) => onChange(s.copyWith(twoColumn: v)),
             ),
+            ],
             _Line(),
             _ToggleRow(
               title: '읽는 동안 화면 켜 두기',
@@ -6590,4 +6620,32 @@ class _MemoEditorLifetimeState extends State<_MemoEditorLifetime> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+class _ChapterHeading extends StatelessWidget {
+  const _ChapterHeading({
+    super.key,
+    required this.text,
+    required this.fontScale,
+    required this.color,
+  });
+  final String text;
+  final double fontScale;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SelectionContainer.disabled(
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: 32),
+      child: Text(
+        ' $text',
+        style: TextStyle(
+          fontFamily: 'NotoSerifKR',
+          fontSize: 19 * fontScale,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    ),
+  );
 }

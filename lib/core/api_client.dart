@@ -59,7 +59,7 @@ class ApiClient {
 
   String _newRequestId() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'
-          '${_requestIdRandom.nextInt(1 << 32).toRadixString(36)}';
+          '${_requestIdRandom.nextInt(0x100000000).toRadixString(36)}';
 
   Future<ApiResponse<T>> get<T>(
       String path, {

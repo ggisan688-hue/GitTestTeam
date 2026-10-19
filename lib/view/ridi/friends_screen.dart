@@ -421,8 +421,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxHeight < 420;
+          final narrow = constraints.maxWidth < 600;
           return Padding(
-            padding: EdgeInsets.fromLTRB(44, compact ? 8 : 24, 44, compact ? 8 : 28),
+            padding: EdgeInsets.fromLTRB(narrow ? 16 : 44, compact ? 8 : 24, narrow ? 16 : 44, compact ? 8 : 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -434,7 +435,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
-                      width: constraints.maxWidth - 88,
+                      width: constraints.maxWidth - (narrow ? 32 : 88),
                       height: 150,
                       child: Row(
                         children: [
@@ -476,7 +477,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                           // 오른쪽: AI 친구 만들기 버튼 고정
                           SizedBox(
-                            width: 170,
+                            width: narrow ? 110 : 170,
                             child: _CreateFriendCard(
                               selected: _isCreating && _editingFriend == null,
                               onTap: _startCreating,
@@ -522,11 +523,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  Widget _pair(Widget a, Widget b) => MediaQuery.sizeOf(context).width < 600
+      ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [a, const SizedBox(height: 24), b])
+      : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 48), Expanded(child: b)]);
   Widget _buildFriendDetail(_AiFriend friend) {
     return Container(
       key: ValueKey('detail-${friend.name}'),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 30),
+      padding: EdgeInsets.symmetric(horizontal: MediaQuery.sizeOf(context).width < 600 ? 16 : 42, vertical: 30),
       decoration: BoxDecoration(
         color: RidiColors.bg,
         border: Border.all(color: RidiColors.grayLight),
@@ -560,7 +564,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
 
 
-          const SizedBox(width: 42),
+          SizedBox(width: MediaQuery.sizeOf(context).width < 600 ? 14 : 42),
 
 
           Expanded(
@@ -651,38 +655,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                 const SizedBox(height: 26),
 
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _DetailRow(
-                        label: '나와의 관계',
-                        value: friend.relationship,
-                      ),
-                    ),
-                    const SizedBox(width: 48),
-                    Expanded(
-                      child: _DetailRow(label: '성격', value: friend.personality),
-                    ),
-                  ],
-                ),
+                _pair(_DetailRow(label: '나와의 관계', value: friend.relationship), _DetailRow(label: '성격', value: friend.personality)),
 
 
 
                 const SizedBox(height: 24),
 
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _DetailRow(label: '특징', value: friend.feature),
-                    ),
-                    const SizedBox(width: 48),
-                    Expanded(
-                      child: _DetailRow(label: '말투', value: friend.speech),
-                    ),
-                  ],
-                ),
+                _pair(_DetailRow(label: '특징', value: friend.feature), _DetailRow(label: '말투', value: friend.speech)),
               ],
             ),
           ),
@@ -727,7 +706,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         : null;
 
     return CircleAvatar(
-      radius: 54,
+      radius: MediaQuery.sizeOf(context).width < 600 ? 32 : 54,
       foregroundImage: friend.profileImageUrl?.isNotEmpty == true
           ? NetworkImage(_friendProfileUrl(friend.profileImageUrl!)) : null,
       onForegroundImageError: friend.profileImageUrl?.isNotEmpty == true ? (_, __) {} : null,
@@ -737,8 +716,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
           : ClipOval(
         child: Image.asset(
           imagePath,
-          width: 108,
-          height: 108,
+          width: MediaQuery.sizeOf(context).width < 600 ? 64 : 108,
+          height: MediaQuery.sizeOf(context).width < 600 ? 64 : 108,
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => _profileAvatarFallback(friend),
         ),
@@ -1196,7 +1175,7 @@ class _FriendCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 170,
+        width: MediaQuery.sizeOf(context).width < 600 ? 110 : 170,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: selected

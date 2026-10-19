@@ -17,6 +17,8 @@ import 'ridi_store.dart';
 import 'ridi_theme.dart';
 import 'ridi_scroll_behavior.dart';
 import 'ridi_auth.dart';
+import 'tutorial_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 북체인 앱의 시작점 (main.dart → RidiApp).
 ///
@@ -131,6 +133,8 @@ class RidiShell extends StatefulWidget {
 class _RidiShellState extends State<RidiShell> {
   late final List<Widget?> _pages;
   int _index = 2; // 리디처럼 홈에서 시작
+  late final RidiStore _storeRef;
+  bool _tutorialBusy = false;
 
   static const _tabs = [
     (Icons.collections_bookmark_outlined, Icons.collections_bookmark, '내 서재'),
@@ -146,9 +150,31 @@ class _RidiShellState extends State<RidiShell> {
     // Keep a visited tab alive, but defer construction of the other heavy
     // lists and image trees until the user actually opens that tab.
     _pages = List<Widget?>.filled(_tabs.length, null);
+    _storeRef = context.read<RidiStore>();
+    _storeRef.addListener(_maybeShowTutorial);
     _pages[_index] = HomeScreen(onOpenReadingRooms: _openReadingRooms);
   }
+  @override
+  void dispose() {
+    _storeRef.removeListener(_maybeShowTutorial);
+    super.dispose();
+  }
 
+  /// 회원가입 직후 처음 로그인하면 안내창을 한 번만 띄운다.
+  Future<void> _maybeShowTutorial() async {
+    if (_tutorialBusy || !_storeRef.loggedIn) return;
+    _tutorialBusy = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('tutorial_pending') != true) return;
+      await prefs.remove('tutorial_pending');
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted || !_storeRef.loggedIn) return;
+      await showTutorialDialog(context);
+    } finally {
+      _tutorialBusy = false;
+    }
+  }
   void _openReadingRooms() {
     setState(() {
       _index = 0;
@@ -183,7 +209,7 @@ class _RidiShellState extends State<RidiShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Builder(
+      body: Stack(fit: StackFit.expand, children: [Builder(
         builder: (context) {
           final loggedIn = context.select<RidiStore, bool>((s) => s.loggedIn);
           // 게스트 → 로그인 팝업으로 로그인하면, 보던 탭의 실제 화면을 그때 만든다
@@ -201,6 +227,27 @@ class _RidiShellState extends State<RidiShell> {
           );
         },
       ),
+        if (_index == 2)
+    Positioned(
+      right: 12,
+      bottom: 12,
+      child: Material(
+        color: Colors.white,
+        elevation: 2,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => showTutorialDialog(context),
+          child: const SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(Icons.help_outline, size: 20),
+          ),
+        ),
+      ),
+    ),
+    ],
+    ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: RidiColors.grayLight)),
