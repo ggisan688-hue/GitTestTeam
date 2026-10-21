@@ -24,7 +24,7 @@ class AppConfig {
     }
     // Android 에뮬레이터에서 호스트 PC 의 localhost 는 10.0.2.2
     if (!kIsWeb && Platform.isAndroid) {
-      return 'http://10.0.2.2:$_springPort';
+      return 'http://127.0.0.1:$_springPort';
     }
     return 'http://localhost:$_springPort';
   }
