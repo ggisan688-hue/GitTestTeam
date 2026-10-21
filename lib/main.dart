@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +8,6 @@ import 'view/ridi/ridi_app.dart';
 /// 기존 앱(독서방 UI)은 master / v1.3 태그. 여기서는 백엔드·로그인도 쓰지 않는다.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await BrowserContextMenu.disableContextMenu();
+  if (kIsWeb) await BrowserContextMenu.disableContextMenu();
   runApp(const RidiApp());
 }

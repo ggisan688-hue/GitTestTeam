@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/image_upload.dart';
 
 class ProfilePhotoSelection {
   const ProfilePhotoSelection({this.bytes, this.filename, this.contentType, this.remove = false});
@@ -45,21 +46,19 @@ class _ProfilePhotoDialogState extends State<_ProfilePhotoDialog> {
   Future<void> _pick() async {
     setState(() { _picking = true; _error = null; });
     try {
-      final file = await ImagePicker().pickImage(source: ImageSource.gallery,
+      final file = await pickGalleryImage(ImagePicker(),
           maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
       if (file == null) return;
-      final data = await file.readAsBytes();
-      final ext = file.name.split('.').last.toLowerCase();
-      if (!['jpg', 'jpeg', 'png', 'webp'].contains(ext) || data.length > 5 * 1024 * 1024)
-        throw Exception('invalid photo');
+      // 형식 확인, 큰 사진(캡쳐 등)은 5MB 안쪽으로 자동 축소
+      final prepared = await prepareImageForUpload(file);
       if (!mounted) return;
       setState(() {
-        _selection = ProfilePhotoSelection(bytes: data, filename: file.name,
-            contentType: ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg');
+        _selection = ProfilePhotoSelection(bytes: prepared.bytes,
+            filename: prepared.name, contentType: prepared.contentType);
         _changed = true;
       });
-    } catch (_) {
-      if (mounted) setState(() => _error = 'JPG, PNG, WEBP 형식의 5MB 이하 사진을 선택해주세요.');
+    } catch (e) {
+      if (mounted) setState(() => _error = imageErrorMessage(e));
     } finally { if (mounted) setState(() => _picking = false); }
   }
   Future<void> _save() async {
@@ -108,3 +107,4 @@ class _ProfilePhotoDialogState extends State<_ProfilePhotoDialog> {
     ));
   }
 }
+

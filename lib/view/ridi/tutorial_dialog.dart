@@ -78,8 +78,49 @@ const _pages = <_TutorialPage>[
     ],
   ),
   _TutorialPage(
+    icon: Icons.visibility_outlined,
+    title: '4. 독서중인 친구 보기',
+    image: 'assets/tutorial/t6.jpg',
+    lines: [
+      '① 방 멤버 목록에서 지금 책을 읽는 친구는',
+      '   [독서중]과 함께 형광펜 색으로 빛나요.',
+    ],
+  ),
+  _TutorialPage(
+    icon: Icons.bar_chart_rounded,
+    title: '5. 멤버 진행률 보기',
+    image: 'assets/tutorial/t10.jpg',
+    lines: [
+      '방에서 [멤버 진행률 보기]를 누르면',
+      '친구들이 책을 얼마나 읽었는지 한눈에 봐요.',
+    ],
+  ),
+  _TutorialPage(
+    icon: Icons.keyboard_arrow_down_rounded,
+    title: '6. 책 안에서 친구 확인하기',
+    image: 'assets/tutorial/t7.jpg',
+    lines: [
+      '① 오른쪽 위 작은 화살표를 누르면',
+      '② 지금 읽는 친구의 프로필만 나와요.',
+      '   프로필을 누르면 그 친구가 읽는 곳으로 가요.',
+      '③ 친구가 메모를 쓰고 있으면 [...]가 떠요.',
+    ],
+  ),
+  _TutorialPage(
+    icon: Icons.tune_rounded,
+    title: '7. 보기 설정 (스포일러 · 독서중)',
+    image: 'assets/tutorial/t8.jpg',
+    lines: [
+      '① [스포일러]를 켜면 아직 안 읽은 장의',
+      '   AI 메모가 가려져요. 끄면 모두 볼 수 있어요.',
+      '② [독서중인 사람 보기]를 끄면 화살표가 사라지고,',
+      '   방에서도 독서중이 안 보여요.',
+      '   내 독서중 표시도 친구에게 보이지 않아요.',
+    ],
+  ),
+  _TutorialPage(
     icon: Icons.sticky_note_2_outlined,
-    title: '4. 독서노트로 한눈에 보기',
+    title: '8. 독서노트로 한눈에 보기',
     image: 'assets/tutorial/t4.jpg',
     lines: [
       '① 책 읽는 중 [독서노트]를 눌러요.',
@@ -88,8 +129,20 @@ const _pages = <_TutorialPage>[
     ],
   ),
   _TutorialPage(
+    icon: Icons.smart_toy_outlined,
+    title: '9. AI 친구 고르고 만들기',
+    image: 'assets/tutorial/t11.jpg',
+    lines: [
+      '① 이미 만들어 둔 AI 친구를 볼 수 있어요.',
+      '② [AI 친구 만들기]를 누르면',
+      '③ 이름·나이·성별·관계·성격·말투·특징을',
+      '   적어서 나만의 AI 친구를 만들 수 있어요.',
+      '④ 아래 [AI 친구] 탭에서 언제든 들어와요.',
+    ],
+  ),
+  _TutorialPage(
     icon: Icons.auto_awesome_outlined,
-    title: '5. 책 읽으며 AI 친구 쓰기',
+    title: '10. 내 서재에서 AI 친구 쓰기',
     image: 'assets/tutorial/t5.jpg',
     lines: [
       '① 책 읽는 중 [보기 설정]을 눌러요.',

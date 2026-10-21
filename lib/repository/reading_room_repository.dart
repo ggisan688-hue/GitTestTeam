@@ -78,9 +78,13 @@ class RoomPresence {
     required this.userId,
     required this.bookId,
     required this.position,
+    this.writing = false,
   });
   final int userId;
   final int bookId;
+
+  /// 지금 메모를 쓰는 중인지
+  final bool writing;
 
   /// 친구가 보고 있는 문단 번호(paragraph order)
   final int position;
@@ -88,6 +92,7 @@ class RoomPresence {
     userId: (json['userId'] as num).toInt(),
     bookId: (json['bookId'] as num).toInt(),
     position: (json['position'] as num?)?.toInt() ?? 0,
+    writing: json['writing'] == true,
   );
 }
 
@@ -391,10 +396,15 @@ class ReadingRoomRepository {
       )).data!;
 
   /// 책 화면이 열려 있는 동안 주기적으로 호출: "나 지금 여기 읽는 중"
-  Future<void> sendPresence(int roomId, int bookId, int position) async {
+  Future<void> sendPresence(int roomId, int bookId, int position,
+      {bool writing = false}) async {
     await _api.post<Object>(
       '/api/reading-rooms/$roomId/presence',
-      body: {'bookId': bookId, 'position': position < 0 ? 0 : position},
+      body: {
+        'bookId': bookId,
+        'position': position < 0 ? 0 : position,
+        'writing': writing,
+      },
     );
   }
 

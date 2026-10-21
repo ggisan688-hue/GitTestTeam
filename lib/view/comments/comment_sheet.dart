@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/image_upload.dart';
 import '../../model/memo.dart';
 import '../../repository/comment_repository.dart';
 import '../../theme/app_theme.dart';
@@ -54,16 +55,20 @@ class _CommentSheetState extends State<_CommentSheet> {
   }
 
   Future<void> _pick(ImageSource source) async {
-    final x = await _picker.pickImage(
-      source: source,
-      maxWidth: 1600,
-      imageQuality: 85,
-    );
-    if (x == null || !mounted) return;
-    context.read<CommentsViewModel>().attachImage(
-      await x.readAsBytes(),
-      x.name,
-    );
+    try {
+      final x = await pickGalleryImage(
+        _picker,
+        source: source,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (x == null || !mounted) return;
+      final prepared = await prepareImageForUpload(x);
+      if (!mounted) return;
+      context.read<CommentsViewModel>().attachImage(prepared.bytes, prepared.name);
+    } catch (e) {
+      if (mounted) showToast(context, imageErrorMessage(e));
+    }
   }
 
   Future<void> _send() async {

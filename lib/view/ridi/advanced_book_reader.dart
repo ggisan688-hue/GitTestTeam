@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api_client.dart';
+import '../../core/feature_flags.dart';
 import '../../core/app_config.dart';
 import '../../core/room_sync_client.dart';
 import '../../model/book.dart';
@@ -164,6 +165,9 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
   List<RoomPresence> _presence = const [];
   Map<int, ReadingRoomMember> _presenceMembers = const {};
   bool _presenceOpen = false;
+  int _presenceBeat = 0;
+  bool _presenceBusy = false;
+  bool _presenceSent = false; // 내 위치를 서버에 알린 상태인지
 
   List<AiReadingFriend> _aiFriends = const [];
   final Set<int> _selectedAiFriendIds = <int>{};
@@ -222,6 +226,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     _controller = PageController();
     _ViewSettingsState._spoiler.addListener(_spoilerChanged);
     unawaited(_ViewSettingsState._loadPresencePreference());
+    _MemoEditorDialogState.openCount.addListener(_memoWritingChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       unawaited(_loadFavorite());
@@ -457,6 +462,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
 
   // ---- 독서중인 사람 보기 ----------------------------------------------
   void _startPresence() {
+    if (!FeatureFlags.readingFriends) return;
     final roomId = widget.readerContext.roomId;
     if (roomId == null) return;
     // dispose() 에서도 쓸 수 있게 로그인 정보를 미리 붙잡아 둔다.
@@ -466,8 +472,12 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     unawaited(_loadPresenceMembers(roomId));
     unawaited(_presenceTick());
     _presenceTimer?.cancel();
-    _presenceTimer = Timer.periodic(
-        const Duration(seconds: 8), (_) => unawaited(_presenceTick()));
+    // 친구 상태는 3초마다 확인하고, 내 위치는 9초마다(그리고 변화가 있을 때 즉시) 알린다.
+    _presenceBeat = 0;
+    _presenceTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _presenceBeat++;
+      unawaited(_presenceTick(send: _presenceBeat % 3 == 0));
+    });
   }
 
   Future<void> _loadPresenceMembers(int roomId) async {
@@ -480,17 +490,42 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     } catch (_) {/* 부가 기능: 실패해도 책 읽기에는 영향 없다. */}
   }
 
+  /// 메모 창이 열리거나 닫히면 바로 알린다 (8초 주기를 기다리지 않는다).
+  void _memoWritingChanged() {
+    if (widget.readerContext.roomId == null) return;
+    unawaited(_presenceTick());
+  }
+
   /// 내 위치를 알리고, 지금 읽는 친구 목록을 새로 받는다.
-  Future<void> _presenceTick() async {
+  Future<void> _presenceTick({bool send = true}) async {
     final roomId = widget.readerContext.roomId;
     final repo = _presenceRepo;
     if (roomId == null || repo == null || !mounted || !_ready) return;
+    // 이전 요청이 아직 끝나지 않았으면 겹쳐 보내지 않는다 (알릴 일이 있으면 그래도 보낸다).
+    if (_presenceBusy && !send) return;
+    _presenceBusy = true;
     try {
-      await repo.sendPresence(roomId, widget.bookId, _order);
+      await _ViewSettingsState._loadPresencePreference();
+      if (!_ViewSettingsState._showPresence.value) {
+        // 보기 설정에서 끄면 내 독서중 표시도 친구들에게 보이지 않게 한다.
+        if (_presenceSent) {
+          _presenceSent = false;
+          await repo.clearPresence(roomId);
+        }
+        if (mounted && _presence.isNotEmpty) setState(() => _presence = const []);
+        return;
+      }
+      if (send || !_presenceSent) {
+        await repo.sendPresence(roomId, widget.bookId, _order,
+            writing: _MemoEditorDialogState.openCount.value > 0);
+        _presenceSent = true;
+      }
       final list = await repo.presence(roomId, bookId: widget.bookId);
       if (!mounted) return;
       setState(() => _presence = list);
-    } catch (_) {/* 다음 주기에 다시 시도 */}
+    } catch (_) {/* 다음 주기에 다시 시도 */} finally {
+      _presenceBusy = false;
+    }
   }
 
   /// 오른쪽 위: 작은 회색 반투명 화살표. 누르면 지금 읽는 사람의 프로필만
@@ -543,7 +578,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                                 .withValues(alpha: .55))),
                   )
                 else
-                  for (final r in readers)
+                  for (final r in readers) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: _PresenceChip(
@@ -551,6 +586,19 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                         onTap: () => _go(r.presence.position),
                       ),
                     ),
+                    // 메모를 쓰는 중이면 프로필 바로 밑에 "..." (펼쳤을 때만 보인다)
+                    if (r.presence.writing)
+                      Text(
+                        '...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                          color: const Color(0xFF757575).withValues(alpha: .7),
+                        ),
+                      ),
+                  ],
               ],
             ],
           );
@@ -713,6 +761,7 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
     _roomBodyRefreshTimer?.cancel();
     _readerRoomSync?.dispose();
     _presenceTimer?.cancel();
+    _MemoEditorDialogState.openCount.removeListener(_memoWritingChanged);
     final presenceRoomId = widget.readerContext.roomId;
     if (presenceRoomId != null && _presenceRepo != null) {
       // 책 화면을 닫으면 바로 '독서중'에서 빠진다 (실패해도 35초 뒤 자동으로 빠짐)
@@ -1032,7 +1081,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
                       ),
                     ),
                   ),
-                if (widget.readerContext.isReadingRoom) _presenceOverlay(),
+                if (widget.readerContext.isReadingRoom && FeatureFlags.readingFriends)
+                  _presenceOverlay(),
                 if (_controls) _top(vm),
                 if (_controls) _bottom(vm),
               ],
@@ -1732,7 +1782,8 @@ class _AdvancedBookReaderScreenState extends State<AdvancedBookReaderScreen> {
         place: _SheetPlace.corner,
         _ViewSettings(
           showAiFriends: !widget.readerContext.isReadingRoom,
-          showPresence: widget.readerContext.isReadingRoom,
+          showPresence:
+              widget.readerContext.isReadingRoom && FeatureFlags.readingFriends,
           onChange: (s) async {
             try {
               await context.read<BookViewModel>().saveSettings(s);
@@ -4740,6 +4791,9 @@ class _MemoEditorDialog extends StatefulWidget {
 }
 
 class _MemoEditorDialogState extends State<_MemoEditorDialog> {
+  /// 지금 열려 있는 메모 작성 창 개수. 0 보다 크면 "메모 쓰는 중"으로 친구에게 알린다.
+  static final ValueNotifier<int> openCount = ValueNotifier<int>(0);
+
   late final TextEditingController _controller;
   bool _saving = false;
   String? _error;
@@ -4748,10 +4802,12 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialMemo);
+    openCount.value++;
   }
 
   @override
   void dispose() {
+    openCount.value = openCount.value > 0 ? openCount.value - 1 : 0;
     _controller.dispose();
     super.dispose();
   }
@@ -4786,6 +4842,11 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
     }
   }
   Future<void> _closeAndSave() async {
+    // 기능 스위치가 꺼져 있으면 예전처럼 저장 없이 닫는다.
+    if (!FeatureFlags.memoAutoSave) {
+      Navigator.of(context).pop(false);
+      return;
+    }
     final memo = _controller.text.trim();
     if (memo.isEmpty || memo == widget.initialMemo.trim()) {
       Navigator.of(context).pop(false);
@@ -4799,7 +4860,7 @@ class _MemoEditorDialogState extends State<_MemoEditorDialog> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final count = _controller.text.characters.length;
-    return PopScope(canPop: false, onPopInvokedWithResult: (didPop, _) { if (!didPop && !_saving) _closeAndSave(); }, child: Dialog(
+    return PopScope(canPop: !FeatureFlags.memoAutoSave, onPopInvokedWithResult: (didPop, _) { if (!didPop && !_saving) _closeAndSave(); }, child: Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
       insetPadding: const EdgeInsets.all(24),

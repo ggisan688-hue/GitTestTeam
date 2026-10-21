@@ -26,15 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
  * "읽는 중"으로 본다. 앱을 닫거나 탭을 그냥 닫아도 TTL 이 지나면 저절로 사라진다.
  * 서버를 재시작하면 목록이 비지만, 열려 있는 책 화면이 곧 다시 신호를 보내 복구된다.
  */
-record ReadingPresenceRequest(@NotNull Long bookId, @NotNull @Min(0) Integer position) {}
+record ReadingPresenceRequest(@NotNull Long bookId, @NotNull @Min(0) Integer position, Boolean writing) {}
 
-record ReadingPresenceResponse(Long userId, Long bookId, int position, Instant updatedAt) {}
+record ReadingPresenceResponse(Long userId, Long bookId, int position, boolean writing, Instant updatedAt) {}
 
 @Service
 class ReadingPresenceService {
   static final long TTL_SECONDS = 35;
 
-  private record Entry(Long bookId, int position, Instant seenAt) {}
+  private record Entry(Long bookId, int position, boolean writing, Instant seenAt) {}
 
   private final RoomMemberRepo members;
   private final UserFeatureService users;
@@ -60,7 +60,8 @@ class ReadingPresenceService {
       throw new ApiException(HttpStatus.BAD_REQUEST, "ROOM_BOOK_REQUIRED", "방에 추가된 도서만 읽을 수 있습니다.");
     }
     rooms.computeIfAbsent(roomId, ignored -> new ConcurrentHashMap<>())
-        .put(user.id, new Entry(request.bookId(), request.position(), Instant.now()));
+        .put(user.id, new Entry(request.bookId(), request.position(),
+            Boolean.TRUE.equals(request.writing()), Instant.now()));
   }
 
   void leave(String username, Long roomId) {
@@ -78,7 +79,8 @@ class ReadingPresenceService {
     return room.entrySet().stream()
         .filter(e -> bookId == null || bookId.equals(e.getValue().bookId()))
         .map(e -> new ReadingPresenceResponse(
-            e.getKey(), e.getValue().bookId(), e.getValue().position(), e.getValue().seenAt()))
+            e.getKey(), e.getValue().bookId(), e.getValue().position(),
+            e.getValue().writing(), e.getValue().seenAt()))
         .toList();
   }
 }

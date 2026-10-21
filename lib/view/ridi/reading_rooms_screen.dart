@@ -10,6 +10,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api_client.dart';
+import '../../core/image_upload.dart';
+import '../../core/feature_flags.dart';
 import '../../core/app_config.dart';
 import '../../core/room_sync_client.dart';
 import '../../model/book.dart';
@@ -622,34 +624,21 @@ class _CreateReadingRoomScreenState extends State<CreateReadingRoomScreen> {
 
   Future<void> _pickImage() async {
     try {
-      final image = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+      final image = await pickGalleryImage(
+        ImagePicker(),
         maxWidth: 1280,
         imageQuality: 85,
       );
       if (image == null) return;
-      final ext = image.name.split('.').last.toLowerCase();
-      final bytes = await image.readAsBytes();
-      if (!RegExp(r'^(jpe?g|png|webp)$').hasMatch(ext) ||
-          bytes.length > 5 * 1024 * 1024) {
-        if (mounted)
-          setState(() => _error = 'JPG, PNG, WEBP 형식의 5MB 이하 이미지만 선택할 수 있습니다.');
-        return;
-      }
+      final prepared = await prepareImageForUpload(image);
       if (!mounted) return;
       setState(() {
-        _imageBytes = bytes;
-        _imageName = image.name;
-        _imageType =
-            image.mimeType ??
-                switch (ext) {
-                  'png' => 'image/png',
-                  'webp' => 'image/webp',
-                  _ => 'image/jpeg',
-                };
+        _imageBytes = prepared.bytes;
+        _imageName = prepared.name;
+        _imageType = prepared.contentType;
       });
-    } catch (_) {
-      if (mounted) setState(() => _error = '사진을 불러오지 못했습니다.');
+    } catch (e) {
+      if (mounted) setState(() => _error = imageErrorMessage(e));
     }
   }
 
@@ -1407,8 +1396,20 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   Future<void> _refreshPresence() async {
-    if (!mounted) return;
+    if (!mounted || !FeatureFlags.readingFriends) return;
     try {
+      // 보기 설정에서 '독서중인 사람 보기'를 끄면 방에서도 독서중 표시를 보여주지 않는다.
+      var show = true;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        show = prefs.getBool('reader_show_presence') ?? true;
+      } catch (_) {/* 읽지 못하면 켠 것으로 본다 */}
+      if (!show) {
+        if (mounted && _readingNow.isNotEmpty) {
+          setState(() => _readingNow = <int>{});
+        }
+        return;
+      }
       final list = await widget.repository.presence(widget.roomId);
       if (!mounted) return;
       final ids = <int>{for (final p in list) p.userId};
@@ -1426,7 +1427,7 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
     _loadRoom(rebuild: false);
     unawaited(_refreshPresence());
     _presenceTimer = Timer.periodic(
-        const Duration(seconds: 8), (_) => unawaited(_refreshPresence()));
+        const Duration(seconds: 4), (_) => unawaited(_refreshPresence()));
     _roomSync = RoomSyncClient(
       repository: widget.repository,
       baseUrl: AppConfig.baseUrl,
@@ -1581,29 +1582,18 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       if (action == _RoomCoverImageAction.remove) {
         await widget.repository.deleteCoverImage(widget.roomId);
       } else {
-        final image = await _imagePicker.pickImage(
-          source: ImageSource.gallery,
+        final image = await pickGalleryImage(
+          _imagePicker,
           maxWidth: 1600,
           imageQuality: 85,
         );
         if (image == null) return;
-        final extension = image.name.split('.').last.toLowerCase();
-        final bytes = await image.readAsBytes();
-        if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension) ||
-            bytes.length > 5 * 1024 * 1024) {
-          throw ApiException('JPG, PNG, WEBP 형식의 5MB 이하 이미지만 선택할 수 있습니다.');
-        }
+        final prepared = await prepareImageForUpload(image);
         final updated = await widget.repository.uploadCoverImage(
           widget.roomId,
-          bytes: bytes,
-          filename: image.name,
-          contentType:
-          image.mimeType ??
-              (extension == 'png'
-                  ? 'image/png'
-                  : extension == 'webp'
-                  ? 'image/webp'
-                  : 'image/jpeg'),
+          bytes: prepared.bytes,
+          filename: prepared.name,
+          contentType: prepared.contentType,
         );
         if (mounted) _applyRoom(updated);
         return;
@@ -1611,6 +1601,10 @@ class _ReadingRoomDetailScreenState extends State<ReadingRoomDetailScreen> {
       if (mounted) _reload();
     } on ApiException catch (error) {
       if (mounted) _showError(context, error);
+    } on UnsupportedImageType catch (e) {
+      if (mounted) _showError(context, ApiException(imageErrorMessage(e)));
+    } on ImageTooLarge catch (e) {
+      if (mounted) _showError(context, ApiException(imageErrorMessage(e)));
     } finally {
       if (mounted) setState(() => _updatingCoverImage = false);
     }
@@ -4797,11 +4791,15 @@ class _JoinRoomProfileScreenState extends State<_JoinRoomProfileScreen> {
   void dispose() { _name.dispose(); super.dispose(); }
 
   Future<void> _pickPhoto() async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery,
-        maxWidth: 1200, maxHeight: 1200, imageQuality: 85);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (mounted) setState(() { _photo = bytes; _photoName = file.name; });
+    try {
+      final file = await pickGalleryImage(ImagePicker(),
+          maxWidth: 1200, maxHeight: 1200, imageQuality: 85);
+      if (file == null) return;
+      final prepared = await prepareImageForUpload(file);
+      if (mounted) setState(() { _photo = prepared.bytes; _photoName = prepared.name; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() => _error = imageErrorMessage(e));
+    }
   }
 
   Future<void> _save() async {

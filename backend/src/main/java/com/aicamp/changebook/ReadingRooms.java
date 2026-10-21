@@ -595,11 +595,15 @@ class RoomService {
     var roomMembers=members.findByRoomIdOrderByJoinedAtAsc(roomId);
     var ids=roomMembers.stream().map(m->m.userId).toList();
     java.util.Map<Long,UserBookProgress> byUser=globalProgressRepository.findByBookIdAndUserIdIn(bookId,ids).stream()
+<<<<<<< HEAD
       // Direct field access on a Hibernate proxy can return null even when
       // its database identifier is present. Resolve it before indexing rows.
       .collect(java.util.stream.Collectors.toMap(
           p -> org.hibernate.Hibernate.unproxy(p.user, AppUser.class).id,
           p -> p));
+=======
+      .collect(java.util.stream.Collectors.toMap(p->((AppUser)org.hibernate.Hibernate.unproxy(p.user)).id,p->p));
+>>>>>>> 6650022 (시연 후 정리: 멤버 진행률 수정, 앱 튜토리얼 수정, 사진 업로드 개선)
     return roomMembers.stream().map(member->{
       UserBookProgress p=byUser.get(member.userId);
       RoomMemberResponse identity=users.findById(member.userId)

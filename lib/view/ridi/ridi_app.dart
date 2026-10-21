@@ -169,6 +169,13 @@ class _RidiShellState extends State<RidiShell> {
       if (prefs.getBool('tutorial_pending') != true) return;
       await prefs.remove('tutorial_pending');
       await Future.delayed(const Duration(milliseconds: 800));
+      for (var i = 0; i < 40; i++) {
+        if (!mounted) return;
+        if (ModalRoute.of(context)?.isCurrent ?? true) break;
+        await Future.delayed(const Duration(milliseconds: 250));
+      }
+      if (!mounted || !_storeRef.loggedIn) return;
+      await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted || !_storeRef.loggedIn) return;
       await showTutorialDialog(context);
     } finally {
